@@ -1,26 +1,187 @@
 @import "tailwindcss";
 
+/* T&J 客製化甜點 Design System - 對齊舊版 index.css */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand Colors - T&J Pastry Studio（粉裸/玫瑰系） */
+  --color-brand-50: 0 48% 95%;
+  --color-brand-100: 0 48% 90%;
+  --color-brand-300: 0 48% 81%;
+  --color-brand-500: 356 42% 73%;
+  --color-brand-600: 354 33% 63%;
+
+  /* Ink Colors */
+  --color-ink: 213 13% 14%;
+  --color-ink-inverse: 0 0% 100%;
+  --color-muted: 220 9% 46%;
+  --color-border: 216 12% 91%;
+
+  /* Semantic */
+  --background: 0 0% 100%;
+  --foreground: 213 13% 14%;
+  --card: 0 0% 100%;
+  --card-foreground: 213 13% 14%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 213 13% 14%;
+  --primary: 354 33% 63%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 0 48% 90%;
+  --secondary-foreground: 213 13% 14%;
+  --accent: 0 48% 81%;
+  --accent-foreground: 213 13% 14%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --muted: 0 48% 95%;
+  --muted-foreground: 220 9% 46%;
+  /* 全站邊框：淺灰色，不得使用黑色 */
+  --border: 216 12% 91%;
+  --input: 216 12% 91%;
+  --ring: 356 42% 73%;
+
+  --radius: 10px;
+  --elev-card: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --elev-navbar: 0 1px 2px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --font-sans: var(--font-noto-sans-tc), ui-sans-serif, system-ui, sans-serif;
+  --font-serif: var(--font-noto-serif-tc), "Songti TC", "STSong", "SimSun", "宋体", "PMingLiU", "新細明體", serif;
+  --font-mono: ui-monospace, monospace;
+  /* Brand colors - 選中/焦點時使用 */
+  --color-brand-50: hsl(var(--color-brand-50));
+  --color-brand-100: hsl(var(--color-brand-100));
+  --color-brand-300: hsl(var(--color-brand-300));
+  --color-brand-500: hsl(var(--color-brand-500));
+  --color-brand-600: hsl(var(--color-brand-600));
+  --color-ink: hsl(var(--color-ink));
+  --color-ink-inverse: hsl(var(--color-ink-inverse));
+  --color-muted: hsl(var(--color-muted));
+  /* Border / ring - 淺灰邊框、焦點用品牌色 */
+  --color-border: hsl(var(--border));
+  --color-ring: hsl(var(--ring));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-input: hsl(var(--input));
+  /* 圓角 */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: 24 20% 8%;
+    --foreground: 24 20% 95%;
+    --border: 24 15% 22%;
+    --input: 24 15% 22%;
+    --card: 24 20% 10%;
+    --card-foreground: 24 20% 95%;
+    --popover: 24 20% 10%;
+    --popover-foreground: 24 20% 95%;
+    --primary: 14 72% 65%;
+    --primary-foreground: 24 20% 10%;
+    --secondary: 24 15% 18%;
+    --secondary-foreground: 24 20% 95%;
+    --muted: 24 15% 18%;
+    --muted-foreground: 24 10% 60%;
+    --accent: 24 25% 20%;
+    --accent-foreground: 24 20% 95%;
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: var(--font-noto-serif-tc), "Noto Serif TC", "Songti TC", "STSong", "SimSun", "宋体", "PMingLiU", "新細明體", serif !important;
+  font-weight: 500;
+  font-feature-settings: "palt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 600;
+}
+
+h1 {
+  font-size: clamp(24px, 4.5vw, 36px);
+  line-height: 1.2;
+}
+
+h2 {
+  font-size: clamp(20px, 3.4vw, 28px);
+  line-height: 1.3;
+}
+
+h3 {
+  font-size: clamp(18px, 2.8vw, 22px);
+  line-height: 1.4;
+}
+
+/* Container - 對齊舊版 */
+.container {
+  margin-left: auto;
+  margin-right: auto;
+  padding-left: 1rem;
+  padding-right: 1rem;
+  max-width: 1200px;
+}
+
+@media (min-width: 768px) {
+  .container {
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+}
+
+/* 彈窗／Toaster 使用 Noto Sans TC */
+[role="dialog"],
+[role="alertdialog"],
+.dialog-content,
+[data-sonner-toaster],
+[data-sonner-toast],
+.sonner-toast,
+.toaster {
+  font-family: var(--font-sans) !important;
+  font-weight: 400;
+}
+
+/* 自訂游標 */
+.custom-cursor,
+.custom-cursor * {
+  cursor: url("/cursors/cursor-default.png") 0 0, auto !important;
+}
+
+.custom-cursor .hoverable-item,
+.custom-cursor .hoverable-item * {
+  cursor: url("/cursors/cursor-active.png") 0 0, pointer !important;
+}
+
+/* 隱藏 number input 的上下箭頭 */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
 }

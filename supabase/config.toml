@@ -1,0 +1,31 @@
+project_id = "akrxbdoxiopiubksgcrl"
+
+[functions.calculate-price]
+verify_jwt = false
+
+[functions.calculate-checkout]
+verify_jwt = false
+
+[functions.line-auth-callback]
+verify_jwt = false
+
+[functions.update-order-status]
+verify_jwt = true
+
+[functions.notify-new-order]
+verify_jwt = false
+
+[functions.delete-order]
+verify_jwt = true
+
+[functions.ecpay-create-payment]
+verify_jwt = false
+
+[functions.ecpay-payment-callback]
+verify_jwt = false
+
+[functions.process-quotation]
+verify_jwt = true
+
+[functions.verify-line-friendship]
+verify_jwt = false

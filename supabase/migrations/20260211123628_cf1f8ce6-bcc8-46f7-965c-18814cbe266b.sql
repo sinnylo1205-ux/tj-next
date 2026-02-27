@@ -1,0 +1,1 @@
+ALTER TABLE public.user_log_in ADD COLUMN used_coupons text[] DEFAULT '{}';
