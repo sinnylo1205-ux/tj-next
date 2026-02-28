@@ -236,19 +236,19 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
 
     return (
       <section key={section.id} className="relative w-full">
-        <img
+        <ProgressiveImage
           src={section.photo_url}
           alt={`Section ${section.sort_order}`}
-          className="w-full h-auto block"
-          loading={section.sort_order <= 3 ? "eager" : "lazy"}
-          width={section.ui_width || 4167}
-          height={section.ui_height || 2784}
-          style={{
-            aspectRatio:
-              section.ui_width && section.ui_height
-                ? `${section.ui_width} / ${section.ui_height}`
-                : "4167 / 2784",
-          }}
+          containerClassName="w-full block"
+          className="object-cover w-full h-auto"
+          width={section.ui_width ?? undefined}
+          height={section.ui_height ?? undefined}
+          aspectRatio={
+            section.ui_width && section.ui_height
+              ? section.ui_width / section.ui_height
+              : 4167 / 2784
+          }
+          priority={section.sort_order <= 3}
         />
 
         {isSection2 && (

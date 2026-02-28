@@ -7,6 +7,7 @@ import { OrbitalSelector, type OrbitalItem } from "@/components/OrbitalSelector"
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingScreen } from "@/components/LoadingScreen";
+import ProgressiveImage from "@/components/ProgressiveImage";
 import { QUERY_KEYS } from "@/hooks/usePreloadData";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -273,15 +274,14 @@ export function GiftBoxesClient({ navigate }: { navigate: NavigateFn }) {
           const isSection2 = section.sort_order === 2;
           return (
             <section key={section.id} className="relative isolate w-full overflow-hidden bg-[#f1e1df]">
-              <div className="relative w-full" style={{ aspectRatio: bg.aspectRatio }}>
-                <img
+              <div className="relative w-full" style={{ aspectRatio: bg.aspectRatio }} aria-hidden>
+                <ProgressiveImage
                   src={bg.url}
                   alt=""
-                  aria-hidden
-                  className="absolute inset-0 w-full h-full object-cover"
+                  containerClassName="absolute inset-0 w-full h-full"
+                  className="object-cover w-full h-full"
                   width={bg.width ?? undefined}
                   height={bg.height ?? undefined}
-                  loading="lazy"
                 />
                 <div
                   className="absolute inset-0 z-10 flex items-start"
@@ -343,15 +343,15 @@ export function GiftBoxesClient({ navigate }: { navigate: NavigateFn }) {
 
         return (
           <section key={section.id} className="relative isolate w-full overflow-hidden">
-            <div className="relative w-full" style={{ aspectRatio: bg.aspectRatio }}>
-              <img
+            <div className="relative w-full" style={{ aspectRatio: bg.aspectRatio }} aria-hidden>
+              <ProgressiveImage
                 src={bg.url}
                 alt=""
-                aria-hidden
-                className="absolute inset-0 w-full h-full object-cover"
+                containerClassName="absolute inset-0 w-full h-full"
+                className="object-cover w-full h-full"
                 width={bg.width ?? undefined}
                 height={bg.height ?? undefined}
-                loading="eager"
+                priority
               />
               <div className="absolute inset-0 z-10 grid grid-rows-[auto_1fr_auto] py-[5%] md:py-[8%]">
                 <header className="flex justify-center px-4">

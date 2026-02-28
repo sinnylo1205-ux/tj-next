@@ -50,12 +50,16 @@ interface BackgroundSection {
   id: string;
   photo_url: string;
   sort_order: number;
+  ui_width: number | null;
+  ui_height: number | null;
 }
 
 interface GalleryItem {
   id: string;
   photo_url: string;
   metadata_tab: { product: string } | null;
+  ui_width: number | null;
+  ui_height: number | null;
 }
 
 const HOME_QUERY_KEYS = {
@@ -144,7 +148,7 @@ function HomePageContent() {
     queryFn: async () => {
       const { data } = await supabase
         .from("Website_photo_material")
-        .select("id, photo_url, sort_order")
+        .select("id, photo_url, sort_order, ui_width, ui_height")
         .eq("category", "home_page")
         .not("sort_order", "is", null)
         .not("photo_url", "is", null)
@@ -154,6 +158,8 @@ function HomePageContent() {
         id: item.id,
         photo_url: item.photo_url || "",
         sort_order: item.sort_order ?? 0,
+        ui_width: item.ui_width ?? null,
+        ui_height: item.ui_height ?? null,
       })) as BackgroundSection[];
     },
   });
@@ -194,6 +200,8 @@ function HomePageContent() {
       id: item.id,
       photo_url: item.photo_url || "",
       metadata_tab: item.metadata_tab as { product: string } | null,
+      ui_width: item.ui_width ?? null,
+      ui_height: item.ui_height ?? null,
     }));
 
   useEffect(() => {
@@ -280,7 +288,9 @@ function HomePageContent() {
               src={MOBILE_BG_URL}
               alt="Section 1 mobile background"
               priority={true}
-              aspectRatio={1166 / 2072}
+              width={section1Bg?.ui_width ?? undefined}
+              height={section1Bg?.ui_height ?? undefined}
+              aspectRatio={section1Bg?.ui_width && section1Bg?.ui_height ? undefined : 1166 / 2072}
               containerClassName="w-full"
             />
           ) : (
@@ -288,7 +298,9 @@ function HomePageContent() {
               src={section1Bg?.photo_url || DESKTOP_LCP_URL}
               alt="Section 1 background"
               priority={true}
-              aspectRatio={8334 / 3645}
+              width={section1Bg?.ui_width ?? undefined}
+              height={section1Bg?.ui_height ?? undefined}
+              aspectRatio={section1Bg?.ui_width && section1Bg?.ui_height ? undefined : 8334 / 3645}
               containerClassName="w-full"
             />
           )}
@@ -347,12 +359,14 @@ function HomePageContent() {
               <div className="flex justify-center items-end gap-2 px-4">
                 {items.map((item) => (
                   <div key={item.id} className="flex-shrink-0" style={{ width: "30%", maxWidth: "120px" }}>
-                    <img
+                    <ProgressiveImage
                       src={item.photo_url}
                       alt={item.description || "home item"}
-                      className="w-full h-auto object-contain cursor-pointer"
+                      className="object-contain cursor-pointer"
+                      containerClassName="w-full"
+                      width={item.ui_width ?? undefined}
+                      height={item.ui_height ?? undefined}
                       onClick={() => handleItemClick(item)}
-                      loading="lazy"
                     />
                   </div>
                 ))}
@@ -420,11 +434,14 @@ function HomePageContent() {
 
         <section className="relative w-full">
           {!isMobile && section2Bg && (
-            <img
+            <ProgressiveImage
               src={section2Bg.photo_url}
               alt="Section 2 background"
-              className="w-full h-auto block"
-              loading="lazy"
+              containerClassName="w-full block"
+              className="object-cover"
+              width={section2Bg.ui_width ?? undefined}
+              height={section2Bg.ui_height ?? undefined}
+              aspectRatio={section2Bg.ui_width && section2Bg.ui_height ? undefined : 16 / 9}
             />
           )}
 
@@ -440,7 +457,9 @@ function HomePageContent() {
                     <ProgressiveImage
                       src={item.photo_url}
                       alt="gallery item"
-                      aspectRatio={1}
+                      width={item.ui_width ?? undefined}
+                      height={item.ui_height ?? undefined}
+                      aspectRatio={item.ui_width && item.ui_height ? undefined : 1}
                       containerClassName="w-full"
                     />
                   </div>
@@ -461,7 +480,9 @@ function HomePageContent() {
                             <ProgressiveImage
                               src={item.photo_url}
                               alt="gallery item"
-                              aspectRatio={1}
+                              width={item.ui_width ?? undefined}
+                              height={item.ui_height ?? undefined}
+                              aspectRatio={item.ui_width && item.ui_height ? undefined : 1}
                               containerClassName="w-full"
                             />
                           </div>

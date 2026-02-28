@@ -1,7 +1,7 @@
 import type { Config } from "tailwindcss";
 
 export default {
-  darkMode: "class",
+  darkMode: "class" as const, // 僅在 html 有 .dark 時啟用；本站不使用 dark mode
   content: ["./pages/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./app/**/*.{ts,tsx}", "./src/**/*.{ts,tsx}", "./legacy-pages/**/*.{ts,tsx}", "./contexts/**/*.{ts,tsx}"],
   prefix: "",
   theme: {

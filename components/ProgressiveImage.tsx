@@ -6,8 +6,13 @@ interface ProgressiveImageProps {
   alt: string;
   className?: string;
   containerClassName?: string;
-  aspectRatio?: number; // 預設比例 (width / height)
-  priority?: boolean; // 是否高優先載入
+  /** 預設比例 (width / height)，若同時提供 width/height 則可由此推算 */
+  aspectRatio?: number;
+  /** 與 height 一併使用可預留空間、減少版面跳動（來自 e.g. website_photo_material.ui_width） */
+  width?: number | null;
+  /** 與 width 一併使用可預留空間 */
+  height?: number | null;
+  priority?: boolean;
   onClick?: () => void;
   style?: React.CSSProperties;
 }
@@ -23,7 +28,9 @@ const ProgressiveImage = ({
   alt,
   className,
   containerClassName,
-  aspectRatio,
+  aspectRatio: aspectRatioProp,
+  width,
+  height,
   priority = false,
   onClick,
   style,
@@ -31,6 +38,11 @@ const ProgressiveImage = ({
   const [isLoaded, setIsLoaded] = useState(false);
   const [isInView, setIsInView] = useState(priority);
   const imgRef = useRef<HTMLDivElement>(null);
+
+  // 優先使用傳入的 aspectRatio，否則由 width/height 推算，避免版面跳動
+  const aspectRatio =
+    aspectRatioProp ??
+    (width != null && height != null && height > 0 ? width / height : undefined);
 
   // Intersection Observer for lazy loading
   useEffect(() => {
@@ -65,9 +77,9 @@ const ProgressiveImage = ({
       style={containerStyle}
       onClick={onClick}
     >
-      {/* 骨架載入動畫 */}
+      {/* 骨架載入動畫 - 品牌粉 */}
       {!isLoaded && (
-        <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-muted via-muted-foreground/10 to-muted" />
+        <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-brand-50 via-brand-100 to-brand-50" />
       )}
 
       {/* 實際圖片 - 只有在視窗內才載入 */}
@@ -77,6 +89,8 @@ const ProgressiveImage = ({
           alt={alt}
           loading={priority ? "eager" : "lazy"}
           onLoad={() => setIsLoaded(true)}
+          width={width ?? undefined}
+          height={height ?? undefined}
           className={cn(
             "w-full h-full object-cover transition-opacity duration-300",
             isLoaded ? "opacity-100" : "opacity-0",
