@@ -251,7 +251,7 @@ Deno.serve(async (req) => {
         updateData = {
           payment_step: "submitted",
         };
-        statusMessage = "用戶已匯款，請查帳";
+        statusMessage = "用戶已匯款，等待查帳";
         break;
     }
 
