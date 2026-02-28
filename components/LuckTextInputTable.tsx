@@ -350,7 +350,7 @@ const LuckTextInputTable = ({ orderQuantity, onConfirm, onCancel }: LuckTextInpu
             <AlertDialogDescription asChild>
               <div className="space-y-3">
                 <p>您指定的內容如下：</p>
-                <div className="bg-muted p-4 rounded-lg space-y-2 max-h-60 overflow-y-auto">
+                <div className="bg-white p-4 rounded-lg space-y-2 max-h-60 overflow-y-auto">
                   {rows.map((row, index) => (
                     <div key={index} className="text-sm">
                       <span className="font-medium">{row.text}</span> - {row.quantity} 個

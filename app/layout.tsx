@@ -30,7 +30,6 @@ const LCP_MOBILE =
 const GA4_ID = "G-N9Q3MSMYG5";
 
 export const metadata: Metadata = {
-  icons: { icon: "/favicon.ico" },
   title: "T&J 客製化甜點 - 客製化手作甜點",
   description:
     "專業客製化甜點服務，提供棉花糖、馬卡龍、杯子蛋糕、幸運籤餅乾等 11 種甜點客製化，適合派對、婚禮、活動送禮。台北新店工作室，預約製作。",
