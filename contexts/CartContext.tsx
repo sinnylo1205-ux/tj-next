@@ -27,6 +27,7 @@ export interface CartItem {
 
 interface CartContextValue {
   items: CartItem[];
+  hydrated: boolean;
   addToCart: (item: Omit<CartItem, "id"> & { id?: string }) => void;
   addToCartCustom: (item: Omit<CartItem, "id"> & { id?: string }) => void;
   removeFromCart: (id: string) => void;
@@ -346,6 +347,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const value: CartContextValue = {
     items,
+    hydrated,
     addToCart,
     addToCartCustom,
     removeFromCart,

@@ -49,6 +49,8 @@ export function GiftBoxColorSelector({
                   <img
                     src={option.item_image_url}
                     alt={option.option_name_zh}
+                    width={96}
+                    height={96}
                     className="w-full h-full object-contain"
                   />
                 ) : (

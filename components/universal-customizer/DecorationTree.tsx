@@ -204,6 +204,8 @@ export function DecorationTree({
             <img
               src={option.thumbnail_url || option.item_image_url}
               alt={option.option_name_zh}
+              width={80}
+              height={80}
               className="w-20 h-20 object-contain border rounded"
             />
           </div>
@@ -236,6 +238,8 @@ export function DecorationTree({
                             <img
                               src={child.thumbnail_url || child.item_image_url}
                               alt={child.option_name_zh}
+                              width={80}
+                              height={80}
                               className="w-14 h-14 sm:w-20 sm:h-20 lg:w-20 lg:h-20 object-contain mb-1 sm:mb-2"
                             />
                           )}

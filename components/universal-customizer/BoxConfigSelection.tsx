@@ -205,6 +205,8 @@ export function BoxConfigSelection({
                     <img
                       src={option.item_image_url}
                       alt={option.option_name_zh}
+                      width={64}
+                      height={64}
                       className="w-16 h-16 object-contain mb-2"
                     />
                   )}
@@ -313,6 +315,8 @@ export function BoxConfigSelection({
                       <img
                         src={option.item_image_url}
                         alt={option.option_name_zh}
+                        width={64}
+                        height={64}
                         className="w-16 h-16 object-contain mb-2"
                       />
                     )}
@@ -348,6 +352,8 @@ export function BoxConfigSelection({
                       <img
                         src={color.item_image_url}
                         alt={color.option_name_zh}
+                        width={64}
+                        height={64}
                         className="w-16 h-16 object-contain mb-2"
                       />
                     )}

@@ -38,6 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface ProductData {
   id: string;
@@ -46,6 +47,73 @@ interface ProductData {
   price: number;
   min_order_qty: number;
   product_image_url?: string;
+}
+
+/** CLS 改善：與實際版面同結構、同高度的 skeleton，避免載入時版面跳動 */
+function CustomizerSkeleton() {
+  return (
+    <div className="min-h-screen bg-background pb-16">
+      {/* 標題 skeleton */}
+      <div className="py-8 px-4 text-center">
+        <Skeleton className="h-10 w-64 mx-auto rounded-lg" />
+      </div>
+
+      {/* 手機版 skeleton */}
+      <div className="lg:hidden">
+        <div className="sticky top-10 z-40 bg-white shadow-md border border-border">
+          <div className="relative h-[32vh] p-2 pt-25">
+            <div className="h-full w-full flex items-center justify-center overflow-hidden">
+              <Skeleton className="aspect-square w-[300px] mx-auto rounded-lg" />
+            </div>
+          </div>
+        </div>
+        <div className="px-4 pb-24 space-y-6 mt-6">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="bg-card rounded-3xl p-6 shadow-lg border border-border">
+              <Skeleton className="h-8 w-8 rounded-full mb-4" />
+              <Skeleton className="h-6 w-3/4 mb-4" />
+              <Skeleton className="h-12 w-full rounded-lg mb-2" />
+              <Skeleton className="h-12 w-full rounded-lg mb-2" />
+              <Skeleton className="h-12 w-2/3 rounded-lg" />
+            </div>
+          ))}
+        </div>
+        <div className="fixed bottom-0 left-0 right-0 bg-white p-4 border-t shadow-lg z-50 lg:hidden">
+          <Skeleton className="w-full h-14 rounded-2xl" />
+        </div>
+      </div>
+
+      {/* 桌面版 skeleton */}
+      <div className="hidden lg:block mx-auto px-8 max-w-[1500px]">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <div className="sticky top-24 self-start">
+            <div className="bg-white rounded-3xl shadow-xl p-8 space-y-8 border border-border">
+              <div className="p-6">
+                <Skeleton className="h-6 w-32 mb-6" />
+                <Skeleton className="aspect-square max-w-[400px] mx-auto rounded-lg" />
+              </div>
+              <div className="space-y-4">
+                <Skeleton className="h-10 w-full rounded-lg" />
+                <Skeleton className="h-10 w-full rounded-lg" />
+                <Skeleton className="h-12 w-full rounded-lg" />
+              </div>
+            </div>
+          </div>
+          <div className="space-y-6">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="bg-card rounded-3xl p-6 shadow-lg border border-border">
+                <Skeleton className="h-8 w-8 rounded-full mb-4" />
+                <Skeleton className="h-6 w-48 mb-4" />
+                <Skeleton className="h-12 w-full rounded-lg mb-2" />
+                <Skeleton className="h-12 w-full rounded-lg mb-2" />
+                <Skeleton className="h-12 w-3/4 rounded-lg" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export interface UniversalCustomizerPageProps {
@@ -58,10 +126,6 @@ export function UniversalCustomizerPageWithProps({ productType, navigate }: Univ
   const [productData, setProductData] = useState<ProductData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [minLoadingDone, setMinLoadingDone] = useState(false);
-  const loadingImageUrl = useMemo(() => {
-    if (!productType) return null;
-    return `https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/loading/${productType}.webp?v=${Date.now()}`;
-  }, [productType]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -116,31 +180,7 @@ export function UniversalCustomizerPageWithProps({ productType, navigate }: Univ
   }
 
   if (isLoading || !minLoadingDone) {
-    return (
-      <div className="container mx-auto py-8 px-4 flex flex-col items-center justify-center min-h-[70vh]">
-        <div className="w-full max-w-[800px] mx-auto px-4 flex flex-col items-center justify-center min-h-[400px]">
-          <img
-            src={
-              loadingImageUrl ??
-              "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/loading/default.webp"
-            }
-            alt="客製化須知"
-            className="w-full max-h-[400px] object-contain rounded-xl mb-6"
-            width={800}
-            height={600}
-            onError={(e) => {
-              e.currentTarget.src =
-                "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/loading/default.webp";
-            }}
-          />
-        </div>
-
-        <div className="flex items-center text-ink-muted">
-          <Loader2 className="animate-spin h-8 w-8 mr-2" />
-          客製化模組載入中…
-        </div>
-      </div>
-    );
+    return <CustomizerSkeleton />;
   }
 
   const config = getProductConfig(productType);

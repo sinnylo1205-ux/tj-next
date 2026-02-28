@@ -109,7 +109,7 @@ export default function ContactPage() {
                 marginHeight={0}
                 marginWidth={0}
                 title="聯絡我們表單"
-                loading="lazy"
+                loading="eager"
               >
                 載入中…
               </iframe>

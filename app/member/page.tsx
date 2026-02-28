@@ -33,6 +33,7 @@ import {
   Timer,
 } from "lucide-react";
 import { CREDIT_CARD_ENABLED_FOR_ALL } from "@/lib/site";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface Order {
   id: string;
@@ -380,14 +381,20 @@ function MemberPageContent() {
               {items.map((item) => (
                 <div key={item.order_item_id} className="space-y-2 md:space-y-3 p-4 md:p-6 bg-background border border-border rounded-lg shadow-sm">
                   <div className="flex items-start gap-4 md:gap-5">
-                    {item.preview_url && (
-                      <img
-                        src={item.preview_url}
-                        alt={item.product_name}
-                        className="w-20 h-20 md:w-24 md:h-24 rounded object-cover cursor-pointer hover:opacity-80"
-                        onClick={() => setLightboxImage(item.preview_url)}
-                      />
-                    )}
+                    <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 rounded overflow-hidden bg-muted">
+                      {item.preview_url ? (
+                        <img
+                          src={item.preview_url}
+                          alt={item.product_name}
+                          width={96}
+                          height={96}
+                          className="w-full h-full object-cover cursor-pointer hover:opacity-80"
+                          onClick={() => setLightboxImage(item.preview_url)}
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">無圖</div>
+                      )}
+                    </div>
                     <div className="flex-1">
                       <p className="font-medium md:text-lg">{item.product_name}</p>
                       {item.customizations_json?.length > 0 && (
@@ -440,16 +447,18 @@ function MemberPageContent() {
           )}
           {order.payment_step === "pending" && (
             <div className="space-y-3">
-              {countdowns[order.id] !== undefined && (
-                <div
-                  className={`flex items-center justify-center gap-2 p-3 rounded-lg text-sm md:text-base font-medium ${
-                    countdowns[order.id] <= 0 ? "bg-red-50 border border-red-200 text-red-700" : countdowns[order.id] <= 3600000 ? "bg-orange-50 border border-orange-200 text-orange-700" : "bg-amber-50 border border-amber-200 text-amber-700"
-                  }`}
-                >
-                  <Timer className="h-4 w-4 md:h-5 md:w-5" />
-                  <span>{countdowns[order.id] <= 0 ? "付款時間已逾時，訂單將自動取消" : `剩餘 ${formatCountdown(countdowns[order.id])}`}</span>
-                </div>
-              )}
+              <div className="min-h-[52px] flex items-center justify-center">
+                {countdowns[order.id] !== undefined ? (
+                  <div
+                    className={`flex items-center justify-center gap-2 p-3 rounded-lg text-sm md:text-base font-medium w-full ${
+                      countdowns[order.id] <= 0 ? "bg-red-50 border border-red-200 text-red-700" : countdowns[order.id] <= 3600000 ? "bg-orange-50 border border-orange-200 text-orange-700" : "bg-amber-50 border border-amber-200 text-amber-700"
+                    }`}
+                  >
+                    <Timer className="h-4 w-4 md:h-5 md:w-5 flex-shrink-0" />
+                    <span>{countdowns[order.id] <= 0 ? "付款時間已逾時，訂單將自動取消" : `剩餘 ${formatCountdown(countdowns[order.id])}`}</span>
+                  </div>
+                ) : null}
+              </div>
               <Button
                 className="w-full md:h-12 md:text-base"
                 onClick={() => { setSelectedOrder(order); setShowPaymentMethodDialog(true); }}
@@ -469,7 +478,28 @@ function MemberPageContent() {
     );
   };
 
-  if (!user) return null;
+  if (!user) {
+    return (
+      <div className="min-h-[calc(100vh-64px)] py-12 bg-gradient-to-b from-background to-brand-50">
+        <div className="container max-w-4xl">
+          <h1 className="mb-8 md:mb-10 text-ink text-center text-2xl md:text-4xl font-bold">會員中心</h1>
+          <Card>
+            <CardHeader className="md:py-6">
+              <CardTitle className="md:text-2xl">訂單管理</CardTitle>
+              <CardDescription className="text-sm md:text-base">請登入以查看您的訂單</CardDescription>
+            </CardHeader>
+            <CardContent className="md:px-8 py-12 md:py-16">
+              <p className="text-center text-muted-foreground">請先登入或註冊以使用會員中心</p>
+              <div className="flex justify-center gap-4 mt-6">
+                <Button onClick={() => router.push("/login")}>登入</Button>
+                <Button variant="outline" onClick={() => router.push("/register")}>註冊</Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-64px)] py-12 bg-gradient-to-b from-background to-brand-50">
@@ -514,7 +544,24 @@ function MemberPageContent() {
               </TabsList>
               <TabsContent value={activeTab} className="mt-6 md:mt-8">
                 {loading ? (
-                  <p className="text-center text-muted-foreground py-12 md:py-16 text-sm md:text-base">載入中...</p>
+                  <div className="space-y-4 md:space-y-6" aria-hidden>
+                    {[1, 2, 3].map((i) => (
+                      <Card key={i}>
+                        <CardContent className="p-6 md:p-8">
+                          <div className="flex justify-between mb-4">
+                            <Skeleton className="h-5 w-24" />
+                            <Skeleton className="h-5 w-20" />
+                          </div>
+                          <Skeleton className="h-4 w-full mb-2" />
+                          <Skeleton className="h-4 w-3/4 mb-4" />
+                          <div className="flex gap-2">
+                            <Skeleton className="h-10 flex-1" />
+                            <Skeleton className="h-10 w-28" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
                 ) : filteredOrders.length === 0 ? (
                   <p className="text-center text-muted-foreground py-12 md:py-16 text-sm md:text-base">目前沒有訂單</p>
                 ) : (
@@ -623,8 +670,24 @@ export default function MemberPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen flex items-center justify-center">
-          <div className="animate-pulse text-muted-foreground">載入中...</div>
+        <div className="min-h-[calc(100vh-64px)] py-12 bg-gradient-to-b from-background to-brand-50">
+          <div className="container max-w-4xl">
+            <Skeleton className="h-10 w-48 mx-auto mb-8 md:mb-10" />
+            <Card>
+              <CardHeader className="md:py-6">
+                <Skeleton className="h-7 w-32 mb-2" />
+                <Skeleton className="h-4 w-64" />
+              </CardHeader>
+              <CardContent className="md:px-8">
+                <Skeleton className="h-12 w-full mb-6 md:mb-8" />
+                <div className="space-y-4">
+                  {[1, 2].map((i) => (
+                    <Skeleton key={i} className="h-40 w-full rounded-lg" />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       }
     >

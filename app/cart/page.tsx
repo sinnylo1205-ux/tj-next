@@ -31,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const CUSTOMIZER_ROUTE_MAP: Record<string, string> = {
   cupcake_cream: "/customize/cupcake_cream",
@@ -51,8 +52,66 @@ const CUSTOMIZER_ROUTE_MAP: Record<string, string> = {
 
 const CHECKOUT_SELECTED_KEY = "tj_checkout_selected";
 
+function CartSkeleton() {
+  return (
+    <>
+      <div className="hidden lg:grid grid-cols-[50px_140px_180px_100px_100px_100px_minmax(280px,2fr)_140px_80px] font-semibold text-base text-ink-muted pb-4 border-b border-border">
+        <div>勾選</div>
+        <div>商品縮圖</div>
+        <div>商品名稱</div>
+        <div>設計後單價</div>
+        <div>數量</div>
+        <div>小計</div>
+        <div>客製化細節</div>
+        <div>預定到/取貨時間</div>
+        <div className="text-center">操作</div>
+      </div>
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="flex flex-col lg:grid lg:grid-cols-[50px_140px_180px_100px_100px_100px_minmax(280px,2fr)_140px_80px] items-start lg:items-center py-6 border-b border-border gap-4 lg:gap-0"
+        >
+          <div className="flex items-start gap-4 w-full lg:contents">
+            <div className="flex justify-center pt-2 lg:pt-0">
+              <Skeleton className="h-6 w-6 rounded" />
+            </div>
+            <div className="flex-shrink-0">
+              <Skeleton className="w-20 h-20 md:w-24 md:h-24 rounded-lg" />
+            </div>
+            <div className="flex-1 lg:hidden space-y-2">
+              <Skeleton className="h-5 w-48" />
+              <Skeleton className="h-4 w-24" />
+            </div>
+          </div>
+          <div className="hidden lg:block">
+            <Skeleton className="h-6 w-32" />
+          </div>
+          <div className="hidden lg:block">
+            <Skeleton className="h-5 w-16" />
+          </div>
+          <div className="hidden lg:block">
+            <Skeleton className="h-5 w-8 mx-auto" />
+          </div>
+          <div className="hidden lg:block">
+            <Skeleton className="h-6 w-20" />
+          </div>
+          <div className="hidden lg:block">
+            <Skeleton className="h-5 w-24" />
+          </div>
+          <div className="hidden lg:block">
+            <Skeleton className="h-5 w-28" />
+          </div>
+          <div className="hidden lg:block">
+            <Skeleton className="h-8 w-16" />
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export default function CartPage() {
-  const { items, removeFromCart, updateCartItem } = useCart();
+  const { items, hydrated, removeFromCart, updateCartItem } = useCart();
   const { user } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
@@ -280,8 +339,10 @@ export default function CartPage() {
 
         <div className="mt-6 md:mt-10">
           <Card className="w-full p-4 md:p-10 bg-white shadow-lg rounded-2xl md:rounded-3xl border border-border">
-            {items.length === 0 ? (
-              <div className="text-center py-16">
+            {!hydrated ? (
+              <CartSkeleton />
+            ) : items.length === 0 ? (
+              <div className="text-center py-16 min-h-[280px] flex items-center justify-center">
                 <p className="text-ink-muted text-xl">購物車是空的</p>
               </div>
             ) : (
@@ -321,6 +382,8 @@ export default function CartPage() {
                             <img
                               src={item.preview_url || item.image_url || "https://placehold.co/100x100?text=商品"}
                               alt={item.name}
+                              width={96}
+                              height={96}
                               className="object-cover w-full h-full"
                             />
                           </div>

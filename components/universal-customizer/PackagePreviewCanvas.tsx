@@ -58,6 +58,8 @@ export function PackagePreviewCanvas({
               <img
                 src={boxConfig1.color.item_image_url}
                 alt={`${boxConfig1.capacity.option_name_zh} - ${boxConfig1.color.option_name_zh}`}
+                width={400}
+                height={400}
                 className="absolute inset-0 w-full h-full object-contain p-8"
               />
             )}
@@ -65,6 +67,8 @@ export function PackagePreviewCanvas({
               <img
                 src={boxConfig2.color.item_image_url}
                 alt={`${boxConfig2.capacity.option_name_zh} - ${boxConfig2.color.option_name_zh}`}
+                width={133}
+                height={133}
                 className="absolute bottom-4 right-4 w-1/3 h-1/3 object-contain"
               />
             )}
@@ -104,6 +108,8 @@ export function PackagePreviewCanvas({
               key={decor.option_id}
               src={decor.item_image_url}
               alt={decor.option_name_zh}
+              width={metadata?.ui_width || 100}
+              height={metadata?.ui_height || 100}
               className="absolute"
               style={{
                 left: metadata?.ui_x ? `calc(50% + ${metadata.ui_x}px)` : "50%",
@@ -145,6 +151,8 @@ export function PackagePreviewCanvas({
               <img
                 src={uploadedPhotoUrl}
                 alt="上傳的照片"
+                width={200}
+                height={200}
                 className="w-full h-full object-cover"
                 style={{
                   ...frameStyles[frameType],

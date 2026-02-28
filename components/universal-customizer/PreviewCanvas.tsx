@@ -113,6 +113,8 @@ export function PreviewCanvas({
           key={`${type}-${rootId}-${index}`}
           src={imageUrl}
           alt={name}
+          width={400}
+          height={400}
           crossOrigin="anonymous"
           className="absolute inset-0 w-full h-full object-contain scale-[0.8] translate-y-[5%]"
           style={{ zIndex }}
@@ -135,6 +137,8 @@ export function PreviewCanvas({
           key={`${type}-${rootId}-${index}`}
           src={imageUrl}
           alt={name}
+          width={400}
+          height={400}
           crossOrigin="anonymous"
           className="absolute inset-0 w-full h-full object-contain scale-[0.8] translate-y-[5%]"
           style={{ zIndex }}
@@ -161,6 +165,8 @@ export function PreviewCanvas({
           key={`size-${rootId}-${index}`}
           src={imageUrl}
           alt={name}
+          width={400}
+          height={400}
           crossOrigin="anonymous"
           className="absolute inset-0 w-full h-full object-contain"
           style={{ zIndex }}
@@ -182,6 +188,8 @@ export function PreviewCanvas({
           key={`shape-${rootId}-${index}`}
           src={imageUrl}
           alt={name}
+          width={400}
+          height={400}
           crossOrigin="anonymous"
           className="absolute inset-0 w-full h-full object-contain"
           style={{ zIndex }}
@@ -202,6 +210,8 @@ export function PreviewCanvas({
           key={`text-${index}`}
           src={textImageUrl}
           alt="文字裝飾"
+          width={400}
+          height={400}
           crossOrigin="anonymous"
           className="
             absolute inset-0
@@ -235,6 +245,8 @@ export function PreviewCanvas({
                 key={id}
                 src={option.item_image_url}
                 alt={option.option_name_zh}
+                width={meta?.ui_width || 100}
+                height={meta?.ui_height || 100}
                 crossOrigin="anonymous"
                 className="absolute"
                 style={{
@@ -325,6 +337,8 @@ export function PreviewCanvas({
                     <img
                       src={uploadedPhotoUrl}
                       alt={`上傳的照片 ${frameIndex + 1}`}
+                      width={frame.ui_width || 100}
+                      height={frame.ui_height || 100}
                       crossOrigin="anonymous"
                       className="w-full h-full object-cover"
                       style={{
@@ -434,6 +448,8 @@ export function PreviewCanvas({
               <img
                 src={uploadedPhotoUrl}
                 alt="上傳的照片"
+                width={meta?.ui_width || 100}
+                height={meta?.ui_height || 100}
                 crossOrigin="anonymous"
                 className="w-full h-full object-cover"
                 style={{
@@ -652,6 +668,8 @@ export function PreviewCanvas({
                     key={opt.option_id}
                     src={opt.item_image_url}
                     alt={opt.option_name_zh}
+                    width={100}
+                    height={100}
                     crossOrigin="anonymous"
                     className="absolute object-contain"
                     style={{
@@ -672,6 +690,8 @@ export function PreviewCanvas({
                   key={opt.option_id}
                   src={opt.item_image_url}
                   alt={opt.option_name_zh}
+                  width={140}
+                  height={140}
                   crossOrigin="anonymous"
                   className="absolute inset-0 w-full h-full object-contain p-1"
                   style={{ zIndex: 101 + idx }}
