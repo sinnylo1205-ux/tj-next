@@ -30,6 +30,7 @@ const LCP_MOBILE =
 const GA4_ID = "G-N9Q3MSMYG5";
 
 export const metadata: Metadata = {
+  icons: { icon: "/favicon.ico" },
   title: "T&J 客製化甜點 - 客製化手作甜點",
   description:
     "專業客製化甜點服務，提供棉花糖、馬卡龍、杯子蛋糕、幸運籤餅乾等 11 種甜點客製化，適合派對、婚禮、活動送禮。台北新店工作室，預約製作。",
@@ -139,11 +140,12 @@ export default function RootLayout({
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(bakeryJsonLd) }} />
+        {/* GA4 全站僅在此處載入，勿重複埋碼 */}
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`}
           strategy="afterInteractive"
         />
-        <Script id="ga4-config" strategy="afterInteractive">
+        <Script id="ga-config" strategy="afterInteractive">
           {`
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
