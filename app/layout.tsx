@@ -9,6 +9,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { SITE_CONFIG, getFullUrl } from "@/lib/site";
 import { productNoticeUrl } from "@/lib/product-notice-url";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const notoSerifTC = Noto_Serif_TC({
   variable: "--font-noto-serif-tc",
@@ -156,6 +157,7 @@ export default function RootLayout({
               <NavBar />
               {children}
               <Footer />
+              <SpeedInsights />
             </CartProvider>
           </AuthProvider>
         </Providers>
