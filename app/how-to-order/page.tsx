@@ -1,4 +1,19 @@
+import type { Metadata } from "next";
+import { getFullUrl } from "@/lib/site";
 import { Card } from "@/components/ui/card";
+
+export const metadata: Metadata = {
+  title: "訂購須知與流程｜T&J 客製化甜點",
+  description:
+    "只需五個簡單步驟完成客製化甜點訂購：選擇商品、客製設計、提交需求、確認報價、完成訂單。建議於活動前 7-10 個工作天下單。",
+  alternates: { canonical: getFullUrl("/how-to-order") },
+  openGraph: {
+    title: "訂購須知與流程｜T&J 客製化甜點",
+    description: "五步驟輕鬆完成客製化甜點訂購，24 小時內回覆報價。",
+    url: getFullUrl("/how-to-order"),
+    type: "website",
+  },
+};
 
 const steps = [
   { number: "1", title: "選擇商品", description: "從五大類甜點中選擇您喜愛的品項", icon: "🎯" },
