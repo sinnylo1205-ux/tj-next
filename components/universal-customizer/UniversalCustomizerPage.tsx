@@ -49,8 +49,15 @@ interface ProductData {
   product_image_url?: string;
 }
 
-/** CLS 改善：與實際版面同結構、同高度的 skeleton，避免載入時版面跳動 */
-function CustomizerSkeleton() {
+const DEFAULT_LOADING_IMAGE =
+  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/loading/default.webp";
+
+/** CLS 改善：與實際版面同結構、同高度的 skeleton，預覽區顯示產品 loading 圖（從 notice 進入時有視覺延續） */
+function CustomizerSkeleton({ productType }: { productType?: string }) {
+  const loadingImageUrl = productType
+    ? `https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/loading/${productType}.webp`
+    : DEFAULT_LOADING_IMAGE;
+
   return (
     <div className="min-h-screen bg-background pb-16">
       {/* 標題 skeleton */}
@@ -58,14 +65,27 @@ function CustomizerSkeleton() {
         <Skeleton className="h-10 w-64 mx-auto rounded-lg" />
       </div>
 
-      {/* 手機版 skeleton */}
+      {/* 手機版：預覽區顯示產品 loading 圖 */}
       <div className="lg:hidden">
         <div className="sticky top-10 z-40 bg-white shadow-md border border-border">
           <div className="relative h-[32vh] p-2 pt-25">
             <div className="h-full w-full flex items-center justify-center overflow-hidden">
-              <Skeleton className="aspect-square w-[300px] mx-auto rounded-lg" />
+              <img
+                src={loadingImageUrl}
+                alt="客製化須知"
+                width={300}
+                height={300}
+                className="w-full max-w-[300px] max-h-[300px] object-contain rounded-xl"
+                onError={(e) => {
+                  e.currentTarget.src = DEFAULT_LOADING_IMAGE;
+                }}
+              />
             </div>
           </div>
+        </div>
+        <div className="flex items-center justify-center gap-2 mt-4 text-ink-muted">
+          <Loader2 className="animate-spin h-5 w-5" />
+          <span>客製化模組載入中…</span>
         </div>
         <div className="px-4 pb-24 space-y-6 mt-6">
           {[1, 2, 3].map((i) => (
@@ -83,14 +103,27 @@ function CustomizerSkeleton() {
         </div>
       </div>
 
-      {/* 桌面版 skeleton */}
+      {/* 桌面版：預覽區顯示產品 loading 圖 */}
       <div className="hidden lg:block mx-auto px-8 max-w-[1500px]">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           <div className="sticky top-24 self-start">
             <div className="bg-white rounded-3xl shadow-xl p-8 space-y-8 border border-border">
               <div className="p-6">
                 <Skeleton className="h-6 w-32 mb-6" />
-                <Skeleton className="aspect-square max-w-[400px] mx-auto rounded-lg" />
+                <img
+                  src={loadingImageUrl}
+                  alt="客製化須知"
+                  width={400}
+                  height={400}
+                  className="aspect-square max-w-[400px] mx-auto rounded-lg object-contain block"
+                  onError={(e) => {
+                    e.currentTarget.src = DEFAULT_LOADING_IMAGE;
+                  }}
+                />
+              </div>
+              <div className="flex items-center justify-center gap-2 text-ink-muted">
+                <Loader2 className="animate-spin h-5 w-5" />
+                <span>客製化模組載入中…</span>
               </div>
               <div className="space-y-4">
                 <Skeleton className="h-10 w-full rounded-lg" />
@@ -180,7 +213,7 @@ export function UniversalCustomizerPageWithProps({ productType, navigate }: Univ
   }
 
   if (isLoading || !minLoadingDone) {
-    return <CustomizerSkeleton />;
+    return <CustomizerSkeleton productType={productType} />;
   }
 
   const config = getProductConfig(productType);

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback } from "react";
+import { Suspense, useState, useEffect, useCallback, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -90,6 +90,7 @@ function MemberPageContent() {
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
   const [productNames, setProductNames] = useState<Record<string, string>>({});
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
+  const hasScheduledExpiredRefetch = useRef(false);
 
   const formatCountdown = (ms: number) => {
     if (!ms || ms <= 0) return "已逾時";
@@ -146,30 +147,20 @@ function MemberPageContent() {
     return () => clearInterval(interval);
   }, [orders]);
 
+  // 24 小時逾時訂單改由 Vercel Cron + auto-cancel-expired-orders Edge Function 主動觸發
+  // 當 countdown 歸零時，約 70 秒後自動 refetch，讓訂單從列表消失（cron 已執行）
   useEffect(() => {
-    const checkExpiredOrders = async () => {
-      if (!user) return;
-      const now = Date.now();
-      const expiredOrders = orders.filter((order) => {
-        if (order.payment_step !== "pending") return false;
-        const createdAt = new Date(order.created_at).getTime();
-        return now > createdAt + 24 * 60 * 60 * 1000;
-      });
-      if (expiredOrders.length === 0) return;
-      for (const order of expiredOrders) {
-        try {
-          await supabase.functions.invoke("update-order-status", {
-            body: { order_id: order.id, new_status: "canceled", action_type: "auto_cancel_expired" },
-          });
-        } catch (err) {
-          console.error("[Member] Failed to auto-cancel order:", order.id, err);
-        }
-      }
+    if (orders.length === 0) return;
+    const hasExpired = Object.values(countdowns).some((c) => c <= 0);
+    if (!hasExpired || hasScheduledExpiredRefetch.current) return;
+    hasScheduledExpiredRefetch.current = true;
+    const timer = setTimeout(() => {
       loadOrders();
-      toast({ title: "訂單已自動取消", description: `${expiredOrders.length} 筆訂單因超過 24 小時未付款已自動取消`, variant: "destructive" });
-    };
-    if (orders.length > 0) checkExpiredOrders();
-  }, [orders.length]);
+      hasScheduledExpiredRefetch.current = false;
+    }, 70000);
+    return () => clearTimeout(timer);
+  }, [orders.length, countdowns, loadOrders]);
+
 
   useEffect(() => {
     const tabParam = searchParams.get("tab");
