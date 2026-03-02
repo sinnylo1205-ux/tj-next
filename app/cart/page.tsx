@@ -331,7 +331,7 @@ export default function CartPage() {
     <>
       <div className="w-full max-w-7xl lg:max-w-[1400px] xl:max-w-[1600px] mx-auto py-10 md:py-20 px-4 md:px-6">
         <h1 className="text-3xl md:text-5xl font-semibold text-brand-600 flex items-baseline gap-3 flex-wrap">
-          我的購物車
+          來看我的購物車
           <span className="font-semibold text-sm md:text-base text-ink-muted">
             🔔 取貨<span className="text-red-500 font-semibold">時間相同</span>之品項可以合併建立訂單
           </span>
