@@ -38,7 +38,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Skeleton } from "@/components/ui/skeleton";
 
 interface ProductData {
   id: string;
@@ -52,98 +51,33 @@ interface ProductData {
 const DEFAULT_LOADING_IMAGE =
   "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/loading/default.webp";
 
-/** CLS 改善：與實際版面同結構、同高度的 skeleton，預覽區顯示產品 loading 圖（從 notice 進入時有視覺延續） */
+/** CLS 改善：loading 頁面佔滿 main body，預覽區顯示產品 loading 圖（從 notice 進入時有視覺延續） */
 function CustomizerSkeleton({ productType }: { productType?: string }) {
   const loadingImageUrl = productType
     ? `https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/loading/${productType}.webp`
     : DEFAULT_LOADING_IMAGE;
 
   return (
-    <div className="min-h-screen bg-background pb-16">
-      {/* 標題 skeleton */}
-      <div className="py-8 px-4 text-center">
-        <Skeleton className="h-10 w-64 mx-auto rounded-lg" />
-      </div>
-
-      {/* 手機版：預覽區顯示產品 loading 圖 */}
-      <div className="lg:hidden">
-        <div className="sticky top-10 z-40 bg-white shadow-md border border-border">
-          <div className="relative h-[32vh] p-2 pt-25">
-            <div className="h-full w-full flex items-center justify-center overflow-hidden">
-              <img
-                src={loadingImageUrl}
-                alt="客製化須知"
-                width={300}
-                height={300}
-                className="w-full max-w-[300px] max-h-[300px] object-contain rounded-xl"
-                onError={(e) => {
-                  e.currentTarget.src = DEFAULT_LOADING_IMAGE;
-                }}
-              />
-            </div>
-          </div>
+    <div className="min-h-[calc(100vh-120px)] flex flex-col bg-background">
+      {/* 主內容區：佔滿 main body，置中顯示產品圖 + loading */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-12 min-h-[60vh]">
+        <div className="w-full max-w-[500px] aspect-square flex items-center justify-center mb-8">
+          <img
+            src={loadingImageUrl}
+            alt="客製化須知"
+            width={400}
+            height={400}
+            className="w-full max-w-[400px] h-auto max-h-[50vh] object-contain rounded-xl"
+            onError={(e) => {
+              e.currentTarget.src = DEFAULT_LOADING_IMAGE;
+            }}
+          />
         </div>
-        <div className="flex items-center justify-center gap-2 mt-4 text-ink-muted">
-          <Loader2 className="animate-spin h-5 w-5" />
+        <div className="flex items-center justify-center gap-3 text-ink-muted text-lg">
+          <Loader2 className="animate-spin h-6 w-6" />
           <span>客製化模組載入中…</span>
         </div>
-        <div className="px-4 pb-24 space-y-6 mt-6">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-card rounded-3xl p-6 shadow-lg border border-border">
-              <Skeleton className="h-8 w-8 rounded-full mb-4" />
-              <Skeleton className="h-6 w-3/4 mb-4" />
-              <Skeleton className="h-12 w-full rounded-lg mb-2" />
-              <Skeleton className="h-12 w-full rounded-lg mb-2" />
-              <Skeleton className="h-12 w-2/3 rounded-lg" />
-            </div>
-          ))}
-        </div>
-        <div className="fixed bottom-0 left-0 right-0 bg-white p-4 border-t shadow-lg z-50 lg:hidden">
-          <Skeleton className="w-full h-14 rounded-2xl" />
-        </div>
-      </div>
-
-      {/* 桌面版：預覽區顯示產品 loading 圖 */}
-      <div className="hidden lg:block mx-auto px-8 max-w-[1500px]">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <div className="sticky top-24 self-start">
-            <div className="bg-white rounded-3xl shadow-xl p-8 space-y-8 border border-border">
-              <div className="p-6">
-                <Skeleton className="h-6 w-32 mb-6" />
-                <img
-                  src={loadingImageUrl}
-                  alt="客製化須知"
-                  width={400}
-                  height={400}
-                  className="aspect-square max-w-[400px] mx-auto rounded-lg object-contain block"
-                  onError={(e) => {
-                    e.currentTarget.src = DEFAULT_LOADING_IMAGE;
-                  }}
-                />
-              </div>
-              <div className="flex items-center justify-center gap-2 text-ink-muted">
-                <Loader2 className="animate-spin h-5 w-5" />
-                <span>客製化模組載入中…</span>
-              </div>
-              <div className="space-y-4">
-                <Skeleton className="h-10 w-full rounded-lg" />
-                <Skeleton className="h-10 w-full rounded-lg" />
-                <Skeleton className="h-12 w-full rounded-lg" />
-              </div>
-            </div>
-          </div>
-          <div className="space-y-6">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="bg-card rounded-3xl p-6 shadow-lg border border-border">
-                <Skeleton className="h-8 w-8 rounded-full mb-4" />
-                <Skeleton className="h-6 w-48 mb-4" />
-                <Skeleton className="h-12 w-full rounded-lg mb-2" />
-                <Skeleton className="h-12 w-full rounded-lg mb-2" />
-                <Skeleton className="h-12 w-3/4 rounded-lg" />
-              </div>
-            ))}
-          </div>
-        </div>
+        <p className="mt-2 text-sm text-ink-muted/80">請稍候，正在載入編輯器</p>
       </div>
     </div>
   );
