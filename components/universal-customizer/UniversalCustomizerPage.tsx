@@ -59,8 +59,12 @@ function CustomizerSkeleton({ productType }: { productType?: string }) {
 
   return (
     <div className="min-h-[calc(100vh-120px)] flex flex-col bg-background">
-      {/* 主內容區：佔滿 main body，置中顯示產品圖 + loading */}
+      {/* 主內容區：文字在 loading 圖上方 */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-12 min-h-[60vh]">
+        <div className="flex items-center justify-center gap-3 text-ink-muted text-lg mb-6">
+          <Loader2 className="animate-spin h-6 w-6" />
+          <span>客製化模組載入中…</span>
+        </div>
         <div className="w-full max-w-[800px] aspect-square flex items-center justify-center mb-8">
           <img
             src={loadingImageUrl}
@@ -72,10 +76,6 @@ function CustomizerSkeleton({ productType }: { productType?: string }) {
               e.currentTarget.src = DEFAULT_LOADING_IMAGE;
             }}
           />
-        </div>
-        <div className="flex items-center justify-center gap-3 text-ink-muted text-lg">
-          <Loader2 className="animate-spin h-6 w-6" />
-          <span>客製化模組載入中…</span>
         </div>
         <p className="mt-2 text-sm text-ink-muted/80">請稍候，正在載入編輯器</p>
       </div>
@@ -1861,12 +1861,12 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
       <div className="lg:hidden">
         {/* Sticky 預覽區（只負責畫面呈現，不給 html-to-image 截圖） */}
         <div className="sticky top-10 z-40 bg-white shadow-md border border-border">
-          <div className="relative h-[32vh] p-2 pt-25">
-            {/* 手機版預覽不使用 transform scale，避免截圖偏移與 Safari 灰畫面 */}
-            <div className="h-full w-full flex items-center justify-center overflow-hidden">
+          <div className="relative min-h-[42vh] py-1 px-2 flex flex-col items-center">
+            {/* 手機版預覽不使用 transform scale，避免截圖偏移與 Safari 灰畫面；canva 靠上顯示避免被裁切 */}
+            <div className="w-full flex justify-center -mt-1 flex-shrink-0">
               <div
                 ref={previewRefMobile}
-                className="relative aspect-square w-[300px] mx-auto overflow-hidden flex items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 rounded-lg"
+                className="relative aspect-square w-[300px] mx-auto overflow-hidden flex items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 rounded-lg shrink-0"
               >
                 <PreviewCanvas
                   config={config}
