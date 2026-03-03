@@ -61,13 +61,13 @@ function CustomizerSkeleton({ productType }: { productType?: string }) {
     <div className="min-h-[calc(100vh-120px)] flex flex-col bg-background">
       {/* 主內容區：佔滿 main body，置中顯示產品圖 + loading */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-12 min-h-[60vh]">
-        <div className="w-full max-w-[500px] aspect-square flex items-center justify-center mb-8">
+        <div className="w-full max-w-[800px] aspect-square flex items-center justify-center mb-8">
           <img
             src={loadingImageUrl}
             alt="客製化須知"
-            width={400}
-            height={400}
-            className="w-full max-w-[400px] h-auto max-h-[50vh] object-contain rounded-xl"
+            width={700}
+            height={700}
+            className="w-full max-w-[800px] h-auto max-h-[70vh] object-contain rounded-xl"
             onError={(e) => {
               e.currentTarget.src = DEFAULT_LOADING_IMAGE;
             }}
