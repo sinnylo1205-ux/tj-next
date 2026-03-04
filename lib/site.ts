@@ -9,7 +9,7 @@ const BASE_URL =
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://tjcookies.com.tw");
 
 /** 是否對所有會員開放信用卡付款（否則僅管理員） */
-export const CREDIT_CARD_ENABLED_FOR_ALL = true;
+export const CREDIT_CARD_ENABLED_FOR_ALL = false;
 
 export const SITE_CONFIG = {
   SITE_NAME: "T&J 客製化甜點",
