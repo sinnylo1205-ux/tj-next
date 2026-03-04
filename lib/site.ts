@@ -1,12 +1,12 @@
 /**
  * Site config and helpers for canonical URLs, used by pages and metadata.
  * 正式站請在 Vercel/環境變數設定 NEXT_PUBLIC_SITE_URL=https://tjcookies.com.tw
+ * 伺服器端不採用 VERCEL_URL，避免 sitemap/metadata 使用預覽網址；未設定時預設為正式網域。
  */
 const BASE_URL =
   typeof window !== "undefined"
     ? window.location.origin
-    : process.env.NEXT_PUBLIC_SITE_URL ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "https://tjcookies.com.tw");
+    : process.env.NEXT_PUBLIC_SITE_URL || "https://tjcookies.com.tw";
 
 /** 是否對所有會員開放信用卡付款（否則僅管理員） */
 export const CREDIT_CARD_ENABLED_FOR_ALL = false;

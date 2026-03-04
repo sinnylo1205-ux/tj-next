@@ -66,12 +66,12 @@ const faqData = [
         可以的！請至官網的「單品甜點設計」頁面加購，裡面都有詳細的裝飾選項與價格說明：
         <br />
         <a
-          href="https://www.tjcookies.com.tw/"
+          href={getFullUrl("/")}
           target="_blank"
           rel="noopener noreferrer"
           className="text-brand-600 hover:underline inline-flex items-center gap-1 mt-1"
         >
-          👉 https://www.tjcookies.com.tw/ <ExternalLink size={14} />
+          👉 {getFullUrl("/")} <ExternalLink size={14} />
         </a>
       </>
     ),
