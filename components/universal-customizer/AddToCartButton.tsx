@@ -46,11 +46,11 @@ const normalizeGroup = (key: string) => {
   return g;
 };
 
-// 最小 Loading 顯示時間（毫秒）
-const MIN_LOADING_DURATION = 2000;
+// 最小 Loading 顯示時間（毫秒）— 僅作短暫回饋，不再強制 2 秒
+const MIN_LOADING_DURATION = 600;
 
 // ✅ 等待容器內所有 img 載入完成（最多 timeout ms）
-const waitForImages = async (container: HTMLElement, timeout = 3000): Promise<void> => {
+const waitForImages = async (container: HTMLElement, timeout = 1500): Promise<void> => {
   const images = container.querySelectorAll("img");
   const pending = Array.from(images).filter((img) => !img.complete);
   if (pending.length === 0) return;
@@ -129,12 +129,13 @@ export function useAddToCart() {
           await waitForImages(captureRef);
 
           try {
-            // ✅ iOS 偵測：WebKit 記憶體限制，降低 pixelRatio
+            // ✅ 行動裝置用 pixelRatio 1 加速截圖；桌機用 2 維持預覽品質
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+            const isMobile = isIOS || (typeof window !== "undefined" && window.innerWidth < 768);
 
             const captureOptions = {
               quality: 0.9,
-              pixelRatio: isIOS ? 1 : 2,
+              pixelRatio: isMobile ? 1 : 2,
               skipFonts: true,
               cacheBust: true,
             };
@@ -144,8 +145,8 @@ export function useAddToCart() {
 
             // ✅ iOS 首次渲染常失敗，自動重試一次
             if (!blob && isIOS) {
-              console.warn("iOS 首次截圖失敗，500ms 後重試...");
-              await new Promise((r) => setTimeout(r, 500));
+              console.warn("iOS 首次截圖失敗，300ms 後重試...");
+              await new Promise((r) => setTimeout(r, 300));
               blob = await toBlob(captureRef, captureOptions);
             }
 
@@ -591,7 +592,7 @@ export function useAddToCart() {
         customizations: readableSummary,
       });
 
-      // 確保至少顯示 2 秒 Loading
+      // 僅確保最短 Loading 回饋（約 0.6 秒），不再強制 2 秒
 
       const elapsed = Date.now() - startTime;
       if (elapsed < MIN_LOADING_DURATION) {
