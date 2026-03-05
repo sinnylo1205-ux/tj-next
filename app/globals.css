@@ -130,6 +130,21 @@ h3 {
   }
 }
 
+/* 後台：使用 Noto Sans TC 字體 */
+.admin-font {
+  font-family: var(--font-sans) !important;
+  font-weight: 400;
+}
+
+/* 後台：將 muted 系列改為品牌粉色，避免灰色調（使用 brand-300 較淺） */
+.admin-theme {
+  /* Tailwind 的 bg-muted / text-muted-foreground */
+  --muted: var(--color-brand-50);
+  --muted-foreground: var(--color-brand-300);
+  /* 供 ink.muted 等使用的色票 */
+  --color-muted: var(--color-brand-300);
+}
+
 /* 彈窗／Toaster 使用 Noto Sans TC */
 [role="dialog"],
 [role="alertdialog"],
