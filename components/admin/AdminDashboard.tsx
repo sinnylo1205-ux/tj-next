@@ -212,7 +212,12 @@ const AdminDashboard = () => {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
-                  <Tooltip formatter={(value: number) => [`NT$ ${value.toLocaleString()}`, "營收"]} />
+                  <Tooltip
+                    formatter={(value) => {
+                      const num = Number(value ?? 0);
+                      return [`NT$ ${num.toLocaleString()}`, "營收"];
+                    }}
+                  />
                   <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -232,7 +237,12 @@ const AdminDashboard = () => {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
-                  <Tooltip formatter={(value: number) => [`${value} 筆`, "訂單數"]} />
+                  <Tooltip
+                    formatter={(value) => {
+                      const num = Number(value ?? 0);
+                      return [`${num} 筆`, "訂單數"];
+                    }}
+                  />
                   <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -254,7 +264,12 @@ const AdminDashboard = () => {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="product_name" />
                   <YAxis label={{ value: "出現次數", angle: -90, position: "insideLeft" }} />
-                  <Tooltip formatter={(value: number) => [`${value} 次`, "出現次數"]} />
+                  <Tooltip
+                    formatter={(value) => {
+                      const num = Number(value ?? 0);
+                      return [`${num} 次`, "出現次數"];
+                    }}
+                  />
                   <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={40} />
                 </BarChart>
               </ResponsiveContainer>

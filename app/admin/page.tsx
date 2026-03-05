@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
   LayoutDashboard,
@@ -56,17 +56,18 @@ export default function AdminPage() {
   const [activeModule, setActiveModule] = useState<AdminModule>("dashboard");
 
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
   // 依據 URL 的 module 參數初始化 / 同步目前的 active module
   useEffect(() => {
-    const moduleFromQuery = searchParams.get("module");
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const moduleFromQuery = params.get("module");
     if (isAdminModule(moduleFromQuery)) {
       setActiveModule(moduleFromQuery);
     }
-  }, [searchParams]);
+  }, []);
 
   // 檢查登入與 user_roles 是否為 admin
   useEffect(() => {

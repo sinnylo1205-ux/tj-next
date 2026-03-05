@@ -528,7 +528,7 @@ const AdminQuotationsPanel = () => {
         itemWhyPrices[item.id] = item.customizations_json?.why_price || "";
       });
 
-      const quotation = quotations.find(q => q.id === quotationOrderId);
+      const quotation = quotations.find((q) => q.id === quotationOrderId);
       setEditData((prev) => ({
         ...prev,
         [quotationOrderId]: {
@@ -537,7 +537,6 @@ const AdminQuotationsPanel = () => {
           itemWhyPrices,
           shippingFee: quotation?.shipping_fee ?? null,
           lineUserId: quotation?.line_user_id || "",
-          ...prev[quotationOrderId],
         },
       }));
     }
