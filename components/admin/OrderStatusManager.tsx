@@ -411,13 +411,13 @@ const OrderStatusManager = () => {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-6">
-            <TabsTrigger value="pending">待付款</TabsTrigger>
-            <TabsTrigger value="processing">處理中</TabsTrigger>
-            <TabsTrigger value="shipping">出貨中</TabsTrigger>
-            <TabsTrigger value="history">歷史訂單</TabsTrigger>
-            <TabsTrigger value="returned">退貨紀錄</TabsTrigger>
-            <TabsTrigger value="all">所有訂單</TabsTrigger>
+          <TabsList className="flex w-full overflow-x-auto overflow-y-hidden flex-nowrap gap-2 px-2 py-1.5 justify-start md:grid md:grid-cols-6 md:overflow-visible md:flex-wrap md:px-1 md:py-1 md:justify-center">
+            <TabsTrigger value="pending" className="flex-shrink-0 min-w-[4.25rem] px-4 py-2 tracking-wide text-center md:min-w-0">待付款</TabsTrigger>
+            <TabsTrigger value="processing" className="flex-shrink-0 min-w-[4.25rem] px-4 py-2 tracking-wide text-center md:min-w-0">處理中</TabsTrigger>
+            <TabsTrigger value="shipping" className="flex-shrink-0 min-w-[4.25rem] px-4 py-2 tracking-wide text-center md:min-w-0">出貨中</TabsTrigger>
+            <TabsTrigger value="history" className="flex-shrink-0 min-w-[5rem] px-4 py-2 tracking-wide text-center md:min-w-0">歷史訂單</TabsTrigger>
+            <TabsTrigger value="returned" className="flex-shrink-0 min-w-[5rem] px-4 py-2 tracking-wide text-center md:min-w-0">退貨紀錄</TabsTrigger>
+            <TabsTrigger value="all" className="flex-shrink-0 min-w-[5rem] px-4 py-2 tracking-wide text-center md:min-w-0">所有訂單</TabsTrigger>
           </TabsList>
 
           <TabsContent value={activeTab} className="mt-6">
