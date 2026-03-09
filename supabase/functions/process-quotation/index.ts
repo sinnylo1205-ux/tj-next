@@ -365,6 +365,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
       notes: quotation.notes || null,
       line_user_id: lineUserId,
       is_manual_order: true,
+      is_from_quotation: true,
       payment_method: payment_method,
       payment_step: payment_step || "verified",
       order_status: "processing",

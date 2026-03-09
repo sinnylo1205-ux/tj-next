@@ -44,6 +44,7 @@ interface Order {
   shipped_at: string | null;
   delivered_at: string | null;
   is_manual_order?: boolean;
+  is_from_quotation?: boolean;
   admin_note?: string | null;
   Email?: string | null;
   TAX_id?: number | null;
@@ -320,13 +321,13 @@ const OrderStatusManager = () => {
         break;
     }
 
-    // 2. 文字搜尋：用戶名、用戶信箱、收件人、訂單號前五碼
+    // 2. 文字搜尋：用戶名、用戶信箱、收件人、訂單號前五碼（報價單訂單以 who_receive 當作用戶名）
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase().trim();
       filtered = filtered.filter((order) => {
         const userInfo = users[order.user_id];
-        const userName = userInfo?.name?.toLowerCase() || "";
-        const userEmail = userInfo?.email?.toLowerCase() || "";
+        const userName = order.is_from_quotation ? "" : (userInfo?.name?.toLowerCase() || "");
+        const userEmail = order.is_from_quotation ? "" : (userInfo?.email?.toLowerCase() || "");
         const recipientName = (order.who_receive || "").toLowerCase();
         const orderIdPrefix = order.id.slice(0, 5).toLowerCase();
 
@@ -452,9 +453,19 @@ const OrderStatusManager = () => {
                           <TableCell className="font-medium">#{order.id.slice(0, 6).toUpperCase()}</TableCell>
                           <TableCell>{order.expected_pickup_date || "未指定"}</TableCell>
                           <TableCell>
-                            {userInfo?.name || "載入中..."}
-                            <br />
-                            <span className="text-xs text-muted-foreground">{userInfo?.email}</span>
+                            {order.is_from_quotation ? (
+                              <>
+                                {(order.who_receive || "未填寫") + "（報價單）"}
+                                <br />
+                                <span className="text-xs text-muted-foreground">非網站會員</span>
+                              </>
+                            ) : (
+                              <>
+                                {userInfo?.name || "載入中..."}
+                                <br />
+                                <span className="text-xs text-muted-foreground">{userInfo?.email}</span>
+                              </>
+                            )}
                           </TableCell>
                           <TableCell>NT$ {order.total_amount}</TableCell>
                           <TableCell>{order.shipping_way}</TableCell>
