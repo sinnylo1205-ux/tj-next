@@ -15,7 +15,7 @@ const N8N_QUOTATION_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/quota
 const N8N_LINE_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/line";
 const N8N_CALENDAR_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/order-processing-to-calendar";
 
-const _DISABLED_PROCESS_QUOTATION = true;
+const _DISABLED_PROCESS_QUOTATION = false;
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -176,7 +176,7 @@ async function handleSendQuote(supabase: any, body: any) {
 
   const totalAmount = subtotal + (shipping_fee || 0);
 
-  // 3. Update quotation order
+  // 3. Update quotation order（保留 user_id，不覆蓋）
   const { error: orderUpdateError } = await supabase
     .from("quotation_orders")
     .update({
@@ -185,6 +185,7 @@ async function handleSendQuote(supabase: any, body: any) {
       total_amount: totalAmount,
       status: "price_reply",
       line_user_id: line_user_id || quotation.line_user_id || null,
+      user_id: quotation.user_id || null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", quotation_order_id);
@@ -302,7 +303,7 @@ async function handleSendQuote(supabase: any, body: any) {
 
 // ========== Action: Convert to Order ==========
 async function handleConvertToOrder(supabase: any, body: any) {
-  const { quotation_order_id, payment_method, payment_step, transfer_last5 } = body;
+  const { quotation_order_id, payment_method, payment_step, transfer_last5, user_id: bodyUserId, line_user_id: bodyLineUserId } = body;
 
   if (!quotation_order_id || !payment_method) {
     return new Response(JSON.stringify({ error: "缺少必要參數" }), {
@@ -345,8 +346,9 @@ async function handleConvertToOrder(supabase: any, body: any) {
   const delivery = allReq.delivery || {};
   const customerProfile = allReq.customer_profile || {};
 
-  // 3. Create order
-  const userId = quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1"; // fallback to admin user
+  // 3. Create order（優先使用 body 傳入的 user_id、line_user_id，否則用報價單上的）
+  const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1"; // fallback to admin user
+  const lineUserId = bodyLineUserId || quotation.line_user_id || null;
   const { data: orderData, error: orderError } = await supabase
     .from("orders")
     .insert({
@@ -361,7 +363,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
       shipping_fee: quotation.shipping_fee || 0,
       total_amount: quotation.total_amount || 0,
       notes: quotation.notes || null,
-      line_user_id: quotation.line_user_id || null,
+      line_user_id: lineUserId,
       is_manual_order: true,
       payment_method: payment_method,
       payment_step: payment_step || "verified",
@@ -398,7 +400,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
     }
   }
 
-  // 5. Update quotation status
+  // 5. Update quotation status（保留 user_id、line_user_id）
   const { error: statusError } = await supabase
     .from("quotation_orders")
     .update({
@@ -406,6 +408,8 @@ async function handleConvertToOrder(supabase: any, body: any) {
       payment_method,
       payment_step: payment_step || "verified",
       transfer_last5: transfer_last5 || null,
+      user_id: bodyUserId || quotation.user_id || null,
+      line_user_id: bodyLineUserId || quotation.line_user_id || null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", quotation_order_id);
@@ -443,8 +447,8 @@ async function handleConvertToOrder(supabase: any, body: any) {
         shipping_address_text: quotation.shipping_address_text || delivery.address || null,
         action_type: "new_order",
         is_manual_order: true,
-        notification_channel: quotation.line_user_id ? "line" : "email",
-        line_user_id: quotation.line_user_id || null,
+        notification_channel: lineUserId ? "line" : "email",
+        line_user_id: lineUserId || null,
         status_message: "報價單已轉為正式訂單",
       },
     };

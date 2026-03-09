@@ -447,6 +447,7 @@ const AdminQuotationsPanel = () => {
           shipping_address_text: q.shipping_address_text || del.address || null,
           expected_pickup_date: q.expected_pickup_date || del.special_date || del.self_pick_date || null,
           line_user_id: q.line_user_id ?? null,
+          user_id: q.user_id ?? null,
         },
       }));
     }
@@ -471,7 +472,8 @@ const AdminQuotationsPanel = () => {
           recipient_name: edits.recipient_name,
           shipping_address_text: edits.shipping_address_text,
           expected_pickup_date: edits.expected_pickup_date,
-          line_user_id: edits.line_user_id,
+          line_user_id: edits.line_user_id ?? null,
+          user_id: (edits.user_id && String(edits.user_id).trim()) ? String(edits.user_id).trim() : null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", quotationId);
@@ -628,6 +630,10 @@ const AdminQuotationsPanel = () => {
       return;
     }
 
+    const qe = quotationEdits[quotation.id];
+    const userId = (qe?.user_id && String(qe.user_id).trim()) ? String(qe.user_id).trim() : quotation.user_id;
+    const lineUserId = qe?.line_user_id ?? quotation.line_user_id;
+
     setActionLoading(quotation.id);
     try {
       const { data, error } = await supabase.functions.invoke("process-quotation", {
@@ -637,6 +643,8 @@ const AdminQuotationsPanel = () => {
           payment_method: pd.paymentMethod,
           payment_step: pd.paymentStep || "verified",
           transfer_last5: pd.transferLast5 || null,
+          user_id: userId || null,
+          line_user_id: lineUserId || null,
         },
       });
 
@@ -805,6 +813,14 @@ const AdminQuotationsPanel = () => {
                                     value={qe.notes ?? ""}
                                     onChange={(e) => updateField("notes", e.target.value)}
                                     placeholder="備註"
+                                  />
+                                </div>
+                                <div className="space-y-1">
+                                  <Label className="text-sm">User ID（選填，轉訂單時用）</Label>
+                                  <Input
+                                    value={qe.user_id ?? ""}
+                                    onChange={(e) => updateField("user_id", e.target.value)}
+                                    placeholder="auth.users 的 UUID"
                                   />
                                 </div>
                                 <div className="space-y-1">
