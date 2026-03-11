@@ -71,6 +71,14 @@ export function QuantityPriceBox({
       onQuantityChange,
     });
 
+  const priceColClass = "w-[8rem] shrink-0 text-right tabular-nums";
+  const priceRow = (label: string, value: string, className = "") => (
+    <div className="flex items-center pl-2">
+      <span className="flex-1 text-left text-foreground">{label}</span>
+      <span className={`${priceColClass} ${className}`}>{value}</span>
+    </div>
+  );
+
   return (
     <Card className="p-6 mt-6 bg-primary/10 rounded-xl space-y-6">
       {/* 數量選擇 */}
@@ -134,38 +142,76 @@ export function QuantityPriceBox({
         </div>
       )}
 
-      {/* 價格顯示 */}
-      <div className="pt-4 border-t border-border">
-        <p className="text-lg font-medium text-foreground">甜點本身金額</p>
+     {/* 價格顯示 */}
+<div className="pt-4 border-t-2 border-border">
+  <p className="text-lg font-medium text-foreground text-left mb-4">
+    費用細項
+  </p>
 
-        <p className="text-4xl font-bold text-primary text-center mt-2">NT$ {unitPrice.toLocaleString()}</p>
+  {/* 費用列表 */}
+<div className="mx-auto w-[360px] grid grid-cols-[1fr_120px] gap-y-3">
 
-        {/* ✅ 費用明細區：小計 + 各項費用 + 總計 */}
-        <div className="text-center mt-4 space-y-2">
-          {/* 小計（甜點總價，不含任何額外費用） */}
-          <p className="text-lg text-muted-foreground">小計：NT$ {subtotal.toLocaleString()}</p>
+{/* 單價 */}
+<span className="text-foreground">
+  甜點單價
+</span>
+<span className="text-foreground tabular-nums text-right">
+  NT$ {unitPrice.toLocaleString()} /個
+</span>
 
-          {/* 馬卡龍指定色費用 */}
-          {hasCustomFee && (
-            <p className="text-base text-amber-600">指定色費用（10%）：NT$ {customFeeAmount.toLocaleString()}</p>
-          )}
+{/* 小計 */}
+<span className="font-medium">
+  小計 ({quantity}個)
+</span>
+<span className="text-foreground tabular-nums text-right">
+  NT$ {subtotal.toLocaleString()}
+</span>
 
-          {/* 包裝費用 */}
-          {hasPackageFee && packageFee > 0 && (
-            <p className="text-base text-muted-foreground">包裝費用：NT$ {packageFee.toLocaleString()}</p>
-          )}
+{/* 指定色費用 */}
+{hasCustomFee && (
+  <>
+    <span className="text-amber-600">
+      指定色費用（10%）
+    </span>
+    <span className="tabular-nums text-right text-amber-600">
+      NT$ {customFeeAmount.toLocaleString()}
+    </span>
+  </>
+)}
 
-          {/* 插卡費用（條件費用） */}
-          {hasConditionalFee && (
-            <p className="text-base text-amber-600">插卡費用：NT$ {conditionalFee.toLocaleString()}</p>
-          )}
+{/* 包裝費 */}
+{hasPackageFee && packageFee > 0 && (
+  <>
+    <span>包裝費用</span>
+    <span className="text-foreground tabular-nums text-right">
+      NT$ {packageFee.toLocaleString()}
+    </span>
+  </>
+)}
 
-          {/* 總計 */}
-          <p className="text-xl font-bold text-primary pt-2 border-t border-border/50">
-            總計：NT$ {grandTotal.toLocaleString()}
-          </p>
-        </div>
-      </div>
+{/* 插卡費 */}
+{hasConditionalFee && (
+  <>
+    <span className="text-amber-600">
+      插卡費用
+    </span>
+    <span className="tabular-nums text-right text-amber-600">
+      <span className="text-muted-foreground">… </span>
+      NT$ {conditionalFee.toLocaleString()}
+    </span>
+  </>
+)}
+
+</div>
+
+{/* 總計 */}
+<div className="mt-6 pt-4 border-t-2 border-border text-center">
+<p className="text-xl font-semibold">結算總計</p>
+<p className="text-4xl font-bold text-primary mt-2 tabular-nums">
+  NT$ {grandTotal.toLocaleString()}
+</p>
+</div>
+    </div>
     </Card>
   );
 }
