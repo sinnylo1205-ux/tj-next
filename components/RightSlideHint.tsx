@@ -41,7 +41,7 @@ export function RightSlideHint() {
     >
       <a href="https://lin.ee/FJqAxNU" target="_blank" rel="noopener noreferrer" className="block">
         <img
-          src="https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/new_slide.png"
+          src="https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/hint2__1_-removebg-preview.png"
           alt="加入 T&J 官方 LINE"
           className="w-[280px] max-w-[80vw] cursor-pointer select-none"
         />
