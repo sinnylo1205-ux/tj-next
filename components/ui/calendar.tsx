@@ -75,10 +75,10 @@ function Calendar({
           nav_button_previous: "hidden",
           nav_button_next: "hidden",
           weekday: "text-muted-foreground text-center font-normal text-[0.75rem] py-1",
-          day: "text-center text-sm",
+          day: "text-center text-base font-bold",
           day_button: cn(
             buttonVariants({ variant: "ghost" }),
-            "h-8 w-8 p-0 rounded-md mx-auto font-medium aria-selected:opacity-100"
+            "h-9 w-9 p-0 rounded-md mx-auto font-bold text-base aria-selected:opacity-100"
           ),
           selected: "!bg-green-500 !text-white rounded-md font-bold",
           ...classNames,

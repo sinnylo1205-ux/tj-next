@@ -131,7 +131,7 @@ export function ProductNoticeClient({
             <div className="bg-white rounded-xl shadow-md p-6 sticky top-6 border border-border">
               <h2 className="text-xl font-bold mb-4 flex items-center gap-2">📅 預約取件時間</h2>
               <div className="p-4 rounded-lg flex justify-center" style={{ backgroundColor: "#f0e5e3" }}>
-                <div className="inline-block scale-125 origin-top">
+                <div className="inline-block scale-100 origin-top">
                   <Calendar
                     mode="single"
                   selected={selectedDate}

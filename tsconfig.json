@@ -13,12 +13,13 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "plugins": [{ "name": "next" }],
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     "paths": {
-      "@/*": ["./*"],
-      "@/hooks/use-toast": ["./hooks/use-toast"],
-      "@/hooks/use-mobile": ["./hooks/use-mobile"],
-      "@/hooks/*": ["./src/hooks/*"]
+      "@/*": ["./*"]
     }
   },
   "include": [
@@ -29,5 +30,5 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules", "supabase/functions"]
+  "exclude": ["node_modules"]
 }
