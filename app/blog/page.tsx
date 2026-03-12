@@ -1,9 +1,6 @@
-"use client";
-
-import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
-import { Loader2, BookOpen } from "lucide-react";
+import { BookOpen } from "lucide-react";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -34,21 +31,14 @@ const defaultArticles = [
   { slug: "donut", item_name: "甜甜圈", product_id: "donut" },
 ];
 
-const BLOG_QUERY_KEY = ["blog", "articles"] as const;
+export default async function BlogIndexPage() {
+  const { data: articles = [] } = await supabase
+    .from("product_articles")
+    .select("slug, item_name, intro, og_image_url")
+    .eq("is_published", true)
+    .order("created_at", { ascending: false });
 
-export default function BlogIndexPage() {
-  const { data: articles = [], isLoading } = useQuery({
-    queryKey: BLOG_QUERY_KEY,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("product_articles")
-        .select("slug, item_name, intro, og_image_url")
-        .eq("is_published", true)
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return (data || []) as ArticlePreview[];
-    },
-  });
+  const list = (articles || []) as ArticlePreview[];
 
   return (
     <div className="container py-8 md:py-12">
@@ -71,13 +61,9 @@ export default function BlogIndexPage() {
           探索客製化甜點的世界，了解各種甜點的特色與客製化方式，為你的派對、活動、送禮找到最完美的選擇。
         </p>
       </header>
-      {isLoading ? (
-        <div className="flex justify-center items-center py-20">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      ) : articles.length > 0 ? (
+      {list.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {articles.map((article) => (
+          {list.map((article) => (
             <Link
               key={article.slug}
               href={`/blog/${article.slug}`}
