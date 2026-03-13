@@ -1,5 +1,5 @@
 -- 24 小時逾時訂單自動取消：使用 pg_cron + pg_net 呼叫 Edge Function
--- 每 5 分鐘執行一次（避免每分鐘過於頻繁）
+-- 每小時整點執行一次
 --
 -- 部署前請先在 Supabase SQL Editor 執行（將 YOUR_CRON_SECRET 換成實際密鑰）：
 --   SELECT vault.create_secret('YOUR_CRON_SECRET', 'cron_secret');
@@ -14,7 +14,7 @@ END $$;
 
 SELECT cron.schedule(
   'auto-cancel-expired-orders',
-  '*/5 * * * *',  -- 每 5 分鐘
+  '0 * * * *',  -- 每小時整點執行一次
   $$
   SELECT net.http_post(
     url := 'https://akrxbdoxiopiubksgcrl.supabase.co/functions/v1/auto-cancel-expired-orders',
