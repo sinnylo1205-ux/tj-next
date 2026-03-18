@@ -37,9 +37,11 @@ Deno.serve(async (req) => {
   const { data: expiredOrders, error: fetchError } = await supabase
     .from("orders")
     .select(
-      "id, user_id, created_at, order_status, payment_step, payment_method, total_amount, subtotal, shipping_fee, shipping_way, expected_pickup_date, who_receive, phone, shipping_address_text, line_user_id, Email, is_manual_order"
+      "id, user_id, created_at, order_status, payment_step, payment_method, total_amount, subtotal, shipping_fee, shipping_way, expected_pickup_date, who_receive, phone, shipping_address_text, line_user_id, Email, is_manual_order, auto_cancel_exempt"
     )
     .eq("payment_step", "pending")
+    .eq("is_manual_order", false)
+    .eq("auto_cancel_exempt", false)
     .lt("created_at", twentyFourHoursAgo);
 
   if (fetchError) {

@@ -303,7 +303,16 @@ async function handleSendQuote(supabase: any, body: any) {
 
 // ========== Action: Convert to Order ==========
 async function handleConvertToOrder(supabase: any, body: any) {
-  const { quotation_order_id, payment_method, payment_step, transfer_last5, user_id: bodyUserId, line_user_id: bodyLineUserId } = body;
+  const {
+    quotation_order_id,
+    payment_method,
+    payment_step,
+    order_status,
+    auto_cancel_exempt,
+    transfer_last5,
+    user_id: bodyUserId,
+    line_user_id: bodyLineUserId,
+  } = body;
 
   if (!quotation_order_id || !payment_method) {
     return new Response(JSON.stringify({ error: "缺少必要參數" }), {
@@ -349,28 +358,50 @@ async function handleConvertToOrder(supabase: any, body: any) {
   // 3. Create order（優先使用 body 傳入的 user_id、line_user_id，否則用報價單上的）
   const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1"; // fallback to admin user
   const lineUserId = bodyLineUserId || quotation.line_user_id || null;
+  const orderInsert = {
+    user_id: userId,
+    Email: quotation.email || customerProfile.email || null,
+    who_receive: quotation.who_receive || delivery.receiver || customerProfile.name || null,
+    phone: delivery.phone || null,
+    shipping_way: quotation.shipping_way || delivery.method || null,
+    shipping_address_text: quotation.shipping_address_text || delivery.address || null,
+    expected_pickup_date: quotation.expected_pickup_date || null,
+    subtotal: quotation.subtotal || 0,
+    shipping_fee: quotation.shipping_fee || 0,
+    total_amount: quotation.total_amount || 0,
+    notes: quotation.notes || null,
+    line_user_id: lineUserId,
+    is_manual_order: true,
+    is_from_quotation: true,
+    auto_cancel_exempt: !!auto_cancel_exempt,
+    payment_method: payment_method,
+    payment_step: payment_step || "verified",
+    order_status: order_status || "processing",
+    transfer_last5: transfer_last5 || null,
+  };
+
+  console.log(
+    "[process-quotation/convert_to_order] orderInsert:",
+    JSON.stringify(
+      {
+        quotation_order_id,
+        user_id: orderInsert.user_id,
+        who_receive: orderInsert.who_receive,
+        is_from_quotation: orderInsert.is_from_quotation,
+        is_manual_order: orderInsert.is_manual_order,
+        auto_cancel_exempt: orderInsert.auto_cancel_exempt,
+        payment_method: orderInsert.payment_method,
+        payment_step: orderInsert.payment_step,
+        order_status: orderInsert.order_status,
+      },
+      null,
+      2,
+    ),
+  );
+
   const { data: orderData, error: orderError } = await supabase
     .from("orders")
-    .insert({
-      user_id: userId,
-      Email: quotation.email || customerProfile.email || null,
-      who_receive: quotation.who_receive || delivery.receiver || customerProfile.name || null,
-      phone: delivery.phone || null,
-      shipping_way: quotation.shipping_way || delivery.method || null,
-      shipping_address_text: quotation.shipping_address_text || delivery.address || null,
-      expected_pickup_date: quotation.expected_pickup_date || null,
-      subtotal: quotation.subtotal || 0,
-      shipping_fee: quotation.shipping_fee || 0,
-      total_amount: quotation.total_amount || 0,
-      notes: quotation.notes || null,
-      line_user_id: lineUserId,
-      is_manual_order: true,
-      is_from_quotation: true,
-      payment_method: payment_method,
-      payment_step: payment_step || "verified",
-      order_status: "processing",
-      transfer_last5: transfer_last5 || null,
-    })
+    .insert(orderInsert)
     .select()
     .single();
 
@@ -382,7 +413,18 @@ async function handleConvertToOrder(supabase: any, body: any) {
     });
   }
 
-  console.log("[process-quotation/convert_to_order] Order created:", orderData.id);
+  console.log(
+    "[process-quotation/convert_to_order] Order created:",
+    JSON.stringify(
+      {
+        order_id: orderData.id,
+        is_from_quotation: (orderData as any)?.is_from_quotation,
+        user_id: (orderData as any)?.user_id,
+      },
+      null,
+      2,
+    ),
+  );
 
   // 4. Create order items
   for (const item of qItems || []) {

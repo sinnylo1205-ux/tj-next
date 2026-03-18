@@ -415,7 +415,16 @@ const AdminQuotationsPanel = () => {
 
   // Payment fields for price_reply
   const [paymentData, setPaymentData] = useState<
-    Record<string, { paymentMethod: string; transferLast5: string; paymentStep: string }>
+    Record<
+      string,
+      {
+        paymentMethod: string;
+        transferLast5: string;
+        paymentStep: string;
+        orderStatus: string;
+        autoCancelExempt: boolean;
+      }
+    >
   >({});
 
   // Action loading state
@@ -642,6 +651,8 @@ const AdminQuotationsPanel = () => {
           quotation_order_id: quotation.id,
           payment_method: pd.paymentMethod,
           payment_step: pd.paymentStep || "verified",
+          order_status: pd.orderStatus || "processing",
+          auto_cancel_exempt: pd.autoCancelExempt ?? false,
           transfer_last5: pd.transferLast5 || null,
           user_id: userId || null,
           line_user_id: lineUserId || null,
@@ -1109,6 +1120,43 @@ const AdminQuotationsPanel = () => {
                                         }))
                                       }
                                     />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <Label>轉單後狀態</Label>
+                                    <select
+                                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                                      value={paymentData[q.id]?.orderStatus || "processing"}
+                                      onChange={(e) =>
+                                        setPaymentData((prev) => ({
+                                          ...prev,
+                                          [q.id]: { ...prev[q.id], orderStatus: e.target.value },
+                                        }))
+                                      }
+                                    >
+                                      <option value="awaiting_payment">等待付款</option>
+                                      <option value="processing">處理中</option>
+                                      <option value="shipped">已出貨</option>
+                                      <option value="delivered">已完成</option>
+                                    </select>
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label>24 小時未付款限制</Label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                      <input
+                                        type="checkbox"
+                                        checked={paymentData[q.id]?.autoCancelExempt ?? true}
+                                        onChange={(e) =>
+                                          setPaymentData((prev) => ({
+                                            ...prev,
+                                            [q.id]: { ...prev[q.id], autoCancelExempt: e.target.checked },
+                                          }))
+                                        }
+                                      />
+                                      不受 24 小時自動取消影響
+                                    </label>
                                   </div>
                                 </div>
 

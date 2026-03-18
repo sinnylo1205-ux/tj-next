@@ -7,12 +7,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ChevronDown, ChevronUp, ExternalLink, Plus, Trash2, CalendarIcon, X } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import ManualOrderForm from "./ManualOrderForm";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,10 +47,15 @@ interface Order {
   delivered_at: string | null;
   is_manual_order?: boolean;
   is_from_quotation?: boolean;
+  auto_cancel_exempt?: boolean;
   admin_note?: string | null;
   Email?: string | null;
   TAX_id?: number | null;
   TAX_title?: string | null;
+  phone?: string | null;
+  line_user_id?: string | null;
+  payment_method?: string | null;
+  is_hide?: boolean;
 }
 
 interface OrderItem {
@@ -78,6 +85,9 @@ const OrderStatusManager = () => {
   const [expandedOrders, setExpandedOrders] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [showManualOrderForm, setShowManualOrderForm] = useState(false);
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+  const [editDraft, setEditDraft] = useState<Record<string, any>>({});
+  const [savingEdit, setSavingEdit] = useState(false);
 
   // Loading action state to prevent duplicate clicks
   const [loadingAction, setLoadingAction] = useState<{
@@ -187,6 +197,73 @@ const OrderStatusManager = () => {
       loadOrderItems(orderId);
     }
     setExpandedOrders(newExpanded);
+  };
+
+  const openEditOrder = (order: Order) => {
+    setEditingOrder(order);
+    setEditDraft({
+      user_id: order.user_id,
+      Email: order.Email ?? "",
+      who_receive: order.who_receive ?? "",
+      phone: order.phone ?? "",
+      line_user_id: order.line_user_id ?? "",
+      shipping_way: order.shipping_way ?? "",
+      shipping_address_text: order.shipping_address_text ?? "",
+      expected_pickup_date: order.expected_pickup_date ?? "",
+      notes: order.notes ?? "",
+      TAX_title: order.TAX_title ?? "",
+      TAX_id: order.TAX_id ?? "",
+      payment_method: order.payment_method ?? "",
+      payment_step: order.payment_step ?? "pending",
+      order_status: order.order_status ?? "awaiting_payment",
+      transfer_last5: order.transfer_last5 ?? "",
+      subtotal: order.subtotal ?? 0,
+      shipping_fee: order.shipping_fee ?? 0,
+      total_amount: order.total_amount ?? 0,
+      admin_note: order.admin_note ?? "",
+      is_manual_order: !!order.is_manual_order,
+      is_from_quotation: !!order.is_from_quotation,
+      auto_cancel_exempt: !!order.auto_cancel_exempt,
+      is_hide: !!order.is_hide,
+    });
+  };
+
+  const saveOrderEdits = async () => {
+    if (!editingOrder) return;
+    setSavingEdit(true);
+    try {
+      const patch: Record<string, any> = { ...editDraft };
+      if (patch.TAX_id === "") patch.TAX_id = null;
+      if (typeof patch.TAX_id === "string") patch.TAX_id = patch.TAX_id ? Number(patch.TAX_id) : null;
+      if (patch.Email === "") patch.Email = null;
+      if (patch.phone === "") patch.phone = null;
+      if (patch.line_user_id === "") patch.line_user_id = null;
+      if (patch.who_receive === "") patch.who_receive = null;
+      if (patch.notes === "") patch.notes = null;
+      if (patch.TAX_title === "") patch.TAX_title = null;
+      if (patch.transfer_last5 === "") patch.transfer_last5 = null;
+      if (patch.admin_note === "") patch.admin_note = null;
+      if (patch.expected_pickup_date === "") patch.expected_pickup_date = null;
+
+      const { data, error } = await supabase.functions.invoke("admin-update-order", {
+        body: { order_id: editingOrder.id, patch },
+      });
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const updated = data?.order as Order | undefined;
+      if (updated?.id) {
+        setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
+      } else {
+        await loadOrders();
+      }
+      toast({ title: "✅ 訂單已更新" });
+      setEditingOrder(null);
+    } catch (e: any) {
+      toast({ title: "更新失敗", description: e?.message || "請稍後再試", variant: "destructive" });
+    } finally {
+      setSavingEdit(false);
+    }
   };
 
   // 統一的狀態更新函式 - 透過 Edge Function
@@ -362,6 +439,7 @@ const OrderStatusManager = () => {
   }
 
   return (
+    <>
     <Card>
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
@@ -587,6 +665,9 @@ const OrderStatusManager = () => {
                                   手動訂單
                                 </Badge>
                               )}
+                              <Button variant="outline" size="sm" className="h-8" onClick={() => openEditOrder(order)}>
+                                編輯訂單
+                              </Button>
                               <Input
                                 placeholder="備注..."
                                 className="h-8 text-sm"
@@ -594,12 +675,18 @@ const OrderStatusManager = () => {
                                 onBlur={async (e) => {
                                   const value = e.target.value.trim();
                                   if (value === (order.admin_note ?? "")) return;
-                                  const { error } = await supabase.from("orders").update({ admin_note: value || null }).eq("id", order.id);
-                                  if (error) {
-                                    toast({ title: "儲存備注失敗", description: error.message, variant: "destructive" });
-                                    return;
+                                  try {
+                                    const { data, error } = await supabase.functions.invoke("admin-update-order", {
+                                      body: { order_id: order.id, patch: { admin_note: value || null } },
+                                    });
+                                    if (error) throw error;
+                                    if (data?.error) throw new Error(data.error);
+                                    setOrders((prev) =>
+                                      prev.map((o) => (o.id === order.id ? { ...o, admin_note: value || null } : o)),
+                                    );
+                                  } catch (err: any) {
+                                    toast({ title: "儲存備注失敗", description: err?.message || "請稍後再試", variant: "destructive" });
                                   }
-                                  setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, admin_note: value || null } : o)));
                                 }}
                               />
                             </div>
@@ -744,6 +831,163 @@ const OrderStatusManager = () => {
         </Tabs>
       </CardContent>
     </Card>
+
+    <Dialog open={!!editingOrder} onOpenChange={(open) => (!open ? setEditingOrder(null) : null)}>
+      <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle>編輯訂單資訊</DialogTitle>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4 overflow-y-auto pr-1">
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">用戶 ID</span>
+            <Input value={editDraft.user_id ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, user_id: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">LINE user_id</span>
+            <Input
+              value={editDraft.line_user_id ?? ""}
+              onChange={(e) => setEditDraft((p) => ({ ...p, line_user_id: e.target.value }))}
+              placeholder="Uxxxxxxxx..."
+            />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">聯絡信箱</span>
+            <Input value={editDraft.Email ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, Email: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">電話</span>
+            <Input value={editDraft.phone ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, phone: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">收件人</span>
+            <Input value={editDraft.who_receive ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, who_receive: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">預計取件日期 (YYYY-MM-DD)</span>
+            <Input
+              value={editDraft.expected_pickup_date ?? ""}
+              onChange={(e) => setEditDraft((p) => ({ ...p, expected_pickup_date: e.target.value }))}
+              placeholder="2026-03-18"
+            />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">配送方式</span>
+            <Input value={editDraft.shipping_way ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, shipping_way: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">地址</span>
+            <Input
+              value={editDraft.shipping_address_text ?? ""}
+              onChange={(e) => setEditDraft((p) => ({ ...p, shipping_address_text: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1 col-span-2">
+            <span className="text-sm text-muted-foreground">備註</span>
+            <Textarea value={editDraft.notes ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, notes: e.target.value }))} />
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">發票抬頭</span>
+            <Input value={editDraft.TAX_title ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, TAX_title: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">統一編號</span>
+            <Input value={editDraft.TAX_id ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, TAX_id: e.target.value.replace(/\D/g, "").slice(0, 8) }))} />
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">付款方式</span>
+            <Input value={editDraft.payment_method ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, payment_method: e.target.value }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">匯款末五碼</span>
+            <Input value={editDraft.transfer_last5 ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, transfer_last5: e.target.value }))} />
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">付款狀態 payment_step</span>
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              value={editDraft.payment_step ?? "pending"}
+              onChange={(e) => setEditDraft((p) => ({ ...p, payment_step: e.target.value }))}
+            >
+              <option value="pending">pending</option>
+              <option value="submitted">submitted</option>
+              <option value="verified">verified</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">訂單狀態 order_status</span>
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              value={editDraft.order_status ?? "awaiting_payment"}
+              onChange={(e) => setEditDraft((p) => ({ ...p, order_status: e.target.value }))}
+            >
+              <option value="awaiting_payment">awaiting_payment</option>
+              <option value="processing">processing</option>
+              <option value="shipped">shipped</option>
+              <option value="delivered">delivered</option>
+              <option value="canceled">canceled</option>
+              <option value="returned">returned</option>
+            </select>
+          </div>
+
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">小計</span>
+            <Input type="number" value={editDraft.subtotal ?? 0} onChange={(e) => setEditDraft((p) => ({ ...p, subtotal: Number(e.target.value) }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">運費</span>
+            <Input type="number" value={editDraft.shipping_fee ?? 0} onChange={(e) => setEditDraft((p) => ({ ...p, shipping_fee: Number(e.target.value) }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">總金額</span>
+            <Input type="number" value={editDraft.total_amount ?? 0} onChange={(e) => setEditDraft((p) => ({ ...p, total_amount: Number(e.target.value) }))} />
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">管理員備註</span>
+            <Input value={editDraft.admin_note ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, admin_note: e.target.value }))} />
+          </div>
+
+          <div className="col-span-2 grid grid-cols-3 gap-3">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!editDraft.is_from_quotation}
+                onChange={(e) => setEditDraft((p) => ({ ...p, is_from_quotation: e.target.checked }))}
+              />
+              is_from_quotation
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!editDraft.is_manual_order}
+                onChange={(e) => setEditDraft((p) => ({ ...p, is_manual_order: e.target.checked }))}
+              />
+              is_manual_order
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={!!editDraft.auto_cancel_exempt}
+                onChange={(e) => setEditDraft((p) => ({ ...p, auto_cancel_exempt: e.target.checked }))}
+              />
+              auto_cancel_exempt
+            </label>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 mt-4">
+          <Button variant="outline" onClick={() => setEditingOrder(null)}>
+            取消
+          </Button>
+          <Button onClick={saveOrderEdits} disabled={savingEdit}>
+            {savingEdit ? "儲存中..." : "儲存"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 
