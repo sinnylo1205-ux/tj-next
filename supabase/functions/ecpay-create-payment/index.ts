@@ -7,7 +7,6 @@ const ALLOWED_ORIGINS = [
   "https://tjcookies.com.tw",
   "https://www.tjcookies.com.tw",
   "https://tj-dessert-hub.lovable.app",
-  "https://id-preview--25a643eb-2127-479e-9de6-b4d990013632.lovable.app",
 ];
 
 function isAllowedOrigin(origin: string): boolean {
@@ -216,7 +215,8 @@ serve(async (req) => {
     const merchantTradeNo = orderIdClean + timestamp;
 
     // 從 request header 取得 origin（已驗證為白名單內）
-    const orderResultUrl = `${origin}/`;
+    // OrderResultURL 必須接受 POST（綠界以 POST 導回），改為專用 API 再由該 API 302 導向首頁帶 RtnCode/RtnMsg
+    const orderResultUrl = `${origin}/api/ecpay-order-result`;
     const clientBackUrl = `${origin}/`;
 
     // 組裝綠界參數

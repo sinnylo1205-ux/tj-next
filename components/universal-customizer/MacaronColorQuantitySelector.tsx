@@ -65,7 +65,7 @@ export function MacaronColorQuantitySelector({
   if (currentStep === 1) {
     return (
       <div className="space-y-4">
-        <h4 className="font-medium text-foreground">選擇馬卡龍顏色方式</h4>
+        <h4 className="font-medium text-foreground">選擇馬卡龍顏色（隨機與指定）</h4>
         
         {/* 隨機出貨 */}
         <button

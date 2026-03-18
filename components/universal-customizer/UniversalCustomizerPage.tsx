@@ -1674,6 +1674,11 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
             photoUpload.uploadedPhotoUrl && currentPhotoOptionId ? new Set([currentPhotoOptionId]) : new Set()
           }
         />
+        {isMacaron && (
+          <p className="text-xs text-muted-foreground mt-2">
+            馬卡龍無法印製白色，會是馬卡龍底色，建議上傳去背照片
+          </p>
+        )}
       </div>,
     );
   }
