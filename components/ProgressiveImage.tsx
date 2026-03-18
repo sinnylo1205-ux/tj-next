@@ -35,7 +35,7 @@ const ProgressiveImage = ({
   onClick,
   style,
 }: ProgressiveImageProps) => {
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(priority);
   const [isInView, setIsInView] = useState(priority);
   const imgRef = useRef<HTMLDivElement>(null);
 
@@ -93,7 +93,7 @@ const ProgressiveImage = ({
           height={height ?? undefined}
           className={cn(
             "w-full h-full object-cover transition-opacity duration-300",
-            isLoaded ? "opacity-100" : "opacity-0",
+            priority || isLoaded ? "opacity-100" : "opacity-0",
             className,
           )}
         />
