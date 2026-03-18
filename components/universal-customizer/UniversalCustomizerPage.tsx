@@ -425,7 +425,9 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
     });
   }, [packageState.packageStyleOptions, selectedSizes, config.businessRules?.packageFilterBySize]);
 
-  // 🍿 Popcorn：包裝款式必選，且預設跟著尺寸 S/M/L 走（S/M/L 包裝隨機出貨）
+  // 🍿 Popcorn：包裝款式必選，且「只有在尺寸變更時」才自動套用對應的「S/M/L 包裝隨機出貨」
+  // 避免使用者手動點選其他包裝時被 effect 強制覆蓋回預設。
+  const lastPopcornSizeKeyRef = useRef<string>("");
   useEffect(() => {
     if (productType !== "popcorn") return;
     if (!config.businessRules?.packageFilterBySize) return;
@@ -442,21 +444,18 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
     else if (sizeName.includes("Ｌ") || sizeName.includes("L")) sizeKey = "L";
     if (!sizeKey) return;
 
+    // 尺寸沒變就不干預（允許使用者自由切換包裝選項）
+    if (lastPopcornSizeKeyRef.current === sizeKey) return;
+    lastPopcornSizeKeyRef.current = sizeKey;
+
     const targetName = `${sizeKey}包裝隨機出貨`;
     const target =
       filteredPackageStyleOptions.find((o) => (o.option_name_zh || "").includes(targetName)) ||
       filteredPackageStyleOptions[0];
 
     if (!target) return;
-    if (packageState.selectedPackageStyle?.option_id === target.option_id) return;
     packageState.handlePackageStyleSelect(target);
-  }, [
-    productType,
-    config.businessRules?.packageFilterBySize,
-    filteredPackageStyleOptions,
-    selectedSizes,
-    packageState.selectedPackageStyle,
-  ]);
+  }, [productType, config.businessRules?.packageFilterBySize, filteredPackageStyleOptions, selectedSizes]);
 
   // 判斷是否為盒裝（option_id = 7030）
   const isBoxedStyle = packageState.selectedPackageStyle?.option_id === 7030;
