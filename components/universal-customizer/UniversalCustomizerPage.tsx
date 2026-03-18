@@ -425,6 +425,39 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
     });
   }, [packageState.packageStyleOptions, selectedSizes, config.businessRules?.packageFilterBySize]);
 
+  // 🍿 Popcorn：包裝款式必選，且預設跟著尺寸 S/M/L 走（S/M/L 包裝隨機出貨）
+  useEffect(() => {
+    if (productType !== "popcorn") return;
+    if (!config.businessRules?.packageFilterBySize) return;
+    if (!filteredPackageStyleOptions.length) return;
+
+    const sizeRootId = config.businessRules.packageFilterBySize.sizeRootId;
+    const selectedSize = selectedSizes.get(sizeRootId);
+    if (!selectedSize) return;
+
+    const sizeName = selectedSize.option_name_zh || "";
+    let sizeKey = "";
+    if (sizeName.includes("Ｓ") || sizeName.includes("S")) sizeKey = "S";
+    else if (sizeName.includes("Ｍ") || sizeName.includes("M")) sizeKey = "M";
+    else if (sizeName.includes("Ｌ") || sizeName.includes("L")) sizeKey = "L";
+    if (!sizeKey) return;
+
+    const targetName = `${sizeKey}包裝隨機出貨`;
+    const target =
+      filteredPackageStyleOptions.find((o) => (o.option_name_zh || "").includes(targetName)) ||
+      filteredPackageStyleOptions[0];
+
+    if (!target) return;
+    if (packageState.selectedPackageStyle?.option_id === target.option_id) return;
+    packageState.handlePackageStyleSelect(target);
+  }, [
+    productType,
+    config.businessRules?.packageFilterBySize,
+    filteredPackageStyleOptions,
+    selectedSizes,
+    packageState.selectedPackageStyle,
+  ]);
+
   // 判斷是否為盒裝（option_id = 7030）
   const isBoxedStyle = packageState.selectedPackageStyle?.option_id === 7030;
 

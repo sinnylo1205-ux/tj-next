@@ -153,12 +153,12 @@ Deno.serve(async (req) => {
     }
 
     // ========== 2. 載入選項價格修正（顏色/口味/尺寸） ==========
-    let optionModifiers: Array<{ option_id: number; option_name: string; price_modifier: number }> = [];
+    let optionModifiers: Array<{ option_id: number; option_name: string; price_modifier: number; parent_id: number | null }> = [];
 
     if (selected_option_ids.length > 0) {
       const { data: optionsData, error: optionsError } = await supabase
         .from("master_options")
-        .select("option_id, option_name_zh, price_modifier")
+        .select("option_id, option_name_zh, price_modifier, parent_id")
         .in("option_id", selected_option_ids);
 
       if (optionsError) {
@@ -168,6 +168,7 @@ Deno.serve(async (req) => {
           option_id: opt.option_id,
           option_name: opt.option_name_zh,
           price_modifier: opt.price_modifier || 0,
+          parent_id: opt.parent_id ?? null,
         }));
       }
     }
@@ -216,12 +217,20 @@ Deno.serve(async (req) => {
     // ========== 4. 計算單價 ==========
     let totalOptionModifier = 0;
     let popcornDesignPrice = 0; // 爆米花 7299 設計費（不計入單價）
+    const POPCORN_SIZE_ROOT_ID = 5000;
 
     for (const opt of optionModifiers) {
       // 爆米花 7299 特殊處理：不計入單價，改計入 packageStyleTotal
       if (isPopcornDesign && opt.option_id === POPCORN_DESIGN_OPTION_ID) {
         popcornDesignPrice = opt.price_modifier;
         console.log(`🍿 Popcorn design option 7299 price: ${popcornDesignPrice} (will be added to package_style_total)`);
+        continue;
+      }
+      // 爆米花尺寸（root=5000）不計入甜點單價，避免與包裝款式重複加價
+      if (product_id === "popcorn" && opt.parent_id === POPCORN_SIZE_ROOT_ID) {
+        console.log(
+          `🍿 Skipping popcorn size modifier in unit_price: option_id=${opt.option_id}, parent_id=${opt.parent_id}, price_modifier=${opt.price_modifier}`,
+        );
         continue;
       }
       totalOptionModifier += opt.price_modifier;

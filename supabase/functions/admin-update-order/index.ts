@@ -44,6 +44,13 @@ const ALLOWED_KEYS = new Set([
 
 const FORBIDDEN_KEYS = new Set(["id", "created_at", "updated_at"]);
 
+function extractMissingColumnFromPgrst204Message(message?: string | null): string | null {
+  if (!message) return null;
+  // Example: "Could not find the 'auto_cancel_exempt' column of 'orders' in the schema cache"
+  const m = message.match(/Could not find the '([^']+)' column of 'orders' in the schema cache/);
+  return m?.[1] ?? null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
@@ -117,12 +124,25 @@ Deno.serve(async (req) => {
 
     console.log("[admin-update-order] Updating:", JSON.stringify({ order_id, keys: Object.keys(updateData) }));
 
-    const { data: updated, error: updateError } = await supabaseAdmin
-      .from("orders")
-      .update(updateData)
-      .eq("id", order_id)
-      .select("*")
-      .single();
+    const doUpdate = async (data: Record<string, any>) => {
+      return await supabaseAdmin.from("orders").update(data).eq("id", order_id).select("*").single();
+    };
+
+    let { data: updated, error: updateError } = await doUpdate(updateData);
+
+    // 若資料庫尚未套用 migration 或 schema cache 尚未刷新，會出現 PGRST204（欄位不存在）
+    // 為避免整個管理功能 500，移除該欄位並重試一次（同時保留 log 方便追查）
+    if (updateError?.code === "PGRST204") {
+      const missing = extractMissingColumnFromPgrst204Message(updateError.message);
+      if (missing && Object.prototype.hasOwnProperty.call(updateData, missing)) {
+        console.warn("[admin-update-order] Missing column in schema cache, retry without:", missing);
+        const retryData = { ...updateData };
+        delete retryData[missing];
+        if (Object.keys(retryData).length > 0) {
+          ({ data: updated, error: updateError } = await doUpdate(retryData));
+        }
+      }
+    }
 
     if (updateError || !updated) {
       console.error("[admin-update-order] Update failed:", updateError);

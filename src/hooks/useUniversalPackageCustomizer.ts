@@ -159,8 +159,12 @@ export function useUniversalPackageCustomizer(
 
         setPackageStyleOptions(options);
 
-        // 預設選擇 is_default = true 的選項
-        const defaultOption = options.find((opt) => opt.is_default) || options[0];
+        // 預設選擇：
+        // - popcorn：強制使用「隨機包裝」(不可為空，否則包裝費無法計算)
+        // - 其他：使用 is_default = true，若無則第一個
+        const popcornRandomOption =
+          productId === "popcorn" ? options.find((o) => (o.option_name_zh || "").includes("隨機包裝")) : undefined;
+        const defaultOption = popcornRandomOption || options.find((opt) => opt.is_default) || options[0];
         if (defaultOption) {
           setSelectedPackageStyle(defaultOption);
         }
@@ -175,6 +179,15 @@ export function useUniversalPackageCustomizer(
 
     loadPackageStyles();
   }, [productId]);
+
+  // popcorn：保險措施，避免任何狀況下 selectedPackageStyle 變成 null（會導致包裝費算不到）
+  useEffect(() => {
+    if (productId !== "popcorn") return;
+    if (!packageStyleOptions.length) return;
+    if (selectedPackageStyle) return;
+    const random = packageStyleOptions.find((o) => (o.option_name_zh || "").includes("隨機包裝")) || packageStyleOptions[0];
+    if (random) setSelectedPackageStyle(random);
+  }, [productId, packageStyleOptions, selectedPackageStyle]);
 
   // ==================== 載入盒裝配置選項（7030 的子層級）====================
   useEffect(() => {
@@ -413,13 +426,15 @@ export function useUniversalPackageCustomizer(
 
   // ==================== 清除（重設為預設）處理 ====================
   const resetToDefault = useCallback(() => {
-    const defaultOption = packageStyleOptions.find((opt) => opt.is_default) || packageStyleOptions[0];
+    const popcornRandomOption =
+      productId === "popcorn" ? packageStyleOptions.find((o) => (o.option_name_zh || "").includes("隨機包裝")) : undefined;
+    const defaultOption = popcornRandomOption || packageStyleOptions.find((opt) => opt.is_default) || packageStyleOptions[0];
     if (defaultOption) {
       setSelectedPackageStyle(defaultOption);
     }
     setBoxConfig1(null);
     setBoxConfig2(null);
-  }, [packageStyleOptions]);
+  }, [packageStyleOptions, productId]);
 
   return {
     packageStyleOptions,
