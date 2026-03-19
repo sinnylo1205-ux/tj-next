@@ -62,10 +62,10 @@ export function MealBoxPreview({
               key={slotId}
               onClick={() => onSlotClick?.(slotId)}
               className={cn(
-                "relative border-2 border-dashed rounded-xl bg-muted/20 flex flex-col items-center justify-center overflow-hidden transition-all",
+                "relative border-2 border-dashed rounded-xl bg-secondary/30 flex flex-col items-center justify-center overflow-hidden transition-all",
                 isDesktop && "cursor-pointer hover:border-primary/60 hover:bg-primary/5",
                 isActive && "border-primary bg-primary/10 ring-2 ring-primary/30",
-                !isActive && "border-muted-foreground/40",
+                !isActive && "border-secondary/60",
               )}
               style={{
                 gridColumn: pos.col + 1,
@@ -79,7 +79,7 @@ export function MealBoxPreview({
                 <span
                   className={cn(
                     "text-sm font-medium text-center px-2",
-                    isDesktop ? "text-muted-foreground" : "text-muted-foreground/60",
+                    isDesktop ? "text-secondary-foreground/80" : "text-secondary-foreground/60",
                   )}
                 >
                   {isDesktop ? "點擊添加點心" : slotId}

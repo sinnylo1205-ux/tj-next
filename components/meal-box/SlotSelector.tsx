@@ -61,10 +61,10 @@ export function SlotSelector({
                 />
               ) : (
                 <div className={cn(
-                  "bg-muted rounded flex items-center justify-center",
+                  "bg-secondary rounded flex items-center justify-center",
                   isCompact ? "w-12 h-12" : "w-16 h-16"
                 )}>
-                  <span className="text-xs text-muted-foreground">無圖</span>
+                  <span className="text-xs text-secondary-foreground/70">無圖</span>
                 </div>
               )}
               <span className={cn(
@@ -114,7 +114,7 @@ export function SlotSelector({
           {sweetOptions.length > 0 ? (
             renderOptionGrid(sweetOptions)
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">
+            <p className="text-sm text-secondary-foreground/70 text-center py-4">
               暫無甜點選項
             </p>
           )}
@@ -124,7 +124,7 @@ export function SlotSelector({
           {saltOptions.length > 0 ? (
             renderOptionGrid(saltOptions)
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-4">
+            <p className="text-sm text-secondary-foreground/70 text-center py-4">
               暫無鹹點選項
             </p>
           )}
@@ -134,10 +134,10 @@ export function SlotSelector({
       {/* 已選提示 */}
       {selectedItem && (
         <div className={cn(
-          "pt-2 border-t border-border",
+          "pt-2 border-t border-secondary/40",
           isCompact ? "mt-2" : "mt-3"
         )}>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-secondary-foreground/70">
             已選：<span className="font-semibold text-foreground">{selectedItem.name}</span>
           </p>
         </div>

@@ -55,6 +55,7 @@ export function PackageStyleSelector({
       const map = new Map<number, PackageStylePhotoMetadata>();
       (data || []).forEach((item) => {
         if (item.metadata_product) {
+          console.log(`[PackageStyleSelector] 選項 ${item.option_id}:`, item.metadata_product);
           map.set(item.option_id, item.metadata_product as PackageStylePhotoMetadata);
         }
       });
@@ -64,6 +65,7 @@ export function PackageStyleSelector({
       if (selectedOption) {
         const metadata = map.get(selectedOption.option_id);
         const requiresPhotoUpload = metadata?.requires_photo_upload === true;
+        console.log(`[PackageStyleSelector] 初始化選項 ${selectedOption.option_id}, requires_photo_upload:`, requiresPhotoUpload);
         onPhotoRequirementChange?.(requiresPhotoUpload, metadata);
       }
     };
@@ -79,6 +81,7 @@ export function PackageStyleSelector({
     // 檢查選項的 metadata 是否需要照片上傳
     const metadata = metadataMap.get(option.option_id);
     const requiresPhotoUpload = metadata?.requires_photo_upload === true;
+    console.log(`[PackageStyleSelector] 選擇選項 ${option.option_id}, metadata:`, metadata, `requires_photo_upload:`, requiresPhotoUpload);
     
     onPhotoRequirementChange?.(requiresPhotoUpload, metadata);
   };

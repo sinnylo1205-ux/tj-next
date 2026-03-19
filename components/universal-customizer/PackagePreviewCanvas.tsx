@@ -12,7 +12,7 @@ interface PackagePreviewCanvasProps {
   boxConfig2: BoxConfig | null;
   selectedDecorations: Set<number>;
   decorationOptions: DecorationOption[];
-  uploadedPhotoUrl?: string;
+  uploadedPhotoUrl?: string | null;
   optionsMap: Record<number, DecorationOption>;
   // 新增：包裝款式的照片 metadata
   packageStylePhotoMetadata?: PackageStylePhotoMetadata | null;
@@ -48,7 +48,7 @@ export function PackagePreviewCanvas({
     : packageStylePhotoMetadata || null;
 
   return (
-    <div className="relative w-full aspect-square bg-gradient-to-br from-background to-muted rounded-3xl overflow-hidden border-2 border-border shadow-lg">
+    <div className="relative w-full aspect-square bg-gradient-to-br from-background to-secondary rounded-3xl overflow-hidden border-2 border-secondary/40 shadow-lg">
       {/* 包裝容器層（z-10） */}
       <div className="absolute inset-0 flex items-center justify-center" style={{ zIndex: 10 }}>
         {selectedPackageStyle?.option_id === 7030 ? (
@@ -163,7 +163,7 @@ export function PackagePreviewCanvas({
               />
             ) : (
               <div
-                className="w-full h-full flex items-center justify-center text-xs text-muted-foreground"
+                className="w-full h-full flex items-center justify-center text-xs text-secondary-foreground/70"
                 style={{
                   ...frameStyles[frameType],
                   border: "2px dashed #ffc0cb",
@@ -180,7 +180,7 @@ export function PackagePreviewCanvas({
 
       {/* 預覽提示文字 */}
       {!selectedPackageStyle && (
-        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+        <div className="absolute inset-0 flex items-center justify-center text-secondary-foreground/70">
           <p className="text-center text-lg">請選擇包裝款式</p>
         </div>
       )}

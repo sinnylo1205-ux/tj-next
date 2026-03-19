@@ -68,6 +68,8 @@ export function useMealBoxCustomizer({ productId }: UseMealBoxCustomizerProps) {
           setMinOrderQty(minQty);
           setQuantity(minQty);
 
+          console.log("[useMealBoxCustomizer] 從 product_notice 讀取:", { price_min: notice.price_min, min_order_qty: notice.min_order_qty });
+
           // 解析 slots 陣列
           if (notice.special_requiered) {
             try {
@@ -136,15 +138,20 @@ export function useMealBoxCustomizer({ productId }: UseMealBoxCustomizerProps) {
     // 收集所有選中的 option_id
     const selectedOptionIds = Object.values(selectedItems).map((item) => item.option_id);
 
+    console.log("[useMealBoxCustomizer] fetchPrice:", { productId, quantity, selectedOptionIds });
+
     const response = await calculatePrice({
       product_id: productId,
       quantity,
       selected_option_ids: selectedOptionIds,
     });
 
+    console.log("[useMealBoxCustomizer] price response:", response);
+
     if (response.success && response.data) {
       setPriceData(response.data.breakdown);
       setPriceValidation(response.data.validation);
+      console.log("[useMealBoxCustomizer] price breakdown:", response.data.breakdown);
     } else {
       console.error("❌ Price calculation failed:", response.error);
     }
@@ -198,8 +205,12 @@ export function useMealBoxCustomizer({ productId }: UseMealBoxCustomizerProps) {
     setQuantity(Math.max(minOrderQty, value));
   }, []);
 
-  // 從後端數據取得總價
-  const totalPrice = priceData?.grand_total ?? (basePrice * quantity);
+  // 從後端數據取得單價與總價
+  // ⚠️ 價格必須由後端 priceApi 計算，不可在前端做任何乘法
+  const unitPrice = priceData?.unit_price ?? basePrice;
+  // 餐盒小計 = 單價 × 數量（如果後端沒有返回 dessert_total，就用 unit_price × quantity）
+  const dessertTotal = priceData?.dessert_total ?? (unitPrice * quantity);
+  const totalPrice = priceData?.grand_total ?? 0;  // 總計（含包裝）
 
   // 檢查是否所有 slot 都已選擇
   const allSlotsSelected = slots.length > 0 && slots.every((slot) => selectedItems[slot]);
@@ -233,6 +244,8 @@ export function useMealBoxCustomizer({ productId }: UseMealBoxCustomizerProps) {
     minOrderQty,
     selectedItems,
     basePrice,
+    unitPrice,
+    dessertTotal,
     quantity,
     totalPrice,
     isLoading,
