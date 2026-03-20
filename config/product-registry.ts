@@ -154,6 +154,13 @@ const LOGIC_REGISTRY: Record<string, ProductConfig> = {
           fee: 1000,
           confirmMessage: "訂購數量未達 100 個，選擇此照片選項需額外加價 NT$1,000，是否繼續？",
         },
+        {
+          triggerOptionId: 7301,
+          condition: "quantity_less_than_and_photo_uploaded",
+          threshold: 100,
+          fee: 1000,
+          confirmMessage: "訂購數量未達 100 個，選擇此照片選項需額外加價 NT$1,000，是否繼續？",
+        },
       ],
     },
     renderStrategy: {
@@ -208,6 +215,13 @@ const LOGIC_REGISTRY: Record<string, ProductConfig> = {
         },
         {
           triggerOptionId: 7300,
+          condition: "quantity_less_than_and_photo_uploaded",
+          threshold: 100,
+          fee: 1000,
+          confirmMessage: "訂購數量未達 100 個，選擇此照片選項需額外加價 NT$1,000，是否繼續？",
+        },
+        {
+          triggerOptionId: 7301,
           condition: "quantity_less_than_and_photo_uploaded",
           threshold: 100,
           fee: 1000,

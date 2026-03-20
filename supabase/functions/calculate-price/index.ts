@@ -194,11 +194,13 @@ Deno.serve(async (req) => {
     }
 
     // ========== 3. 條件費用選項定義 ==========
-    const conditionalFeeOptionIds = [3006, 3007, 7300];
+    const conditionalFeeOptionIds = [3006, 3007, 7300, 7301];
     const conditionalFeeMap: Record<number, { fee: number; name_zh: string }> = {
       3006: { fee: 1000, name_zh: "" },
       3007: { fee: 3000, name_zh: "" },
       7300: { fee: 1000, name_zh: "" },
+      // 與 3006 相同：未達 100 個 + 已上傳照片時的條件加價
+      7301: { fee: 1000, name_zh: "" },
     };
 
     const { data: conditionalOptionsData } = await supabase
