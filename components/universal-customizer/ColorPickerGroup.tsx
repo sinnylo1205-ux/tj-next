@@ -15,6 +15,9 @@ export interface ColorOption {
   is_default?: boolean;
 }
 
+/** 幸運籤餅「不塗巧克力」選項：與白色巧克力同色，按鈕上加紅叉以利區分 */
+const NO_CHOCOLATE_COLOR_OPTION_ID = 7233;
+
 interface ColorPickerGroupProps {
   title?: string;
   options: ColorOption[];
@@ -96,13 +99,22 @@ export function ColorPickerGroup({ title = "顏色選擇", options, selectedOpti
             <button
               onClick={() => onSelect(option)}
               className={`
-                w-12 h-12 rounded-full border-2 transition-all
+                relative w-12 h-12 rounded-full border-2 transition-all
                 ${isSelected ? "border-primary scale-110 shadow-lg" : "border-gray-300 hover:scale-105"}
               `}
               style={{ backgroundColor: option.hex }}
               title={option.option_name_zh}
               aria-label={option.option_name_zh}
-            />
+            >
+              {option.option_id === NO_CHOCOLATE_COLOR_OPTION_ID && (
+                <span
+                  className="pointer-events-none absolute inset-0 flex items-center justify-center text-2xl font-bold leading-none text-red-600 drop-shadow-sm"
+                  aria-hidden
+                >
+                  ×
+                </span>
+              )}
+            </button>
 
             {/* 名稱 */}
             <span className="text-xs text-muted-foreground text-center leading-tight">{option.option_name_zh}</span>
