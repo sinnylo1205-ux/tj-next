@@ -31,7 +31,11 @@ export default function ResetPasswordPage() {
     setIsLoading(true);
     try {
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const { error } = await supabase.auth.resetPasswordForEmail(data.email, { redirectTo: `${origin}/login` });
+      // 正式站請在 Supabase → Auth → URL configuration → Redirect URLs 加入：
+      // https://tjcookies.com/reset-password/confirm
+      const { error } = await supabase.auth.resetPasswordForEmail(data.email, {
+        redirectTo: `${origin}/reset-password/confirm`,
+      });
       if (error) {
         toast({ title: "發送失敗", description: error.message || "請稍後再試", variant: "destructive" });
         return;

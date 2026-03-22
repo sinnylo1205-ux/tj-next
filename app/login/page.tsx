@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
@@ -36,6 +36,19 @@ function LoginPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { toast } = useToast();
+  const resetToastShown = useRef(false);
+
+  useEffect(() => {
+    if (resetToastShown.current) return;
+    if (searchParams.get("reset") === "success") {
+      resetToastShown.current = true;
+      toast({
+        title: "密碼已更新",
+        description: "請使用新密碼登入",
+      });
+      window.history.replaceState(null, "", "/login");
+    }
+  }, [searchParams, toast]);
 
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
