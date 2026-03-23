@@ -42,6 +42,9 @@ export interface ProductArticle {
   meta_title: string | null;
   meta_description: string | null;
   og_image_url: string | null;
+  /** template | richtext（新排版） */
+  content_mode?: string | null;
+  body_json?: unknown;
 }
 
 const productPaths: Record<string, string> = {
@@ -58,8 +61,16 @@ const productPaths: Record<string, string> = {
   donut: "/product/donut",
 };
 
-export default function BlogArticleContent({ article }: { article: ProductArticle }) {
+export default function BlogArticleContent({
+  article,
+  richBodyHtml,
+}: {
+  article: ProductArticle;
+  /** 由伺服端自 body_json 產生，避免把 Tiptap 整包進 client */
+  richBodyHtml?: string | null;
+}) {
   const noticePath = productPaths[article.product_id] || `/product/${article.product_id}`;
+  const isRichtext = article.content_mode === "richtext" && richBodyHtml;
 
   return (
     <div className="container py-8 md:py-12">
@@ -80,7 +91,21 @@ export default function BlogArticleContent({ article }: { article: ProductArticl
       </Breadcrumb>
 
       <article className="max-w-3xl mx-auto">
-        <header className="mb-8">
+        {isRichtext ? (
+          <>
+            <header className="mb-8">
+              {article.og_image_url && (
+                <img src={article.og_image_url} alt={article.item_name} className="w-full h-64 object-cover rounded-xl mb-4" />
+              )}
+            </header>
+            <div
+              className="article-rich-body text-foreground mb-8"
+              dangerouslySetInnerHTML={{ __html: richBodyHtml! }}
+            />
+          </>
+        ) : (
+          <>
+            <header className="mb-8">
           {article.og_image_url && (
             <img src={article.og_image_url} alt={article.item_name} className="w-full h-64 object-cover rounded-xl mb-4" />
           )}
@@ -135,6 +160,8 @@ export default function BlogArticleContent({ article }: { article: ProductArticl
               ))}
             </Accordion>
           </section>
+        )}
+          </>
         )}
 
         <div className="flex flex-wrap gap-4 pt-6">

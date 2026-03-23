@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
+import { unstable_noStore as noStore } from "next/cache";
 import { BookOpen } from "lucide-react";
+import { createSupabasePublicUncached } from "@/lib/supabase-blog-public";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -31,7 +32,12 @@ const defaultArticles = [
   { slug: "donut", item_name: "甜甜圈", product_id: "donut" },
 ];
 
+/** 文章列表需即時反映後台發布狀態 */
+export const dynamic = "force-dynamic";
+
 export default async function BlogIndexPage() {
+  noStore();
+  const supabase = createSupabasePublicUncached();
   const { data: articles = [] } = await supabase
     .from("product_articles")
     .select("slug, item_name, intro, og_image_url")

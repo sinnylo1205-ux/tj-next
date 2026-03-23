@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
 import { getFullUrl } from "@/lib/site";
-import { supabase } from "@/lib/supabase";
+import { createSupabasePublicUncached } from "@/lib/supabase-blog-public";
 
 interface LayoutProps {
   params: Promise<{ slug: string }>;
@@ -8,6 +9,8 @@ interface LayoutProps {
 }
 
 async function getArticleMeta(slug: string) {
+  noStore();
+  const supabase = createSupabasePublicUncached();
   const { data, error } = await supabase
     .from("product_articles")
     .select("item_name, meta_title, meta_description, og_image_url")
@@ -25,6 +28,7 @@ async function getArticleMeta(slug: string) {
 }
 
 export async function generateMetadata({ params }: LayoutProps): Promise<Metadata> {
+  noStore();
   const { slug } = await params;
   const article = await getArticleMeta(slug);
 
