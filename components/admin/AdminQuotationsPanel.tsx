@@ -108,6 +108,70 @@ const renderValue = (value: any): string => {
   return String(value);
 };
 
+/** 從單一欄位蒐集可點連結的圖檔 URL（字串或巢狀陣列） */
+function collectImageUrlsFromField(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (typeof raw === "string") {
+    const t = raw.trim();
+    if (!t) return [];
+    if (t.startsWith("http://") || t.startsWith("https://")) return [t];
+    return [];
+  }
+  if (Array.isArray(raw)) {
+    return raw.flatMap((x) => collectImageUrlsFromField(x));
+  }
+  return [];
+}
+
+/** 品項 all_requirement / customizations_json 內的風格參考圖 */
+function getItemStyleReferenceUrls(item: QuotationOrderItem): string[] {
+  const req = item.all_requirement;
+  const fromReq = collectImageUrlsFromField(req?.reference_images);
+  const cust = item.customizations_json;
+  const fromCust =
+    cust && typeof cust === "object" && !Array.isArray(cust)
+      ? collectImageUrlsFromField((cust as Record<string, unknown>).reference_images)
+      : [];
+  return [...new Set([...fromReq, ...fromCust])];
+}
+
+/** 全單 service_order（甜點佈置 candyBar、禮盒 GiftBox）內上傳的參考圖／檔連結 */
+function getOrderServiceStyleReferenceUrls(allReq: any): string[] {
+  const so = allReq?.service_order;
+  if (!so || typeof so !== "object") return [];
+  const keys = ["reference_images", "reference_files", "style_reference_images"] as const;
+  const urls: string[] = [];
+  for (const block of [so.candyBar, so.GiftBox]) {
+    if (!block || typeof block !== "object") continue;
+    for (const k of keys) {
+      urls.push(...collectImageUrlsFromField((block as Record<string, unknown>)[k]));
+    }
+  }
+  return [...new Set(urls)];
+}
+
+const StyleReferenceLinksBlock = ({ label, urls }: { label: string; urls: string[] }) => {
+  if (urls.length === 0) return null;
+  return (
+    <div className="space-y-1">
+      <Label className="text-sm">{label}</Label>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        {urls.map((url, idx) => (
+          <a
+            key={`${url}-${idx}`}
+            href={url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm text-primary hover:underline inline-flex items-center gap-1"
+          >
+            參考圖 {idx + 1} <ExternalLink className="h-3 w-3" />
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // Render all_requirement JSON into readable sections
 const renderAllRequirement = (allReq: any) => {
   if (!allReq || typeof allReq !== "object") return null;
@@ -297,25 +361,7 @@ const ItemEditor = ({ item, unitPrice, previewUrl, whyPrice, onUnitPriceChange, 
         <Badge variant="outline">{item.category}</Badge>
       </div>
 
-      {/* Reference Images */}
-      {req.reference_images && (Array.isArray(req.reference_images) ? req.reference_images.length > 0 : req.reference_images) && (
-        <div className="space-y-1">
-          <Label className="text-sm">📎 用戶參考圖：</Label>
-          <div className="space-y-1">
-            {(Array.isArray(req.reference_images) ? req.reference_images : [req.reference_images]).map((url: string, idx: number) => (
-              <a
-                key={idx}
-                href={url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-primary hover:underline inline-flex items-center gap-1 mr-3"
-              >
-                參考圖 {idx + 1} <ExternalLink className="h-3 w-3" />
-              </a>
-            ))}
-          </div>
-        </div>
-      )}
+      <StyleReferenceLinksBlock label="🎨 用戶風格參考圖連結" urls={getItemStyleReferenceUrls(item)} />
 
       {/* Unit price input */}
       <div className="flex items-center gap-4">
@@ -856,6 +902,11 @@ const AdminQuotationsPanel = () => {
                               )}
                             </div>
 
+                            <StyleReferenceLinksBlock
+                              label="🎨 用戶風格參考圖連結（甜點佈置／禮盒等服務區）"
+                              urls={getOrderServiceStyleReferenceUrls(q.all_requirement)}
+                            />
+
                             <Separator />
 
                             {/* ========== 下半部：報價填寫（品項細節僅此區，無重複服務內容/客製化品項明細） ========== */}
@@ -1035,16 +1086,19 @@ const AdminQuotationsPanel = () => {
 
                                 {/* Show quoted items */}
                                 {qItems.map((item) => (
-                                  <div key={item.id} className="p-3 border rounded-lg bg-background flex justify-between items-center">
-                                    <div>
-                                      <p className="font-medium">{item.product_name} x {item.quantity}</p>
-                                      <p className="text-sm text-muted-foreground">
-                                        單價 NT$ {item.unit_price?.toLocaleString() ?? 0}
-                                      </p>
+                                  <div key={item.id} className="p-3 border rounded-lg bg-background space-y-2">
+                                    <div className="flex justify-between items-center gap-3">
+                                      <div>
+                                        <p className="font-medium">{item.product_name} x {item.quantity}</p>
+                                        <p className="text-sm text-muted-foreground">
+                                          單價 NT$ {item.unit_price?.toLocaleString() ?? 0}
+                                        </p>
+                                      </div>
+                                      <div className="text-sm font-medium shrink-0">
+                                        NT$ {((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
+                                      </div>
                                     </div>
-                                    <div className="text-sm font-medium">
-                                      NT$ {((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
-                                    </div>
+                                    <StyleReferenceLinksBlock label="🎨 用戶風格參考圖連結" urls={getItemStyleReferenceUrls(item)} />
                                   </div>
                                 ))}
 
@@ -1220,17 +1274,20 @@ const AdminQuotationsPanel = () => {
 
                                 {/* Show items */}
                                 {qItems.map((item) => (
-                                  <div key={item.id} className="p-3 border rounded-lg bg-background flex gap-3">
-                                    {item.preview_url && (
-                                      <img src={item.preview_url} alt={item.product_name || ""} className="w-16 h-16 rounded object-cover" />
-                                    )}
-                                    <div>
-                                      <p className="font-medium">{item.product_name} x {item.quantity}</p>
-                                      <p className="text-sm text-muted-foreground">
-                                        單價 NT$ {item.unit_price?.toLocaleString() ?? 0} · 小計 NT${" "}
-                                        {((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
-                                      </p>
+                                  <div key={item.id} className="p-3 border rounded-lg bg-background space-y-2">
+                                    <div className="flex gap-3">
+                                      {item.preview_url && (
+                                        <img src={item.preview_url} alt={item.product_name || ""} className="w-16 h-16 rounded object-cover shrink-0" />
+                                      )}
+                                      <div className="min-w-0 flex-1">
+                                        <p className="font-medium">{item.product_name} x {item.quantity}</p>
+                                        <p className="text-sm text-muted-foreground">
+                                          單價 NT$ {item.unit_price?.toLocaleString() ?? 0} · 小計 NT${" "}
+                                          {((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
+                                        </p>
+                                      </div>
                                     </div>
+                                    <StyleReferenceLinksBlock label="🎨 用戶風格參考圖連結" urls={getItemStyleReferenceUrls(item)} />
                                   </div>
                                 ))}
                               </div>
