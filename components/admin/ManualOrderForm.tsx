@@ -97,6 +97,12 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
   // LINE User ID state（手動訂單專用）
   const [lineUserId, setLineUserId] = useState("");
 
+  /** 建立時訂單／付款狀態（可選「處理中」等，並寫入 auto_cancel_exempt） */
+  const [orderStatus, setOrderStatus] = useState<string>("processing");
+  const [paymentStep, setPaymentStep] = useState<string>("verified");
+  /** 客戶類型標籤，空字串表示不設定 */
+  const [customerType, setCustomerType] = useState<string>("");
+
   // 統編/抬頭
   const [taxTitle, setTaxTitle] = useState("");
   const [taxId, setTaxId] = useState("");
@@ -228,7 +234,11 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
 
     // Validation
     if (!recipientName.trim()) {
-      toast({ title: "請填寫收件人姓名", variant: "destructive" });
+      toast({ title: "請填寫訂購人／聯絡姓名", variant: "destructive" });
+      return;
+    }
+    if (whoReceiveType === "custom" && !whoReceiveName.trim()) {
+      toast({ title: "請填寫實際收件人姓名", variant: "destructive" });
       return;
     }
 
@@ -247,20 +257,25 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
       // Create order
       // Determine who_receive: use whoReceiveValue, fallback to recipientName
       const finalWhoReceive = whoReceiveValue || recipientName;
+      /** 非「等待付款＋未匯款」則標記不受 24h 自動取消（手動單 cron 本即略過，此為資料一致性） */
+      const autoCancelExempt = !(orderStatus === "awaiting_payment" && paymentStep === "pending");
 
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .insert({
           user_id: user.id,
           is_manual_order: true,
+          orderer_name: recipientName.trim(),
+          customer_type: customerType || null,
           shipping_address_text: shippingAddress,
           notes: notes || null,
           expected_pickup_date: expectedPickupDateString || (expectedPickupDate ? format(expectedPickupDate, "yyyy-MM-dd") : null),
           shipping_fee: shippingFee,
           subtotal: subtotal,
           total_amount: totalAmount,
-          payment_step: "verified", // 手動訂單預設已確認付款
-          order_status: "processing", // 手動訂單預設處理中
+          payment_step: paymentStep,
+          order_status: orderStatus,
+          auto_cancel_exempt: autoCancelExempt,
           payment_method: "cash",
           shipping_way: shippingWay,
           who_receive: finalWhoReceive,
@@ -476,11 +491,66 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
 
         <Separator />
 
+        {/* 訂單狀態（建立時） */}
+        <div className="space-y-3">
+          <Label className="text-base font-semibold">訂單狀態（建立時）</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label>訂單狀態</Label>
+              <Select value={orderStatus} onValueChange={setOrderStatus}>
+                <SelectTrigger>
+                  <SelectValue placeholder="選擇狀態" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="awaiting_payment">等待付款</SelectItem>
+                  <SelectItem value="processing">處理中</SelectItem>
+                  <SelectItem value="shipped">出貨中</SelectItem>
+                  <SelectItem value="delivered">已送達</SelectItem>
+                  <SelectItem value="canceled">已取消</SelectItem>
+                  <SelectItem value="returned">已退貨</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>付款狀態</Label>
+              <Select value={paymentStep} onValueChange={setPaymentStep}>
+                <SelectTrigger>
+                  <SelectValue placeholder="選擇付款狀態" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">未匯款</SelectItem>
+                  <SelectItem value="submitted">已匯款（待確認）</SelectItem>
+                  <SelectItem value="verified">已確認到帳</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label>客戶類型（選填）</Label>
+              <Select value={customerType || "none"} onValueChange={(v) => setCustomerType(v === "none" ? "" : v)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="不設定" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">不設定</SelectItem>
+                  <SelectItem value="general">一般用戶</SelectItem>
+                  <SelectItem value="flash_ip">快閃店/IP</SelectItem>
+                  <SelectItem value="pr_agency">公關公司/福委會</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            選擇「等待付款」且「未匯款」時會寫入可受 24 小時規則影響的標記；其餘組合（例如處理中、已確認到帳）會標記為不受 24 小時自動取消影響。手動訂單在排程上本來就不會被自動取消，上述欄位供資料與未來流程一致。
+          </p>
+        </div>
+
+        <Separator />
+
         {/* Customer Info */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <Label>收件人姓名 *</Label>
-            <Input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="輸入收件人姓名" />
+            <Label>訂購人／聯絡姓名 *</Label>
+            <Input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="訂購人或聯絡窗口姓名" />
           </div>
 
           <div className="space-y-2">
@@ -525,7 +595,10 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
 
           {/* who_receive 選項 */}
           <div className="space-y-2 md:col-span-2">
-            <Label>實際收件人</Label>
+            <Label>實際收件人（資料庫欄位：who_receive）</Label>
+            <p className="text-xs text-muted-foreground">
+              訂購人會寫入 orderer_name；實際收件人寫入 who_receive。若與訂購人不同，請選「自行輸入」。
+            </p>
             <RadioGroup
               value={whoReceiveType}
               onValueChange={(v) => setWhoReceiveType(v as "custom" | "same")}

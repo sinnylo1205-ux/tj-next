@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Fragment } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,11 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { ChevronDown, ChevronUp, ExternalLink, Plus, Trash2, CalendarIcon, X } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, ExternalLink, Plus, Trash2, CalendarIcon, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
+import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
 import ManualOrderForm from "./ManualOrderForm";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -56,6 +58,27 @@ interface Order {
   line_user_id?: string | null;
   payment_method?: string | null;
   is_hide?: boolean;
+  /** 客戶類型：general | flash_ip | pr_agency */
+  customer_type?: string | null;
+  /** 歷史／手動單可能寫入；後台「訂購人」顯示一律依 user_id 查 user_log_in.name */
+  orderer_name?: string | null;
+}
+
+/** 訂購人顯示名稱：依 orders.user_id 對應 user_log_in.name（無 orders.name 欄位） */
+function buyerDisplayName(userInfo: User | undefined): string {
+  const n = userInfo?.name?.trim();
+  return n || "";
+}
+
+const CUSTOMER_TYPE_OPTIONS = [
+  { value: "general", label: "一般用戶" },
+  { value: "flash_ip", label: "快閃店/IP" },
+  { value: "pr_agency", label: "公關公司/福委會" },
+] as const;
+
+function customerTypeLabel(v: string | null | undefined): string | null {
+  if (!v) return null;
+  return CUSTOMER_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v;
 }
 
 interface OrderItem {
@@ -98,6 +121,7 @@ const OrderStatusManager = () => {
   // 搜尋篩選狀態
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDate, setSearchDate] = useState<Date | undefined>();
+  const [customerTypePopoverId, setCustomerTypePopoverId] = useState<string | null>(null);
 
   // 使用 useCallback 包裝 loadOrders 避免閉包問題
   const loadOrders = useCallback(async () => {
@@ -161,11 +185,13 @@ const OrderStatusManager = () => {
       .in("id", userIds);
 
     if (!error && data) {
-      const userMap: Record<string, User> = {};
-      data.forEach((u) => {
-        userMap[u.id] = u;
+      setUsers((prev) => {
+        const next = { ...prev };
+        data.forEach((u) => {
+          next[u.id] = u;
+        });
+        return next;
       });
-      setUsers(userMap);
     }
   };
 
@@ -201,6 +227,7 @@ const OrderStatusManager = () => {
 
   const openEditOrder = (order: Order) => {
     setEditingOrder(order);
+    if (order.user_id) void loadUsers([order.user_id]);
     setEditDraft({
       user_id: order.user_id,
       Email: order.Email ?? "",
@@ -225,7 +252,29 @@ const OrderStatusManager = () => {
       is_from_quotation: !!order.is_from_quotation,
       auto_cancel_exempt: !!order.auto_cancel_exempt,
       is_hide: !!order.is_hide,
+      customer_type: order.customer_type ?? "",
     });
+  };
+
+  /** 客戶類型：直接更新 orders（RLS 已允許 admin），不依賴雲端是否已部署含 customer_type 的 admin-update-order */
+  const updateCustomerType = async (orderId: string, type: string | null) => {
+    try {
+      const { error } = await supabase.from("orders").update({ customer_type: type }).eq("id", orderId);
+      if (error) {
+        toast({ title: "更新客戶類型失敗", description: error.message, variant: "destructive" });
+        return;
+      }
+      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, customer_type: type } : o)));
+      toast({ title: "已更新客戶類型" });
+    } catch (err: unknown) {
+      toast({
+        title: "更新客戶類型失敗",
+        description: err instanceof Error ? err.message : "請稍後再試",
+        variant: "destructive",
+      });
+    } finally {
+      setCustomerTypePopoverId(null);
+    }
   };
 
   const saveOrderEdits = async () => {
@@ -244,14 +293,71 @@ const OrderStatusManager = () => {
       if (patch.transfer_last5 === "") patch.transfer_last5 = null;
       if (patch.admin_note === "") patch.admin_note = null;
       if (patch.expected_pickup_date === "") patch.expected_pickup_date = null;
+      if (patch.customer_type === "") patch.customer_type = null;
+      delete patch.orderer_name;
 
       const { data, error } = await supabase.functions.invoke("admin-update-order", {
         body: { order_id: editingOrder.id, patch },
       });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
 
-      const updated = data?.order as Order | undefined;
+      const noUpdatableFields = (msg: string) =>
+        msg.includes("沒有可更新的欄位") || msg.toLowerCase().includes("no fields");
+
+      let updated: Order | undefined = data?.order as Order | undefined;
+
+      if (error) {
+        const detail = await getEdgeFunctionErrorDetail(error);
+        if (noUpdatableFields(detail)) {
+          const { data: row, error: directErr } = await supabase
+            .from("orders")
+            .update(patch)
+            .eq("id", editingOrder.id)
+            .select("*")
+            .single();
+          if (directErr || !row) {
+            toast({
+              title: "更新失敗",
+              description: directErr?.message ?? "請稍後再試",
+              variant: "destructive",
+            });
+            return;
+          }
+          updated = row as Order;
+        } else {
+          toast({ title: "更新失敗", description: detail, variant: "destructive" });
+          return;
+        }
+      } else if (data?.error) {
+        const msg =
+          (data as { details?: string; error?: string }).details ||
+          (data as { error: string }).error ||
+          "";
+        if (noUpdatableFields(msg)) {
+          const { data: row, error: directErr } = await supabase
+            .from("orders")
+            .update(patch)
+            .eq("id", editingOrder.id)
+            .select("*")
+            .single();
+          if (directErr || !row) {
+            toast({
+              title: "更新失敗",
+              description: directErr?.message ?? msg,
+              variant: "destructive",
+            });
+            return;
+          }
+          updated = row as Order;
+        } else {
+          toast({
+            title: "更新失敗",
+            description: msg,
+            variant: "destructive",
+          });
+          return;
+        }
+      }
+
       if (updated?.id) {
         setOrders((prev) => prev.map((o) => (o.id === updated.id ? { ...o, ...updated } : o)));
       } else {
@@ -259,8 +365,12 @@ const OrderStatusManager = () => {
       }
       toast({ title: "✅ 訂單已更新" });
       setEditingOrder(null);
-    } catch (e: any) {
-      toast({ title: "更新失敗", description: e?.message || "請稍後再試", variant: "destructive" });
+    } catch (e: unknown) {
+      const detail =
+        e && typeof e === "object" && "message" in e && typeof (e as Error).message === "string"
+          ? await getEdgeFunctionErrorDetail(e)
+          : "請稍後再試";
+      toast({ title: "更新失敗", description: detail, variant: "destructive" });
     } finally {
       setSavingEdit(false);
     }
@@ -526,8 +636,8 @@ const OrderStatusManager = () => {
                     const userInfo = users[order.user_id];
 
                     return (
-                      <>
-                        <TableRow key={order.id}>
+                      <Fragment key={order.id}>
+                        <TableRow>
                           <TableCell className="font-medium">#{order.id.slice(0, 6).toUpperCase()}</TableCell>
                           <TableCell>{order.expected_pickup_date || "未指定"}</TableCell>
                           <TableCell>
@@ -536,6 +646,18 @@ const OrderStatusManager = () => {
                                 {(order.who_receive || "未填寫") + "（報價單）"}
                                 <br />
                                 <span className="text-xs text-muted-foreground">非網站會員</span>
+                              </>
+                            ) : order.is_manual_order ? (
+                              <>
+                                <span className="font-medium">訂購：{buyerDisplayName(userInfo) || "—"}</span>
+                                {order.who_receive?.trim() && (
+                                  <>
+                                    <br />
+                                    <span className="text-sm text-muted-foreground">收件：{order.who_receive}</span>
+                                  </>
+                                )}
+                                <br />
+                                <span className="text-xs text-muted-foreground">（手動）</span>
                               </>
                             ) : (
                               <>
@@ -660,11 +782,81 @@ const OrderStatusManager = () => {
                           </TableCell>
                           <TableCell className="min-w-[140px]">
                             <div className="flex flex-col gap-1.5">
-                              {order.is_manual_order && (
-                                <Badge variant="outline" className="w-fit bg-amber-50 text-amber-700 border-amber-300">
-                                  手動訂單
-                                </Badge>
-                              )}
+                              <div className="flex flex-wrap items-center gap-1">
+                                {order.is_manual_order && (
+                                  <Badge variant="outline" className="w-fit bg-amber-50 text-amber-700 border-amber-300">
+                                    手動訂單
+                                  </Badge>
+                                )}
+                                <Popover
+                                  open={customerTypePopoverId === order.id}
+                                  onOpenChange={(open) => setCustomerTypePopoverId(open ? order.id : null)}
+                                >
+                                  <PopoverTrigger asChild>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      className={cn(
+                                        "h-7 shrink-0 gap-1 px-2 font-normal",
+                                        order.customer_type &&
+                                          customerTypeLabel(order.customer_type) &&
+                                          "border-sky-200 bg-sky-50 text-sky-900 hover:bg-sky-100 hover:text-sky-950",
+                                      )}
+                                      aria-label={
+                                        order.customer_type && customerTypeLabel(order.customer_type)
+                                          ? "修改客戶類型"
+                                          : "新增客戶類型"
+                                      }
+                                    >
+                                      {order.customer_type && customerTypeLabel(order.customer_type) ? (
+                                        <>
+                                          <span className="max-w-[140px] truncate">
+                                            {customerTypeLabel(order.customer_type)}
+                                          </span>
+                                          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                                        </>
+                                      ) : (
+                                        <Plus className="h-4 w-4" />
+                                      )}
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-56 p-2" align="start">
+                                    <p className="text-xs text-muted-foreground px-2 pb-1">客戶類型（可點選變更）</p>
+                                    <div className="flex flex-col gap-0.5">
+                                      {CUSTOMER_TYPE_OPTIONS.map((opt) => {
+                                        const selected = order.customer_type === opt.value;
+                                        return (
+                                          <Button
+                                            key={opt.value}
+                                            type="button"
+                                            variant={selected ? "secondary" : "ghost"}
+                                            size="sm"
+                                            className="h-8 w-full justify-start gap-2 px-2"
+                                            onClick={() => void updateCustomerType(order.id, opt.value)}
+                                          >
+                                            {selected ? (
+                                              <Check className="h-4 w-4 shrink-0" aria-hidden />
+                                            ) : (
+                                              <span className="w-4 shrink-0" aria-hidden />
+                                            )}
+                                            {opt.label}
+                                          </Button>
+                                        );
+                                      })}
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="justify-start h-8 text-muted-foreground"
+                                        onClick={() => void updateCustomerType(order.id, null)}
+                                      >
+                                        清除標籤
+                                      </Button>
+                                    </div>
+                                  </PopoverContent>
+                                </Popover>
+                              </div>
                               <Button variant="outline" size="sm" className="h-8" onClick={() => openEditOrder(order)}>
                                 編輯訂單
                               </Button>
@@ -679,13 +871,27 @@ const OrderStatusManager = () => {
                                     const { data, error } = await supabase.functions.invoke("admin-update-order", {
                                       body: { order_id: order.id, patch: { admin_note: value || null } },
                                     });
-                                    if (error) throw error;
-                                    if (data?.error) throw new Error(data.error);
+                                    if (error) {
+                                      const detail = await getEdgeFunctionErrorDetail(error);
+                                      toast({ title: "儲存備注失敗", description: detail, variant: "destructive" });
+                                      return;
+                                    }
+                                    if (data?.error) {
+                                      toast({
+                                        title: "儲存備注失敗",
+                                        description:
+                                          (data as { details?: string; error?: string }).details ||
+                                          (data as { error: string }).error,
+                                        variant: "destructive",
+                                      });
+                                      return;
+                                    }
                                     setOrders((prev) =>
                                       prev.map((o) => (o.id === order.id ? { ...o, admin_note: value || null } : o)),
                                     );
-                                  } catch (err: any) {
-                                    toast({ title: "儲存備注失敗", description: err?.message || "請稍後再試", variant: "destructive" });
+                                  } catch (err: unknown) {
+                                    const detail = await getEdgeFunctionErrorDetail(err);
+                                    toast({ title: "儲存備注失敗", description: detail, variant: "destructive" });
                                   }
                                 }}
                               />
@@ -694,12 +900,25 @@ const OrderStatusManager = () => {
                         </TableRow>
 
                         {isExpanded && (
-                          <TableRow>
+                          <TableRow key={`${order.id}-detail`}>
                             <TableCell colSpan={9} className="bg-muted/30">
                               <div className="p-4 space-y-4">
                                 <div className="grid grid-cols-2 gap-4 text-sm">
+                                  <div className="col-span-2 text-xs text-muted-foreground border-l-2 border-primary/30 pl-2 py-1 mb-1">
+                                    訂購人顯示為會員姓名（
+                                    <code className="text-[11px] bg-muted px-1 rounded">user_log_in.name</code>
+                                    ，依 <code className="text-[11px] bg-muted px-1 rounded">user_id</code>
+                                    查詢）；資料庫無 <code className="text-[11px] bg-muted px-1 rounded">orders.name</code>
+                                    。實際收件人為{" "}
+                                    <code className="text-[11px] bg-muted px-1 rounded">who_receive</code>
+                                    。
+                                  </div>
                                   <div>
-                                    <span className="font-medium">收件人：</span>
+                                    <span className="font-medium">訂購人（會員姓名）：</span>
+                                    {buyerDisplayName(userInfo) || "—"}
+                                  </div>
+                                  <div>
+                                    <span className="font-medium">實際收件人（who_receive）：</span>
                                     {order.who_receive || "未填寫"}
                                   </div>
                                   <div>
@@ -821,7 +1040,7 @@ const OrderStatusManager = () => {
                             </TableCell>
                           </TableRow>
                         )}
-                      </>
+                      </Fragment>
                     );
                   })}
                 </TableBody>
@@ -839,8 +1058,28 @@ const OrderStatusManager = () => {
         </DialogHeader>
         <div className="grid grid-cols-2 gap-4 overflow-y-auto pr-1">
           <div className="space-y-1">
-            <span className="text-sm text-muted-foreground">用戶 ID</span>
-            <Input value={editDraft.user_id ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, user_id: e.target.value }))} />
+            <span className="text-sm text-muted-foreground">用戶 ID（user_id）</span>
+            <Input
+              value={editDraft.user_id ?? ""}
+              onChange={(e) => setEditDraft((p) => ({ ...p, user_id: e.target.value }))}
+              onBlur={(e) => {
+                const id = e.currentTarget.value.trim();
+                if (id) void loadUsers([id]);
+              }}
+            />
+            <p className="text-xs text-muted-foreground">
+              訂購人姓名取自 <code className="text-[11px] bg-muted px-1 rounded">user_log_in.name</code>
+              （依 user_id），非 orders 上的 name 欄位。
+            </p>
+          </div>
+          <div className="space-y-1">
+            <span className="text-sm text-muted-foreground">訂購人（會員姓名）</span>
+            <Input
+              readOnly
+              className="bg-muted/50"
+              value={buyerDisplayName(users[editDraft.user_id ?? ""]) || "—"}
+              title="由 user_log_in.name 顯示，請至客戶管理修改會員姓名"
+            />
           </div>
           <div className="space-y-1">
             <span className="text-sm text-muted-foreground">LINE user_id</span>
@@ -859,8 +1098,23 @@ const OrderStatusManager = () => {
             <Input value={editDraft.phone ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, phone: e.target.value }))} />
           </div>
           <div className="space-y-1">
-            <span className="text-sm text-muted-foreground">收件人</span>
+            <span className="text-sm text-muted-foreground">實際收件人 who_receive</span>
             <Input value={editDraft.who_receive ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, who_receive: e.target.value }))} />
+          </div>
+          <div className="space-y-1 col-span-2">
+            <span className="text-sm text-muted-foreground">客戶類型</span>
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              value={editDraft.customer_type ?? ""}
+              onChange={(e) => setEditDraft((p) => ({ ...p, customer_type: e.target.value }))}
+            >
+              <option value="">未設定</option>
+              {CUSTOMER_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="space-y-1">
             <span className="text-sm text-muted-foreground">預計取件日期 (YYYY-MM-DD)</span>
