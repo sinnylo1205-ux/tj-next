@@ -350,9 +350,7 @@ const ItemEditor = ({ item, unitPrice, previewUrl, whyPrice, onUnitPriceChange, 
     <div className="p-4 border rounded-lg bg-background space-y-3">
       <div className="flex justify-between items-start">
         <div>
-          <p className="font-semibold text-base">
-            {item.product_name} <span className="text-muted-foreground">x {item.quantity}</span>
-          </p>
+          <p className="font-semibold text-base">{item.product_name}</p>
           {req.customization && (
             <p className="text-sm text-muted-foreground">客製化需求：{req.customization}</p>
           )}
@@ -363,7 +361,7 @@ const ItemEditor = ({ item, unitPrice, previewUrl, whyPrice, onUnitPriceChange, 
 
       <StyleReferenceLinksBlock label="🎨 用戶風格參考圖連結" urls={getItemStyleReferenceUrls(item)} />
 
-      {/* Unit price input */}
+      {/* 單價（顯示在數量說明之後、與下欄編輯一致：單價在上） */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2 flex-1">
           <Label className="whitespace-nowrap text-sm">單價：</Label>
@@ -381,6 +379,7 @@ const ItemEditor = ({ item, unitPrice, previewUrl, whyPrice, onUnitPriceChange, 
           小計：NT$ {lineTotal.toLocaleString()}
         </div>
       </div>
+      <p className="text-sm text-muted-foreground">數量 × {item.quantity}</p>
 
       {/* Why Price (報價備注) */}
       <div className="space-y-1">
@@ -1089,10 +1088,11 @@ const AdminQuotationsPanel = () => {
                                   <div key={item.id} className="p-3 border rounded-lg bg-background space-y-2">
                                     <div className="flex justify-between items-center gap-3">
                                       <div>
-                                        <p className="font-medium">{item.product_name} x {item.quantity}</p>
+                                        <p className="font-medium">{item.product_name}</p>
                                         <p className="text-sm text-muted-foreground">
                                           單價 NT$ {item.unit_price?.toLocaleString() ?? 0}
                                         </p>
+                                        <p className="text-sm text-muted-foreground">數量 × {item.quantity}</p>
                                       </div>
                                       <div className="text-sm font-medium shrink-0">
                                         NT$ {((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
@@ -1280,9 +1280,13 @@ const AdminQuotationsPanel = () => {
                                         <img src={item.preview_url} alt={item.product_name || ""} className="w-16 h-16 rounded object-cover shrink-0" />
                                       )}
                                       <div className="min-w-0 flex-1">
-                                        <p className="font-medium">{item.product_name} x {item.quantity}</p>
+                                        <p className="font-medium">{item.product_name}</p>
                                         <p className="text-sm text-muted-foreground">
-                                          單價 NT$ {item.unit_price?.toLocaleString() ?? 0} · 小計 NT${" "}
+                                          單價 NT$ {item.unit_price?.toLocaleString() ?? 0}
+                                        </p>
+                                        <p className="text-sm text-muted-foreground">數量 × {item.quantity}</p>
+                                        <p className="text-sm text-muted-foreground">
+                                          小計 NT${" "}
                                           {((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
                                         </p>
                                       </div>

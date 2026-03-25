@@ -407,6 +407,10 @@ function MemberPageContent() {
                         </div>
                       )}
                       <div className="mt-2 text-sm md:text-base">
+                        <span className="text-muted-foreground">單價：</span>
+                        NT$ {Number(item.unit_price ?? 0).toLocaleString()}
+                      </div>
+                      <div className="text-sm md:text-base">
                         <span className="text-muted-foreground">數量：</span>
                         {item.quantity_description || item.quantity}
                       </div>

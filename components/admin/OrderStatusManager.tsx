@@ -1029,6 +1029,10 @@ const OrderStatusManager = () => {
                                           </div>
                                         )}
                                         <div className="text-sm">
+                                          <span className="text-muted-foreground">單價：</span>
+                                          NT$ {Number(item.unit_price ?? 0).toLocaleString()}
+                                        </div>
+                                        <div className="text-sm">
                                           <span className="text-muted-foreground">數量：</span>
                                           {item.quantity_description || item.quantity}
                                         </div>

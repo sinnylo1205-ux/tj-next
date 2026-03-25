@@ -431,22 +431,22 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
               </div>
 
               <div className="col-span-4 md:col-span-2">
-                <Label className="text-xs">數量</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={item.quantity}
-                  onChange={(e) => updateOrderItem(item.id, "quantity", parseInt(e.target.value) || 1)}
-                />
-              </div>
-
-              <div className="col-span-4 md:col-span-2">
                 <Label className="text-xs">單價</Label>
                 <Input
                   type="number"
                   min={0}
                   value={item.unit_price}
                   onChange={(e) => updateOrderItem(item.id, "unit_price", parseInt(e.target.value) || 0)}
+                />
+              </div>
+
+              <div className="col-span-4 md:col-span-2">
+                <Label className="text-xs">數量</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  value={item.quantity}
+                  onChange={(e) => updateOrderItem(item.id, "quantity", parseInt(e.target.value) || 1)}
                 />
               </div>
 

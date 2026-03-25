@@ -17,7 +17,7 @@ interface OrderItem {
   product_name: string;
   quantity: number;
   quantity_description: string | null;
-  unit_price: number;
+  unit_price: number | null;
   preview_url: string | null;
   customizations_json: any[];
 }
@@ -45,6 +45,7 @@ interface WorkBlock {
   order_item_id: number;
   order_id: string;
   product_name: string;
+  unit_price: number;
   quantity: number;
   original_quantity: number; // 原始數量（用於追蹤拆分）
   user_name: string;
@@ -186,6 +187,7 @@ const OrderWorkCalendar = () => {
         order_item_id: item.order_item_id,
         order_id: item.order_id,
         product_name: item.product_name,
+        unit_price: Number(item.unit_price ?? 0),
         quantity: item.quantity,
         original_quantity: item.quantity,
         user_name: displayName,
@@ -426,6 +428,7 @@ const OrderWorkCalendar = () => {
                     <span className="font-semibold">{selectedBlock.user_name}</span>
                   </div>
                   <p><span className="text-muted-foreground">商品：</span>{selectedBlock.product_name}</p>
+                  <p><span className="text-muted-foreground">單價：</span>NT$ {Number(selectedBlock.unit_price ?? 0).toLocaleString()}</p>
                   <p><span className="text-muted-foreground">數量：</span>{selectedBlock.quantity} 個</p>
                   <p><span className="text-muted-foreground">排程日期：</span>{selectedBlock.scheduled_date}</p>
                   <p><span className="text-muted-foreground">客戶指定送達/取貨日期：</span>{selectedBlock.expected_pickup_date || "未指定"}</p>

@@ -615,18 +615,25 @@ export default function CheckoutPage() {
                 <CardTitle>🧾 訂單摘要</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                {items.map((item) => (
+                {items.map((item) => {
+                  const lineUnitPrice =
+                    (item.total_price || item.price || 0) / Math.max(1, item.quantity || 1);
+                  return (
                   <div key={item.id} className="flex items-center gap-3 border-b pb-3">
                     {item.preview_url && (
                       <img src={item.preview_url} alt={item.name} className="w-16 h-16 object-cover rounded" width={64} height={64} />
                     )}
                     <div className="flex-1">
                       <p className="font-medium">{item.name}</p>
-                      <p className="text-sm text-muted-foreground">× {item.quantity}</p>
+                      <p className="text-sm text-muted-foreground">
+                        單價 NT$ {Math.round(lineUnitPrice).toLocaleString()}
+                      </p>
+                      <p className="text-sm text-muted-foreground">數量 × {item.quantity}</p>
                     </div>
                     <p className="font-semibold">NT${item.total_price || 0}</p>
                   </div>
-                ))}
+                  );
+                })}
                 <div className="space-y-2 pt-4 border-t">
                   <div className="flex justify-between">
                     <span>商品小計</span>
