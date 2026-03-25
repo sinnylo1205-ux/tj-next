@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import {
@@ -11,6 +12,7 @@ import {
   Settings,
   FileText,
   UtensilsCrossed,
+  MessageSquareText,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
@@ -168,12 +170,21 @@ export default function AdminPage() {
                 <span className="font-medium">{module.title}</span>
               </button>
             ))}
+            <div className="pt-2 mt-2 border-t border-border">
+              <Link
+                href="/admin-text"
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <MessageSquareText className="h-5 w-5" />
+                <span className="font-medium">訂單文字 AI</span>
+              </Link>
+            </div>
           </nav>
         </aside>
       )}
 
       {/* 主內容區 */}
-      <main className={cn("flex-1 overflow-auto", isMobile && "pb-20")}>{renderActivePanel()}</main>
+      <main className={cn("flex-1 overflow-auto", isMobile && "pb-28")}>{renderActivePanel()}</main>
 
       {/* 手機版底部 Tab Bar */}
       {isMobile && (
@@ -194,6 +205,13 @@ export default function AdminPage() {
               </button>
             ))}
           </div>
+          <Link
+            href="/admin-text"
+            className="flex items-center justify-center gap-2 py-2.5 text-xs font-medium border-t border-border text-muted-foreground active:bg-muted"
+          >
+            <MessageSquareText className="h-4 w-4" />
+            訂單文字 AI
+          </Link>
         </nav>
       )}
     </div>

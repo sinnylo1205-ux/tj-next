@@ -30,6 +30,9 @@ verify_jwt = true
 [functions.admin-update-order]
 verify_jwt = true
 
+[functions.text-to-order]
+verify_jwt = true
+
 [functions.verify-line-friendship]
 verify_jwt = false
 

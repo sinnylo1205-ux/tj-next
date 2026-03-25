@@ -15,6 +15,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
+import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import ManualOrderForm from "./ManualOrderForm";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -984,7 +985,9 @@ const OrderStatusManager = () => {
 
                                 <div>
                                   <h4 className="font-semibold mb-3">商品明細</h4>
-                                  {items.map((item) => (
+                                  {items.map((item) => {
+                                    const customizationRows = asOrderCustomizationsList(item.customizations_json);
+                                    return (
                                     <div key={item.order_item_id} className="flex gap-4 mb-4 p-3 bg-background rounded-lg">
                                       {item.preview_url && (
                                         <div className="flex flex-col items-center gap-1">
@@ -1005,9 +1008,9 @@ const OrderStatusManager = () => {
                                       )}
                                       <div className="flex-1 space-y-2">
                                         <p className="font-medium">{item.product_name}</p>
-                                        {item.customizations_json && item.customizations_json.length > 0 && (
+                                        {customizationRows.length > 0 && (
                                           <div className="space-y-1 text-sm text-muted-foreground">
-                                            {item.customizations_json.map((custom: any, idx: number) => (
+                                            {customizationRows.map((custom: any, idx: number) => (
                                               <div key={idx}>
                                                 <span className="font-medium">{custom.group_name_zh}：</span>
                                                 {custom.summary}
@@ -1034,7 +1037,8 @@ const OrderStatusManager = () => {
                                         </div>
                                       </div>
                                     </div>
-                                  ))}
+                                  );
+                                  })}
                                 </div>
                               </div>
                             </TableCell>

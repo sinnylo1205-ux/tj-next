@@ -33,6 +33,7 @@ import {
   Timer,
 } from "lucide-react";
 import { CREDIT_CARD_ENABLED_FOR_ALL } from "@/lib/site";
+import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Order {
@@ -369,7 +370,9 @@ function MemberPageContent() {
           {isExpanded && (
             <div className="space-y-4 md:space-y-6 pt-4 md:pt-6 border-t">
               <h4 className="font-semibold md:text-lg">商品明細</h4>
-              {items.map((item) => (
+              {items.map((item) => {
+                const customizationRows = asOrderCustomizationsList(item.customizations_json);
+                return (
                 <div key={item.order_item_id} className="space-y-2 md:space-y-3 p-4 md:p-6 bg-background border border-border rounded-lg shadow-sm">
                   <div className="flex items-start gap-4 md:gap-5">
                     <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 rounded overflow-hidden bg-muted">
@@ -388,9 +391,9 @@ function MemberPageContent() {
                     </div>
                     <div className="flex-1">
                       <p className="font-medium md:text-lg">{item.product_name}</p>
-                      {item.customizations_json?.length > 0 && (
+                      {customizationRows.length > 0 && (
                         <div className="mt-2 space-y-1 text-sm md:text-base text-muted-foreground">
-                          {item.customizations_json.map((custom: any, idx: number) => (
+                          {customizationRows.map((custom: any, idx: number) => (
                             <div key={idx}>
                               <span className="font-medium">{custom.group_name_zh}：</span>
                               {custom.summary}
@@ -411,7 +414,8 @@ function MemberPageContent() {
                     </div>
                   </div>
                 </div>
-              ))}
+              );
+              })}
               <Separator />
               <div className="space-y-2 text-sm md:text-base">
                 <div className="flex justify-between">

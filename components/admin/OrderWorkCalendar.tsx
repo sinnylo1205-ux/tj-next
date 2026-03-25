@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, X, Split, ExternalLink } from "lucide-react"
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, subDays, getDay, startOfWeek, endOfWeek } from "date-fns";
 import { zhTW } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 
 interface OrderItem {
   order_item_id: number;
@@ -192,7 +193,7 @@ const OrderWorkCalendar = () => {
         scheduled_date: scheduledDate,
         expected_pickup_date: expectedPickupDate,
         preview_url: item.preview_url,
-        customizations_json: item.customizations_json || [],
+        customizations_json: asOrderCustomizationsList(item.customizations_json),
       });
     });
 
@@ -403,7 +404,10 @@ const OrderWorkCalendar = () => {
           <DialogHeader>
             <DialogTitle>工作項目詳情</DialogTitle>
           </DialogHeader>
-          {selectedBlock && (
+          {selectedBlock &&
+            (() => {
+              const customizationRows = asOrderCustomizationsList(selectedBlock.customizations_json);
+              return (
             <div className="space-y-4">
               <div className="flex gap-4">
                 {selectedBlock.preview_url && (
@@ -428,11 +432,11 @@ const OrderWorkCalendar = () => {
                 </div>
               </div>
 
-              {selectedBlock.customizations_json && selectedBlock.customizations_json.length > 0 && (
+              {customizationRows.length > 0 && (
                 <div className="border-t pt-4">
                   <h4 className="font-medium mb-2">客製化選項</h4>
                   <div className="space-y-1 text-sm">
-                    {selectedBlock.customizations_json.map((custom: any, idx: number) => (
+                    {customizationRows.map((custom: any, idx: number) => (
                       <div key={idx}>
                         <span className="text-muted-foreground">{custom.group_name_zh}：</span>
                         {custom.summary}
@@ -462,7 +466,8 @@ const OrderWorkCalendar = () => {
                 </Button>
               </DialogFooter>
             </div>
-          )}
+              );
+            })()}
         </DialogContent>
       </Dialog>
 
