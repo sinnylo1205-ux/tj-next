@@ -3,6 +3,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { createSupabasePublicUncached } from "@/lib/supabase-blog-public";
 import BlogArticleContent, { type ProductArticle } from "./BlogArticleContent";
 import { articleJsonToHtml } from "@/lib/tiptap/article-json-to-html";
+import { decodeBlogSlugParam } from "@/lib/blog-slug";
 
 export const dynamic = "force-dynamic";
 
@@ -12,8 +13,9 @@ interface PageProps {
 
 export default async function BlogSlugPage({ params }: PageProps) {
   noStore();
-  const { slug } = await params;
-  if (!slug) notFound();
+  const { slug: rawSlug } = await params;
+  if (!rawSlug) notFound();
+  const slug = decodeBlogSlugParam(rawSlug);
 
   const supabase = createSupabasePublicUncached();
   const { data, error } = await supabase

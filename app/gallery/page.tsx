@@ -45,6 +45,15 @@ export default function GalleryPage() {
             />
           </div>
         </div>
+
+        <div className="max-w-3xl mx-auto mb-12 px-4 text-center">
+          <p className="text-foreground/90 text-base md:text-lg leading-relaxed">
+            T&J 提供專業甜點茶會佈置（Candy Bar）服務，
+            適用於婚禮、生日派對、企業活動與品牌發表會。
+            從甜點設計到整體視覺佈置，打造專屬風格的甜點桌體驗。
+          </p>
+        </div>
+
         <div className="max-w-7xl mx-auto">
           <div className="relative w-full flex justify-center">
             <img
@@ -80,6 +89,15 @@ export default function GalleryPage() {
             ))}
           </div>
         </div>
+
+        <section className="max-w-3xl mx-auto mt-16 mb-8 px-4 text-center md:text-left">
+          <h2 className="text-xl md:text-2xl font-semibold text-foreground mb-4">甜點桌佈置適用場合</h2>
+          <p className="text-muted-foreground text-base md:text-lg leading-relaxed">
+            Candy Bar 甜點桌適用於婚禮佈置、生日派對、
+            寶寶派對（Baby Shower）、企業活動與品牌展示。
+            透過整體設計與甜點搭配，提升活動質感與拍照效果。
+          </p>
+        </section>
       </div>
     </div>
   );

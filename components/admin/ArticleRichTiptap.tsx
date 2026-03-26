@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getArticleEditorExtensions, ARTICLE_TEXT_COLORS } from "@/lib/tiptap/article-extensions";
-import { Loader2, Save, ImagePlus, Upload } from "lucide-react";
+import { Loader2, Save, ImagePlus, Upload, Link2 } from "lucide-react";
 import type { JSONContent } from "@tiptap/core";
 
 /** custom_asset bucket 內路徑（文章新排版自訂上傳） */
@@ -41,7 +41,16 @@ interface ArticleRichTiptapProps {
   articleSlug: string;
   initialBody: unknown;
   initialIsPublished: boolean;
+  /** 與套版相同：true = noindex */
+  initialSeoNoindex: boolean;
   onSaved: () => void;
+}
+
+function normalizeExternalHref(raw: string): string {
+  const t = raw.trim();
+  if (!t) return "";
+  if (/^https?:\/\//i.test(t)) return t;
+  return `https://${t}`;
 }
 
 /** 新排版：受限 Tiptap（宋體由 CSS、h1–h3、黑／紅、段落圖片） */
@@ -50,6 +59,7 @@ export default function ArticleRichTiptap({
   articleSlug,
   initialBody,
   initialIsPublished,
+  initialSeoNoindex,
   onSaved,
 }: ArticleRichTiptapProps) {
   const { toast } = useToast();
@@ -59,11 +69,19 @@ export default function ArticleRichTiptap({
   const [imgUploading, setImgUploading] = useState(false);
   const [pickedFileName, setPickedFileName] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(initialIsPublished);
+  const [seoNoindex, setSeoNoindex] = useState(initialSeoNoindex);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkHref, setLinkHref] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setIsPublished(initialIsPublished);
   }, [articleId, initialIsPublished]);
+
+  useEffect(() => {
+    setSeoNoindex(initialSeoNoindex);
+  }, [articleId, initialSeoNoindex]);
 
   const editor = useEditor({
     extensions: [
@@ -130,6 +148,7 @@ export default function ArticleRichTiptap({
         body_json,
         content_mode: "richtext",
         is_published: isPublished,
+        seo_noindex: seoNoindex,
       })
       .eq("id", articleId);
     setSaving(false);
@@ -207,6 +226,20 @@ export default function ArticleRichTiptap({
           <ImagePlus className="h-4 w-4 mr-1" />
           插入圖片
         </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="h-8"
+          onClick={() => {
+            setLinkHref("");
+            setLinkLabel("");
+            setLinkOpen(true);
+          }}
+        >
+          <Link2 className="h-4 w-4 mr-1" />
+          加入連結
+        </Button>
       </div>
 
       <EditorContent editor={editor} />
@@ -217,6 +250,17 @@ export default function ArticleRichTiptap({
           <Label htmlFor="article-publish" className="cursor-pointer leading-snug">
             發布至前台（甜點部落格列表與 <code className="text-xs bg-muted px-1 rounded">/blog/{articleSlug}</code> 僅在發布後顯示）
           </Label>
+        </div>
+        <div className="flex flex-col gap-1 rounded-md border border-border bg-background/80 p-3">
+          <div className="flex items-center gap-2">
+            <Switch id="article-seo-noindex" checked={seoNoindex} onCheckedChange={setSeoNoindex} />
+            <Label htmlFor="article-seo-noindex" className="cursor-pointer leading-snug">
+              搜尋引擎不索引此頁（noindex）
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground pl-10">
+            新文章建議不要勾選，以利搜尋引擎收录；舊文或不想參與排名時可勾選。
+          </p>
         </div>
         {!isPublished && (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
@@ -229,6 +273,77 @@ export default function ArticleRichTiptap({
         {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
         儲存新排版
       </Button>
+
+      <Dialog
+        open={linkOpen}
+        onOpenChange={(open) => {
+          setLinkOpen(open);
+          if (!open) {
+            setLinkHref("");
+            setLinkLabel("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>加入外連</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              插入後會顯示「連結名稱」與外連圖示；網址若未含 http 會自動補上 https://
+            </p>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="ext-link-href">連結網址</Label>
+              <Input
+                id="ext-link-href"
+                value={linkHref}
+                onChange={(e) => setLinkHref(e.target.value)}
+                placeholder="https://example.com 或 example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ext-link-label">連結名稱（顯示文字）</Label>
+              <Input
+                id="ext-link-label"
+                value={linkLabel}
+                onChange={(e) => setLinkLabel(e.target.value)}
+                placeholder="例：活動報名頁"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setLinkOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                if (!editor) return;
+                const href = normalizeExternalHref(linkHref);
+                const label = linkLabel.trim();
+                if (!href || !label) {
+                  toast({ title: "請填寫連結網址與名稱", variant: "destructive" });
+                  return;
+                }
+                editor
+                  .chain()
+                  .focus()
+                  .insertContent({
+                    type: "articleExternalLink",
+                    attrs: { href, label },
+                  })
+                  .run();
+                setLinkOpen(false);
+                setLinkHref("");
+                setLinkLabel("");
+                toast({ title: "已插入連結" });
+              }}
+            >
+              插入
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={imgOpen}

@@ -73,11 +73,17 @@ function LoginPageContent() {
         return;
       }
       const { data: userData, error: userError } = await supabase.auth.getUser();
-      if (userError) {
+      if (userError || !userData.user) {
         toast({ title: "登入後讀取資料發生錯誤", variant: "destructive" });
         return;
       }
-      const redirectTo = searchParams.get("redirect") || "/";
+      const { data: adminRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userData.user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      const redirectTo = adminRole ? "/admin" : searchParams.get("redirect") || "/";
       setPendingRedirect(redirectTo);
       setShowSuccessDialog(true);
     } catch {

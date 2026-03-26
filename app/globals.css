@@ -191,10 +191,39 @@ h3 {
   margin: 0.35rem 0;
   line-height: 1.75;
 }
-.article-tiptap-editor img,
+.article-tiptap-editor img.article-rich-body-img,
 .article-rich-body img {
-  max-width: 100%;
+  max-width: min(100%, 36rem);
+  max-height: 18rem;
+  width: auto;
   height: auto;
+  object-fit: contain;
+  margin-left: auto;
+  margin-right: auto;
+  display: block;
+}
+
+/* 新排版「加入連結」：連結名稱 + 外連圖示 */
+.article-tiptap-editor .article-rich-external-link,
+.article-rich-body .article-rich-external-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.article-tiptap-editor .article-rich-external-link:hover,
+.article-rich-body .article-rich-external-link:hover {
+  opacity: 0.9;
+}
+.article-rich-external-link__icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.article-rich-external-link__svg {
+  vertical-align: middle;
 }
 
 /* 自訂游標 */

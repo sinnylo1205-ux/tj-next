@@ -14,6 +14,7 @@ type ArticlePick = {
   content_mode: string | null;
   body_json: unknown;
   is_published: boolean | null;
+  seo_noindex: boolean | null;
 };
 
 /** 新排版：選擇文章後以 Tiptap 編輯 body_json */
@@ -27,7 +28,7 @@ export default function ArticleRichTab() {
     setLoading(true);
     const { data, error } = await supabase
       .from("product_articles")
-      .select("id, item_name, slug, content_mode, body_json, is_published")
+      .select("id, item_name, slug, content_mode, body_json, is_published, seo_noindex")
       .order("updated_at", { ascending: false });
     if (error) {
       toast({ title: "載入失敗", description: error.message, variant: "destructive" });
@@ -105,6 +106,7 @@ export default function ArticleRichTab() {
               articleSlug={selected.slug}
               initialBody={selected.body_json}
               initialIsPublished={!!selected.is_published}
+              initialSeoNoindex={!!selected.seo_noindex}
               onSaved={loadList}
             />
           )}

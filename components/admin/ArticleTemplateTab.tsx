@@ -28,6 +28,8 @@ type ArticleRow = {
   og_image_url: string | null;
   is_published: boolean | null;
   content_mode?: string | null;
+  /** true = 前台 meta robots noindex（既有文章 migration 後預設為 true；新文預設 false） */
+  seo_noindex?: boolean | null;
 };
 
 const emptyForm = (): Omit<ArticleRow, "id"> => ({
@@ -44,6 +46,7 @@ const emptyForm = (): Omit<ArticleRow, "id"> => ({
   meta_description: "",
   og_image_url: null,
   is_published: false,
+  seo_noindex: false,
 });
 
 /** 套版撰寫：依 product_articles 欄位編輯 */
@@ -90,6 +93,7 @@ export default function ArticleTemplateTab() {
       meta_description: row.meta_description || "",
       og_image_url: row.og_image_url,
       is_published: !!row.is_published,
+      seo_noindex: row.seo_noindex ?? false,
     });
   };
 
@@ -131,6 +135,7 @@ export default function ArticleTemplateTab() {
       meta_description: form.meta_description || null,
       og_image_url: form.og_image_url,
       is_published: form.is_published,
+      seo_noindex: !!form.seo_noindex,
       content_mode: "template" as const,
       body_json: null,
     };
@@ -209,7 +214,12 @@ export default function ArticleTemplateTab() {
                 </div>
                 <div className="space-y-2">
                   <Label>slug（網址）</Label>
-                  <Input value={form.slug} onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))} placeholder="唯一英文 slug" />
+                  <Input
+                    value={form.slug}
+                    onChange={(e) => setForm((f) => ({ ...f, slug: e.target.value }))}
+                    placeholder="例如 cupcake 或 客製杯子蛋糕（可用中文）"
+                  />
+                  <p className="text-xs text-muted-foreground">可使用中文；瀏覽器會自動編碼。請勿與其他文章重複。</p>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label>品項名稱 item_name</Label>
@@ -238,6 +248,22 @@ export default function ArticleTemplateTab() {
                 <div className="flex items-center gap-2 sm:col-span-2">
                   <Switch checked={!!form.is_published} onCheckedChange={(v) => setForm((f) => ({ ...f, is_published: v }))} id="pub" />
                   <Label htmlFor="pub">發布 is_published</Label>
+                </div>
+                <div className="flex flex-col gap-1 sm:col-span-2 rounded-md border border-border bg-muted/30 p-3">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={!!form.seo_noindex}
+                      onCheckedChange={(v) => setForm((f) => ({ ...f, seo_noindex: v }))}
+                      id="seo-noindex"
+                    />
+                    <Label htmlFor="seo-noindex" className="cursor-pointer leading-snug">
+                      搜尋引擎不索引此頁（noindex）
+                    </Label>
+                  </div>
+                  <p className="text-xs text-muted-foreground pl-10">
+                    勾選時輸出 <code className="rounded bg-muted px-1">noindex, follow</code>
+                    。既有文章 migration 後預設為勾選；新文章請取消勾選以允許 Google 索引。
+                  </p>
                 </div>
                 <div className="space-y-2 sm:col-span-2">
                   <Label>og_image_url</Label>

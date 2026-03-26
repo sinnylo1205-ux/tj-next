@@ -3,6 +3,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
+import { ArticleExternalLink } from "./article-external-link";
 
 /** 站內文章編輯器：僅 h1–h3、黑/紅字、段落、圖片（宋體由 CSS 套用） */
 export function getArticleEditorExtensions(): Extensions {
@@ -28,8 +29,11 @@ export function getArticleEditorExtensions(): Extensions {
     Image.configure({
       inline: false,
       allowBase64: false,
-      HTMLAttributes: { class: "rounded-lg max-w-full h-auto my-4" },
+      HTMLAttributes: {
+        class: "rounded-lg article-rich-body-img my-4",
+      },
     }),
+    ArticleExternalLink,
   ];
 }
 

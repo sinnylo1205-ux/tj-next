@@ -72,7 +72,7 @@ export default async function BlogIndexPage() {
           {list.map((article) => (
             <Link
               key={article.slug}
-              href={`/blog/${article.slug}`}
+              href={`/blog/${encodeURIComponent(article.slug)}`}
               className="group block bg-card rounded-xl border border-border overflow-hidden hover:shadow-lg transition-shadow"
             >
               {article.og_image_url ? (

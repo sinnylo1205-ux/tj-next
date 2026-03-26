@@ -904,39 +904,64 @@ const OrderStatusManager = () => {
                           <TableRow key={`${order.id}-detail`}>
                             <TableCell colSpan={9} className="bg-muted/30">
                               <div className="p-4 space-y-4">
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div className="col-span-2 text-xs text-muted-foreground border-l-2 border-primary/30 pl-2 py-1 mb-1">
-                                    訂購人顯示為會員姓名（
-                                    <code className="text-[11px] bg-muted px-1 rounded">user_log_in.name</code>
-                                    ，依 <code className="text-[11px] bg-muted px-1 rounded">user_id</code>
-                                    查詢）；資料庫無 <code className="text-[11px] bg-muted px-1 rounded">orders.name</code>
-                                    。實際收件人為{" "}
-                                    <code className="text-[11px] bg-muted px-1 rounded">who_receive</code>
-                                    。
+                                <div className="grid md:grid-cols-2 gap-6 text-sm">
+                                  <div className="space-y-3">
+                                    <div>
+                                      <span className="font-medium">收件人：</span>
+                                      {order.who_receive || "未填寫"}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">會員名（訂購人）：</span>
+                                      {buyerDisplayName(userInfo) || "—"}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">預計取件日：</span>
+                                      {order.expected_pickup_date || "未指定"}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">電話：</span>
+                                      {order.phone || "未填寫"}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">聯絡信箱：</span>
+                                      {order.Email || "未填寫"}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">配送方式：</span>
+                                      {order.shipping_way || "未指定"}
+                                    </div>
                                   </div>
+                                  <div className="space-y-3">
+                                    <div>
+                                      <span className="font-medium">商品小計：</span>
+                                      NT$ {order.subtotal || 0}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">運費：</span>
+                                      NT$ {order.shipping_fee || 0}
+                                    </div>
+                                    <div className="font-semibold text-primary">
+                                      <span className="font-medium text-foreground">總計（含運費）：</span>
+                                      NT$ {order.total_amount}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">發票抬頭：</span>
+                                      {order.TAX_title || "—"}
+                                    </div>
+                                    <div>
+                                      <span className="font-medium">統一編號：</span>
+                                      {order.TAX_id ?? "—"}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2 text-sm border-t border-border pt-4">
                                   <div>
-                                    <span className="font-medium">訂購人（會員姓名）：</span>
-                                    {buyerDisplayName(userInfo) || "—"}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">實際收件人（who_receive）：</span>
-                                    {order.who_receive || "未填寫"}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">預計取件日期：</span>
-                                    {order.expected_pickup_date || "未指定"}
-                                  </div>
-                                  {/* 聯絡信箱 */}
-                                  <div>
-                                    <span className="font-medium">聯絡信箱：</span>
-                                    {order.Email || "未填寫"}
-                                  </div>
-                                  <div className="col-span-2">
                                     <span className="font-medium">地址：</span>
-                                    {order.shipping_address_text}
+                                    {order.shipping_address_text || "—"}
                                   </div>
                                   {order.notes && (
-                                    <div className="col-span-2">
+                                    <div>
                                       <span className="font-medium">備註：</span>
                                       {order.notes}
                                     </div>
@@ -947,38 +972,6 @@ const OrderStatusManager = () => {
                                       {order.transfer_last5}
                                     </div>
                                   )}
-                                  {order.TAX_title && (
-                                    <div>
-                                      <span className="font-medium">發票抬頭：</span>
-                                      {order.TAX_title}
-                                    </div>
-                                  )}
-                                  {order.TAX_id && (
-                                    <div>
-                                      <span className="font-medium">統一編號：</span>
-                                      {order.TAX_id}
-                                    </div>
-                                  )}
-                                </div>
-
-                                {/* 配送方式與總價 */}
-                                <div className="grid grid-cols-2 gap-4 text-sm">
-                                  <div>
-                                    <span className="font-medium">配送方式：</span>
-                                    {order.shipping_way || "未指定"}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">運費：</span>
-                                    NT$ {order.shipping_fee || 0}
-                                  </div>
-                                  <div>
-                                    <span className="font-medium">商品小計：</span>
-                                    NT$ {order.subtotal || 0}
-                                  </div>
-                                  <div className="font-semibold text-primary">
-                                    <span className="font-medium">總計（含運費）：</span>
-                                    NT$ {order.total_amount}
-                                  </div>
                                 </div>
 
                                 <Separator />
