@@ -13,22 +13,24 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
-  month,
+  month: controlledMonth,
   onMonthChange,
   ...props
 }: CalendarProps) {
-  const displayMonth = month ?? props.defaultMonth ?? new Date();
+  const [internalMonth, setInternalMonth] = React.useState<Date>(
+    controlledMonth ?? props.defaultMonth ?? new Date(),
+  );
 
-  const handlePrevMonth = () => {
-    if (onMonthChange) {
-      onMonthChange(addMonths(displayMonth, -1));
-    }
-  };
+  // controlled 時同步外部值
+  React.useEffect(() => {
+    if (controlledMonth) setInternalMonth(controlledMonth);
+  }, [controlledMonth]);
 
-  const handleNextMonth = () => {
-    if (onMonthChange) {
-      onMonthChange(addMonths(displayMonth, 1));
-    }
+  const displayMonth = controlledMonth ?? internalMonth;
+
+  const changeMonth = (next: Date) => {
+    setInternalMonth(next);
+    onMonthChange?.(next);
   };
 
   return (
@@ -43,7 +45,7 @@ function Calendar({
           variant="outline"
           size="icon"
           className="h-7 w-7"
-          onClick={handlePrevMonth}
+          onClick={() => changeMonth(addMonths(displayMonth, -1))}
         >
           <ChevronLeft className="h-3 w-3" />
         </Button>
@@ -55,7 +57,7 @@ function Calendar({
           variant="outline"
           size="icon"
           className="h-7 w-7"
-          onClick={handleNextMonth}
+          onClick={() => changeMonth(addMonths(displayMonth, 1))}
         >
           <ChevronRight className="h-3 w-3" />
         </Button>
@@ -65,7 +67,7 @@ function Calendar({
         locale={zhTW}
         showOutsideDays={showOutsideDays}
         month={displayMonth}
-        onMonthChange={onMonthChange}
+        onMonthChange={changeMonth}
         className={cn("p-2", className)}
         classNames={{
           caption: "hidden",

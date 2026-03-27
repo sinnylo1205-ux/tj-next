@@ -69,7 +69,7 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
 
   // Form state
   const [orderItems, setOrderItems] = useState<OrderItemInput[]>([
-    { id: crypto.randomUUID(), product_id: "", quantity: 1, unit_price: 0, customizations_json: "", preview_url: "" },
+    { id: crypto.randomUUID(), product_id: "", quantity: 0, unit_price: 0, customizations_json: "", preview_url: "" },
   ]);
   const [recipientName, setRecipientName] = useState("");
   const [shippingAddress, setShippingAddress] = useState("");
@@ -155,7 +155,7 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
   const addOrderItem = () => {
     setOrderItems([
       ...orderItems,
-      { id: crypto.randomUUID(), product_id: "", quantity: 1, unit_price: 0, customizations_json: "", preview_url: "" },
+      { id: crypto.randomUUID(), product_id: "", quantity: 0, unit_price: 0, customizations_json: "", preview_url: "" },
     ]);
   };
 
@@ -179,8 +179,7 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
             if (product) {
               // 優先使用 product_notice 的 price_min，否則使用 product.price
               updated.unit_price = notice?.price_min ?? product.price;
-              // 使用 product_notice 的 min_order_qty，否則預設 1
-              updated.quantity = notice?.min_order_qty ?? 1;
+              // 數量維持管理員手動輸入，不自動帶入最低訂購量
             }
           }
           return updated;
@@ -435,8 +434,12 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
                 <Input
                   type="number"
                   min={0}
-                  value={item.unit_price}
-                  onChange={(e) => updateOrderItem(item.id, "unit_price", parseInt(e.target.value) || 0)}
+                  value={item.unit_price === 0 ? "" : item.unit_price}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    updateOrderItem(item.id, "unit_price", raw === "" ? 0 : parseInt(raw) || 0);
+                  }}
                 />
               </div>
 
@@ -444,9 +447,13 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
                 <Label className="text-xs">數量</Label>
                 <Input
                   type="number"
-                  min={1}
-                  value={item.quantity}
-                  onChange={(e) => updateOrderItem(item.id, "quantity", parseInt(e.target.value) || 1)}
+                  min={0}
+                  value={item.quantity === 0 ? "" : item.quantity}
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    updateOrderItem(item.id, "quantity", raw === "" ? 0 : parseInt(raw) || 0);
+                  }}
                 />
               </div>
 
