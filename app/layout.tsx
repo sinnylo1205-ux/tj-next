@@ -137,7 +137,7 @@ export default function RootLayout({
           media="(max-width: 768px)"
         />
       </head>
-      <body className="antialiased">
+      <body className="antialiased custom-cursor">
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(bakeryJsonLd) }} />

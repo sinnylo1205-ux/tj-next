@@ -36,11 +36,6 @@ const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link href="/faq" className="text-ink-inverse/80 hover:text-ink-inverse transition-colors text-sm">
-                  常見問題 FAQ
-                </Link>
-              </li>
-              <li>
                 <Link href="/privacy" className="text-ink-inverse/80 hover:text-ink-inverse transition-colors text-sm">
                   隱私權政策
                 </Link>

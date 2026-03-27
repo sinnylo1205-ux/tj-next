@@ -237,6 +237,62 @@ h3 {
   cursor: url("/cursors/cursor-active.png") 0 0, pointer !important;
 }
 
+/* 後台頁面：覆寫為瀏覽器預設游標（權重需高於 .custom-cursor *） */
+body.custom-cursor .admin-use-default-cursor,
+body.custom-cursor .admin-use-default-cursor * {
+  cursor: auto !important;
+}
+body.custom-cursor .admin-use-default-cursor button:not(:disabled),
+body.custom-cursor .admin-use-default-cursor [role="button"]:not(:disabled),
+body.custom-cursor .admin-use-default-cursor a[href],
+body.custom-cursor .admin-use-default-cursor label[for],
+body.custom-cursor .admin-use-default-cursor input[type="checkbox"],
+body.custom-cursor .admin-use-default-cursor input[type="radio"],
+body.custom-cursor .admin-use-default-cursor select,
+body.custom-cursor .admin-use-default-cursor summary {
+  cursor: pointer !important;
+}
+body.custom-cursor .admin-use-default-cursor input[type="text"],
+body.custom-cursor .admin-use-default-cursor input[type="email"],
+body.custom-cursor .admin-use-default-cursor input[type="password"],
+body.custom-cursor .admin-use-default-cursor input[type="number"],
+body.custom-cursor .admin-use-default-cursor input[type="search"],
+body.custom-cursor .admin-use-default-cursor input:not([type]),
+body.custom-cursor .admin-use-default-cursor textarea {
+  cursor: text !important;
+}
+
+/* 後台 Radix Dialog／Popover 掛在 body 末端時，仍使用預設游標 */
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] *,
+body.custom-cursor:has(.admin-use-default-cursor) [data-radix-popper-content-wrapper],
+body.custom-cursor:has(.admin-use-default-cursor) [data-radix-popper-content-wrapper] * {
+  cursor: auto !important;
+}
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] button:not(:disabled),
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] [role="button"]:not(:disabled),
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] a[href],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] label[for],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] input[type="checkbox"],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] input[type="radio"],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] select,
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] summary,
+body.custom-cursor:has(.admin-use-default-cursor) [data-radix-popper-content-wrapper] button:not(:disabled),
+body.custom-cursor:has(.admin-use-default-cursor) [data-radix-popper-content-wrapper] a[href] {
+  cursor: pointer !important;
+}
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] input[type="text"],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] input[type="email"],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] input[type="password"],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] input[type="number"],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] input[type="search"],
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] input:not([type]),
+body.custom-cursor:has(.admin-use-default-cursor) [role="dialog"] textarea,
+body.custom-cursor:has(.admin-use-default-cursor) [data-radix-popper-content-wrapper] input[type="text"],
+body.custom-cursor:has(.admin-use-default-cursor) [data-radix-popper-content-wrapper] textarea {
+  cursor: text !important;
+}
+
 /* 隱藏 number input 的上下箭頭 */
 input[type="number"]::-webkit-inner-spin-button,
 input[type="number"]::-webkit-outer-spin-button {

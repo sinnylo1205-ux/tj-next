@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import {
   buildMonthlyReportPayload,
   buildYearlyReportPayload,
+  canonicalPopularProductName,
   customerTypeDisplayLabel as labelForCustomerType,
   type MonthlyReportPayload,
   type YearlyReportPayload,
@@ -274,7 +275,8 @@ const AdminDashboard = () => {
     // 統計每個產品出現次數
     const productCount = new Map<string, number>();
     (items || []).forEach((item) => {
-      const displayName = productNameMap.get(item.product_id) || item.product_name;
+      const raw = productNameMap.get(item.product_id) || item.product_name || item.product_id;
+      const displayName = canonicalPopularProductName(typeof raw === "string" ? raw : String(raw));
       productCount.set(displayName, (productCount.get(displayName) || 0) + 1);
     });
 

@@ -28,6 +28,13 @@ const corsHeaders = {
 
 const REPORT_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/report";
 
+/** 熱門商品：名稱含「幸運」者合併統計（與 lib/admin-reports.ts 一致） */
+function canonicalPopularProductName(displayName: string): string {
+  const t = (displayName ?? "").trim();
+  if (t.includes("幸運")) return "幸運籤餅／相關品項";
+  return t;
+}
+
 const REVENUE_ORDER_STATUSES = ["processing", "shipped", "delivered"] as const;
 const ANALYTICS_ORDER_STATUSES = [
   "awaiting_payment",
@@ -150,7 +157,8 @@ async function topProductsFromOrderIds(
       .in("order_id", chunk);
     if (error) throw new Error(error.message);
     (items ?? []).forEach((item: { product_id: string; product_name: string | null }) => {
-      const displayName = productNameMap.get(item.product_id) || item.product_name || item.product_id;
+      const raw = productNameMap.get(item.product_id) || item.product_name || item.product_id;
+      const displayName = canonicalPopularProductName(raw);
       productCount.set(displayName, (productCount.get(displayName) ?? 0) + 1);
     });
   }

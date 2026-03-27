@@ -42,6 +42,7 @@ const ALLOWED_KEYS = new Set([
   "admin_verified_at",
   "shipped_at",
   "delivered_at",
+  "admin_media_urls",
 ]);
 
 const FORBIDDEN_KEYS = new Set(["id", "created_at", "updated_at"]);

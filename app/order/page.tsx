@@ -121,7 +121,7 @@ export default function OrderPage() {
   const hoverScaleClass = "hover:scale-[2.05]";
 
   return (
-    <div className="relative min-h-screen overflow-x-hidden overflow-y-auto bg-background custom-cursor">
+    <div className="relative min-h-screen overflow-x-hidden overflow-y-auto bg-background">
       {/* 標題 (z-50) - 固定在最上層 */}
       <div className="absolute z-50 pt-20 mt-2 sm:mt-0 w-full sm:w-auto sm:ml-16 flex justify-center sm:justify-start sm:block">
         <div className="sm:text-left text-center">

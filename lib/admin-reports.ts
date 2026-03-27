@@ -23,6 +23,13 @@ export function customerTypeDisplayLabel(raw: string | null | undefined): string
   return CUSTOMER_TYPE_LABELS[raw] ?? raw;
 }
 
+/** 熱門商品統計：商品名稱含「幸運」者合併為同一列，不拆成多個品名 */
+export function canonicalPopularProductName(displayName: string): string {
+  const t = (displayName ?? "").trim();
+  if (t.includes("幸運")) return "幸運籤餅／相關品項";
+  return t;
+}
+
 export const ADMIN_REPORT_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/report";
 
 export interface CustomerTypeCountRow {
@@ -134,7 +141,8 @@ async function topProductsFromOrderIds(
       .in("order_id", chunk);
     if (error) throw new Error(error.message);
     (items ?? []).forEach((item: { product_id: string; product_name: string | null }) => {
-      const displayName = productNameMap.get(item.product_id) || item.product_name || item.product_id;
+      const raw = productNameMap.get(item.product_id) || item.product_name || item.product_id;
+      const displayName = canonicalPopularProductName(raw);
       productCount.set(displayName, (productCount.get(displayName) ?? 0) + 1);
     });
   }

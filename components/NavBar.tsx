@@ -31,6 +31,7 @@ const brandMenuItems = [
   { label: "關於我們", path: "/about" },
   { label: "客戶服務", path: "/contact" },
   { label: "合作洽談", path: "/contact" },
+  { label: "常見問題 FAQ", path: "/faq" },
 ];
 
 const NavBar = () => {
@@ -117,7 +118,7 @@ const NavBar = () => {
                   品牌與聯絡資訊
                 </NavigationMenuTrigger>
                 <NavigationMenuContent>
-                  <ul className="grid w-[200px] gap-1 p-2 bg-background">
+                  <ul className="grid w-[220px] gap-1 p-2 bg-background">
                     {brandMenuItems.map((item, index) => (
                       <li key={`${item.path}-${index}`}>
                         <NavigationMenuLink asChild>

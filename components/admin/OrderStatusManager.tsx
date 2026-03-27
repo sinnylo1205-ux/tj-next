@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, ChevronDown, ChevronUp, ExternalLink, Plus, Trash2, CalendarIcon, X } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, Plus, Trash2, CalendarIcon, X, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Calendar } from "@/components/ui/calendar";
@@ -63,6 +63,8 @@ interface Order {
   customer_type?: string | null;
   /** 歷史／手動單可能寫入；後台「訂購人」顯示一律依 user_id 查 user_log_in.name */
   orderer_name?: string | null;
+  /** 管理員補傳之訂單／合成圖 URL 陣列 */
+  admin_media_urls?: unknown;
 }
 
 /** 訂購人顯示名稱：依 orders.user_id 對應 user_log_in.name（無 orders.name 欄位） */
@@ -82,6 +84,14 @@ function customerTypeLabel(v: string | null | undefined): string | null {
   return CUSTOMER_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v;
 }
 
+const ORDER_ADMIN_MEDIA_PREFIX = "website_img/order_admin";
+
+/** 讀取品項管理員附圖 URL（避免型別或空白字串問題） */
+function pickAdminMediaUrl(item: { admin_media_url?: unknown }): string | null {
+  const v = item.admin_media_url;
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+}
+
 interface OrderItem {
   order_item_id: number;
   product_name: string;
@@ -89,6 +99,8 @@ interface OrderItem {
   quantity_description: string | null;
   unit_price: number;
   preview_url: string | null;
+  /** 管理員補傳之該品項附圖（優先於 preview_url 顯示） */
+  admin_media_url?: string | null;
   customizations_json: any[];
   is_package_design: boolean;
 }
@@ -112,6 +124,7 @@ const OrderStatusManager = () => {
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
   const [savingEdit, setSavingEdit] = useState(false);
+  const [uploadingItemKey, setUploadingItemKey] = useState<string | null>(null);
 
   // Loading action state to prevent duplicate clicks
   const [loadingAction, setLoadingAction] = useState<{
@@ -215,6 +228,13 @@ const OrderStatusManager = () => {
     }
   };
 
+  /** 上傳／移除附圖後與資料庫同步（避免 order_item_id 型別導致本地 state 未更新） */
+  const refreshOrderItemsForOrder = async (orderId: string) => {
+    const { data, error } = await supabase.from("order_items").select("*").eq("order_id", orderId);
+    if (error) throw new Error(error.message);
+    setOrderItems((prev) => ({ ...prev, [orderId]: data ?? [] }));
+  };
+
   const toggleOrderExpand = (orderId: string) => {
     const newExpanded = new Set(expandedOrders);
     if (newExpanded.has(orderId)) {
@@ -276,6 +296,147 @@ const OrderStatusManager = () => {
     } finally {
       setCustomerTypePopoverId(null);
     }
+  };
+
+  const handleOrderItemAdminMediaUpload = async (orderId: string, orderItemId: number, file: File) => {
+    console.log("[admin-media] handleOrderItemAdminMediaUpload START", { orderId, orderItemId, fileName: file.name, fileType: file.type, fileSize: file.size });
+    try {
+      if (!file.type.startsWith("image/")) {
+        console.warn("[admin-media] rejected: not an image", file.type);
+        toast({ title: "請上傳圖片檔案", variant: "destructive" });
+        return;
+      }
+      const itemKey = `${orderId}-${orderItemId}`;
+      setUploadingItemKey(itemKey);
+
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `${ORDER_ADMIN_MEDIA_PREFIX}/${orderId}/item_${orderItemId}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      console.log("[admin-media] uploading to storage:", path);
+
+      const { error: upErr } = await supabase.storage.from("custom_asset").upload(path, file, { upsert: true });
+      if (upErr) {
+        console.error("[admin-media] storage upload error:", upErr);
+        toast({ title: "上傳失敗", description: upErr.message, variant: "destructive" });
+        setUploadingItemKey(null);
+        return;
+      }
+      console.log("[admin-media] storage upload OK");
+
+      const { data: pub } = supabase.storage.from("custom_asset").getPublicUrl(path);
+      const url = pub.publicUrl;
+      console.log("[admin-media] public URL:", url);
+
+      console.log("[admin-media] updating order_items row...", { orderId, orderItemId });
+      const { data: updatedRows, error } = await supabase
+        .from("order_items")
+        .update({ admin_media_url: url })
+        .eq("order_id", orderId)
+        .eq("order_item_id", orderItemId)
+        .select("order_item_id");
+      console.log("[admin-media] update result:", { updatedRows, error });
+
+      if (error) {
+        console.error("[admin-media] DB update error:", error);
+        toast({ title: "儲存圖片網址失敗", description: error.message, variant: "destructive" });
+        setUploadingItemKey(null);
+        return;
+      }
+      if (!updatedRows?.length) {
+        console.warn("[admin-media] 0 rows updated — column may not exist or RLS blocked");
+        toast({
+          title: "儲存失敗",
+          description:
+            "沒有更新到任何品項。請確認遠端資料庫已執行 migration（order_items.admin_media_url），且您具備管理員權限。",
+          variant: "destructive",
+        });
+        setUploadingItemKey(null);
+        return;
+      }
+
+      console.log("[admin-media] DB update OK, refreshing items...");
+      try {
+        await refreshOrderItemsForOrder(orderId);
+      } catch (refreshErr) {
+        console.warn("[admin-media] refreshOrderItems failed:", refreshErr);
+      }
+      setOrderItems((prev) => {
+        const list = prev[orderId];
+        if (!list) return prev;
+        return {
+          ...prev,
+          [orderId]: list.map((it) =>
+            Number(it.order_item_id) === Number(orderItemId)
+              ? { ...it, admin_media_url: pickAdminMediaUrl(it) ?? url }
+              : it,
+          ),
+        };
+      });
+      console.log("[admin-media] state updated, showing toast");
+      toast({ title: "已上傳品項附圖", description: "縮圖與連結已更新。" });
+    } catch (e) {
+      console.error("[admin-media] UNCAUGHT error in upload handler:", e);
+      toast({
+        title: "上傳過程發生錯誤",
+        description: e instanceof Error ? e.message : String(e),
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingItemKey(null);
+    }
+  };
+
+  const clearOrderItemAdminMedia = async (orderId: string, orderItemId: number) => {
+    const { data: updatedRows, error } = await supabase
+      .from("order_items")
+      .update({ admin_media_url: null })
+      .eq("order_id", orderId)
+      .eq("order_item_id", orderItemId)
+      .select("order_item_id");
+    if (error) {
+      toast({ title: "移除失敗", description: error.message, variant: "destructive" });
+      return;
+    }
+    if (!updatedRows?.length) {
+      toast({
+        title: "移除失敗",
+        description: "沒有更新到任何品項。請確認資料庫欄位已部署。",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await refreshOrderItemsForOrder(orderId);
+      // 若快取仍回傳舊欄位，強制該品項 admin_media_url 為 null
+      setOrderItems((prev) => {
+        const list = prev[orderId];
+        if (!list) return prev;
+        return {
+          ...prev,
+          [orderId]: list.map((it) =>
+            Number(it.order_item_id) === Number(orderItemId) ? { ...it, admin_media_url: null } : it,
+          ),
+        };
+      });
+      toast({ title: "已移除管理員附圖", description: "縮圖已還原為客製預覽（若有）。" });
+    } catch (e) {
+      toast({
+        title: "已清除網址，但重新載入明細失敗",
+        description: e instanceof Error ? e.message : "請重新展開訂單試一次",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getOrderUserFullText = (order: Order, userInfo: User | undefined): string => {
+    if (order.is_from_quotation) {
+      return `${order.who_receive || "未填寫"}（報價單）\n非網站會員`;
+    }
+    if (order.is_manual_order) {
+      const b = buyerDisplayName(userInfo) || "—";
+      const w = order.who_receive?.trim();
+      return w ? `訂購：${b}\n收件：${w}\n（手動）` : `訂購：${b}\n（手動）`;
+    }
+    return `${userInfo?.name || "載入中..."}\n${userInfo?.email || ""}`;
   };
 
   const saveOrderEdits = async () => {
@@ -621,7 +782,9 @@ const OrderStatusManager = () => {
                   <TableRow>
                     <TableHead>訂單號</TableHead>
                     <TableHead>預計取件日期</TableHead>
-                    <TableHead>用戶</TableHead>
+                    <TableHead className="min-w-[11rem] md:min-w-[16rem] max-w-[min(42vw,18rem)] md:max-w-none align-top">
+                      用戶
+                    </TableHead>
                     <TableHead>金額</TableHead>
                     <TableHead>配送方式</TableHead>
                     <TableHead>付款狀態</TableHead>
@@ -635,38 +798,68 @@ const OrderStatusManager = () => {
                     const isExpanded = expandedOrders.has(order.id);
                     const items = orderItems[order.id] || [];
                     const userInfo = users[order.user_id];
+                    const userFullText = getOrderUserFullText(order, userInfo);
+                    const userPreviewMobile = userFullText.replace(/\n/g, " · ");
 
                     return (
                       <Fragment key={order.id}>
-                        <TableRow>
+                        <TableRow
+                          className="cursor-pointer hover:bg-muted/40"
+                          onClick={() => toggleOrderExpand(order.id)}
+                        >
                           <TableCell className="font-medium">#{order.id.slice(0, 6).toUpperCase()}</TableCell>
                           <TableCell>{order.expected_pickup_date || "未指定"}</TableCell>
-                          <TableCell>
-                            {order.is_from_quotation ? (
-                              <>
-                                {(order.who_receive || "未填寫") + "（報價單）"}
-                                <br />
-                                <span className="text-xs text-muted-foreground">非網站會員</span>
-                              </>
-                            ) : order.is_manual_order ? (
-                              <>
-                                <span className="font-medium">訂購：{buyerDisplayName(userInfo) || "—"}</span>
-                                {order.who_receive?.trim() && (
-                                  <>
-                                    <br />
-                                    <span className="text-sm text-muted-foreground">收件：{order.who_receive}</span>
-                                  </>
-                                )}
-                                <br />
-                                <span className="text-xs text-muted-foreground">（手動）</span>
-                              </>
-                            ) : (
-                              <>
-                                {userInfo?.name || "載入中..."}
-                                <br />
-                                <span className="text-xs text-muted-foreground">{userInfo?.email}</span>
-                              </>
-                            )}
+                          <TableCell className="align-top">
+                            <div className="md:hidden">
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <button
+                                    type="button"
+                                    className="w-full max-w-[min(40vw,16rem)] text-left text-sm leading-snug truncate hover:underline underline-offset-2"
+                                    onClick={(e) => e.stopPropagation()}
+                                    onMouseDown={(e) => e.stopPropagation()}
+                                  >
+                                    {userPreviewMobile.slice(0, 56)}
+                                    {userPreviewMobile.length > 56 ? "…" : ""}
+                                  </button>
+                                </PopoverTrigger>
+                                <PopoverContent
+                                  align="start"
+                                  className="max-w-[min(90vw,20rem)] text-sm"
+                                  onClick={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                >
+                                  <pre className="whitespace-pre-wrap font-sans text-left">{userFullText}</pre>
+                                </PopoverContent>
+                              </Popover>
+                            </div>
+                            <div className="hidden md:block">
+                              {order.is_from_quotation ? (
+                                <>
+                                  {(order.who_receive || "未填寫") + "（報價單）"}
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">非網站會員</span>
+                                </>
+                              ) : order.is_manual_order ? (
+                                <>
+                                  <span className="font-medium">訂購：{buyerDisplayName(userInfo) || "—"}</span>
+                                  {order.who_receive?.trim() && (
+                                    <>
+                                      <br />
+                                      <span className="text-sm text-muted-foreground">收件：{order.who_receive}</span>
+                                    </>
+                                  )}
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">（手動）</span>
+                                </>
+                              ) : (
+                                <>
+                                  {userInfo?.name || "載入中..."}
+                                  <br />
+                                  <span className="text-xs text-muted-foreground">{userInfo?.email}</span>
+                                </>
+                              )}
+                            </div>
                           </TableCell>
                           <TableCell>NT$ {order.total_amount}</TableCell>
                           <TableCell>{order.shipping_way}</TableCell>
@@ -705,10 +898,7 @@ const OrderStatusManager = () => {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            <div className="flex gap-2 items-center">
-                              <Button size="sm" variant="outline" onClick={() => toggleOrderExpand(order.id)}>
-                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                              </Button>
+                            <div className="flex gap-2 items-center flex-wrap" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
                               {order.payment_step === "submitted" && (
                                 <Button
                                   size="sm"
@@ -781,7 +971,11 @@ const OrderStatusManager = () => {
                               </AlertDialog>
                             </div>
                           </TableCell>
-                          <TableCell className="min-w-[140px]">
+                          <TableCell
+                            className="min-w-[140px]"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <div className="flex flex-col gap-1.5">
                               <div className="flex flex-wrap items-center gap-1">
                                 {order.is_manual_order && (
@@ -902,7 +1096,12 @@ const OrderStatusManager = () => {
 
                         {isExpanded && (
                           <TableRow key={`${order.id}-detail`}>
-                            <TableCell colSpan={9} className="bg-muted/30">
+                            <TableCell
+                              colSpan={9}
+                              className="bg-muted/30"
+                              onClick={(e) => e.stopPropagation()}
+                              onMouseDown={(e) => e.stopPropagation()}
+                            >
                               <div className="p-4 space-y-4">
                                 <div className="grid md:grid-cols-2 gap-6 text-sm">
                                   <div className="space-y-3">
@@ -978,28 +1177,107 @@ const OrderStatusManager = () => {
 
                                 <div>
                                   <h4 className="font-semibold mb-3">商品明細</h4>
+                                  <p className="text-xs text-muted-foreground mb-3">
+                                    左側可為每個品項上傳管理員附圖（custom_asset · {ORDER_ADMIN_MEDIA_PREFIX}/…）；若無附圖則顯示客製預覽圖。
+                                  </p>
                                   {items.map((item) => {
                                     const customizationRows = asOrderCustomizationsList(item.customizations_json);
+                                    const adminUrl = pickAdminMediaUrl(item);
+                                    const preview =
+                                      typeof item.preview_url === "string" && item.preview_url.trim() !== ""
+                                        ? item.preview_url.trim()
+                                        : null;
+                                    const thumbUrl = adminUrl || preview;
+                                    const thumbLabel = adminUrl ? "管理員附圖" : preview ? "客製預覽" : null;
+                                    const itemKey = `${order.id}-${String(item.order_item_id)}`;
+                                    const uploadingThis = uploadingItemKey === itemKey;
+
                                     return (
-                                    <div key={item.order_item_id} className="flex gap-4 mb-4 p-3 bg-background rounded-lg">
-                                      {item.preview_url && (
-                                        <div className="flex flex-col items-center gap-1">
-                                          <img
-                                            src={item.preview_url}
-                                            alt={item.product_name}
-                                            className="w-24 h-24 rounded object-cover"
-                                          />
+                                    <div key={item.order_item_id} className="flex gap-4 mb-4 p-3 bg-background rounded-lg border border-border/60">
+                                      <div className="flex flex-col items-center gap-1.5 shrink-0 w-[104px]">
+                                        <div className="w-24 h-24 rounded border bg-muted/40 flex items-center justify-center overflow-hidden">
+                                          {thumbUrl ? (
+                                            <a
+                                              href={thumbUrl}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="block w-full h-full"
+                                              title="開啟圖片"
+                                            >
+                                              <img
+                                                src={thumbUrl}
+                                                alt={item.product_name}
+                                                className="w-full h-full object-cover"
+                                              />
+                                            </a>
+                                          ) : (
+                                            <span className="text-[10px] text-muted-foreground px-1 text-center">無圖</span>
+                                          )}
+                                        </div>
+                                        {thumbLabel && (
+                                          <span className="text-[10px] text-muted-foreground">{thumbLabel}</span>
+                                        )}
+                                        <Button
+                                          type="button"
+                                          size="sm"
+                                          variant="secondary"
+                                          className="w-full text-xs h-8"
+                                          disabled={uploadingThis}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            console.log("[admin-media] upload button clicked", { orderId: order.id, orderItemId: item.order_item_id });
+                                            const input = document.createElement("input");
+                                            input.type = "file";
+                                            input.accept = "image/*";
+                                            input.onchange = () => {
+                                              const f = input.files?.[0];
+                                              console.log("[admin-media] file picked:", f?.name, f?.type, f?.size);
+                                              if (f) void handleOrderItemAdminMediaUpload(order.id, Number(item.order_item_id), f);
+                                            };
+                                            input.click();
+                                          }}
+                                        >
+                                          {uploadingThis ? (
+                                            "上傳中…"
+                                          ) : (
+                                            <>
+                                              <Upload className="h-3 w-3 mr-1 shrink-0" />
+                                              上傳
+                                            </>
+                                          )}
+                                        </Button>
+                                        {adminUrl && (
+                                          <button
+                                            type="button"
+                                            className="text-[10px] text-destructive hover:underline"
+                                            onClick={() => void clearOrderItemAdminMedia(order.id, Number(item.order_item_id))}
+                                          >
+                                            移除附圖
+                                          </button>
+                                        )}
+                                        {adminUrl && (
                                           <a
-                                            href={item.preview_url}
+                                            href={adminUrl}
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            className="text-xs text-primary hover:underline inline-flex items-center"
+                                            className="text-[10px] text-primary hover:underline inline-flex items-center"
                                           >
-                                            查看原圖 <ExternalLink className="ml-1 h-3 w-3" />
+                                            管理員附圖連結 <ExternalLink className="ml-0.5 h-3 w-3" />
                                           </a>
-                                        </div>
-                                      )}
-                                      <div className="flex-1 space-y-2">
+                                        )}
+                                        {preview && (
+                                          <a
+                                            href={preview}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-[10px] text-primary hover:underline inline-flex items-center"
+                                          >
+                                            客製預覽 <ExternalLink className="ml-0.5 h-3 w-3" />
+                                          </a>
+                                        )}
+                                      </div>
+                                      <div className="flex-1 space-y-2 min-w-0">
                                         <p className="font-medium">{item.product_name}</p>
                                         {customizationRows.length > 0 && (
                                           <div className="space-y-1 text-sm text-muted-foreground">

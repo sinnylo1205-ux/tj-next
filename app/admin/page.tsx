@@ -112,7 +112,7 @@ export default function AdminPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center admin-use-default-cursor">
         <p className="text-muted-foreground">載入中...</p>
       </div>
     );
@@ -142,7 +142,7 @@ export default function AdminPage() {
   };
 
   return (
-    <div className="min-h-screen flex bg-background admin-font admin-theme">
+    <div className="min-h-screen flex bg-background admin-font admin-theme admin-use-default-cursor">
       {/* 桌機版側邊選單 */}
       {!isMobile && (
         <aside className="w-64 bg-white border-r border-border flex flex-col">
