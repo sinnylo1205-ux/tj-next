@@ -226,14 +226,28 @@ h3 {
   vertical-align: middle;
 }
 
-/* 自訂游標 */
+/* ── 自訂游標 ──
+ * 預設：全站使用 cursor-default.png
+ * hover：滑鼠移入可互動元素（button / a / .hoverable-item 等）時切換成 cursor-active.png
+ * 後台：由 .admin-use-default-cursor 完全覆寫回瀏覽器預設
+ */
 .custom-cursor,
 .custom-cursor * {
   cursor: url("/cursors/cursor-default.png") 0 0, auto !important;
 }
 
-.custom-cursor .hoverable-item,
-.custom-cursor .hoverable-item * {
+/* hover 時切換為 active 游標 */
+.custom-cursor a[href]:hover,
+.custom-cursor button:not(:disabled):hover,
+.custom-cursor [role="button"]:not(:disabled):hover,
+.custom-cursor label[for]:hover,
+.custom-cursor input[type="checkbox"]:hover,
+.custom-cursor input[type="radio"]:hover,
+.custom-cursor select:hover,
+.custom-cursor summary:hover,
+.custom-cursor [tabindex]:not([tabindex="-1"]):hover,
+.custom-cursor .hoverable-item:hover,
+.custom-cursor .hoverable-item:hover * {
   cursor: url("/cursors/cursor-active.png") 0 0, pointer !important;
 }
 

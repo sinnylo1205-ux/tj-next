@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { Card } from "@/components/ui/card";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Search, X } from "lucide-react";
 import Link from "next/link";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { Input } from "@/components/ui/input";
 
 /* ────────────────────────────────────────────
  *  FAQ 資料（來源：F_Q.xlsx，2026-03-27 匯入）
@@ -18,16 +20,24 @@ interface FaqItem {
   imageLink?: string;
 }
 
-const CATEGORIES = [
-  "全部",
-  "訂購規範與流程",
-  "產品客製化與樣式細節",
-  "付款與單據",
-  "配送、取貨與風險說明",
-  "食材、保存與食用方式",
-  "修改、取消與退換貨政策",
-  "甜點佈置與特殊服務",
-] as const;
+interface CategoryTab {
+  label: string;
+  id: string;
+  image: string;
+}
+
+const CATEGORY_TABS: CategoryTab[] = [
+  { label: "全部", id: "all", image: "/faq_tab/全部.png" },
+  { label: "訂購規範與流程", id: "cat-order", image: "/faq_tab/訂購規範與流程.png" },
+  { label: "產品客製化與樣式細節", id: "cat-custom", image: "/faq_tab/產品客製化與細節樣式.png" },
+  { label: "付款與單據", id: "cat-payment", image: "/faq_tab/付款與單據.png" },
+  { label: "配送、取貨與風險說明", id: "cat-shipping", image: "/faq_tab/配送取貨、風險說明.png" },
+  { label: "食材、保存與食用方式", id: "cat-food", image: "/faq_tab/食材與食用方式.png" },
+  { label: "修改、取消與退換貨政策", id: "cat-cancel", image: "/faq_tab/修改、取消與退換貨政策.png" },
+  { label: "甜點佈置與特殊服務", id: "cat-service", image: "/faq_tab/甜點佈置與特殊服務.png" },
+];
+
+const CATEGORY_LABELS = CATEGORY_TABS.filter((c) => c.id !== "all").map((c) => c.label);
 
 const faqData: FaqItem[] = [
   // ── 訂購規範與流程 ──
@@ -57,11 +67,7 @@ const faqData: FaqItem[] = [
     category: "訂購規範與流程",
     question: "網站上沒有我要的顏色/品項...",
     answer:
-      "目前不提供直接在 Line 下單，以確保客製化內容完整。官網提供客製化設計器，可以最快根據您的需求取得報價並直接下單，如需特殊色系或品項歡迎填寫報價表單。",
-    imageUrl:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
-    imageLink:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
+      "歡迎直接私訊Line官方聊聊",
   },
   {
     category: "訂購規範與流程",
@@ -74,16 +80,6 @@ const faqData: FaqItem[] = [
     question: "可以急件嗎？",
     answer:
       "需要了解您想要的品項與數量才可以評估能否排入喔，另外會有急件費喔。",
-  },
-  {
-    category: "訂購規範與流程",
-    question: "詢問報價/費用/大量訂購",
-    answer:
-      "我了解您的需求了，這邊先提供給您該品項的起售價以及最低訂購量，建議直接從官網的單品甜點設計進行客製化，即時預覽設計與價格。",
-    imageUrl:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
-    imageLink:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
   },
 
   // ── 產品客製化與樣式細節 ──
@@ -99,22 +95,9 @@ const faqData: FaqItem[] = [
   },
   {
     category: "產品客製化與樣式細節",
-    question: "(丟圖片) 請問是否有做某種甜點？",
-    answer: "請丟照片，我們為您評估",
-    imageUrl:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
-    imageLink:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
-  },
-  {
-    category: "產品客製化與樣式細節",
     question: "可以設計籤文嗎？",
     answer:
       "可以的！歡迎使用官網幸運籤餅設計器自行上傳籤文設計檔案；若需我們協助設計，將另酌收設計費用。",
-    imageUrl:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
-    imageLink:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
   },
   {
     category: "產品客製化與樣式細節",
@@ -140,11 +123,7 @@ const faqData: FaqItem[] = [
   {
     category: "產品客製化與樣式細節",
     question: "有杯子蛋糕的照片可以看嗎？",
-    answer: "您可以參考這些樣式，或是直接到官網合成器玩玩看喔！",
-    imageUrl:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
-    imageLink:
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/line_service/custom_teach.png",
+    answer: "可以到我們的IG 杯子蛋糕精選動態輯參考喔！",
   },
   {
     category: "產品客製化與樣式細節",
@@ -254,11 +233,6 @@ const faqData: FaqItem[] = [
     question: "幸運籤餅籤文範本",
     answer:
       "這裡提供給您設計範例以及空白檔案，歡迎自行設計後上傳至官網的幸運籤餅設計器。",
-  },
-  {
-    category: "產品客製化與樣式細節",
-    question: "請問你們有做這個嗎？（然後傳圖片）",
-    answer: "我來看照片幫您評估喔！",
   },
   {
     category: "產品客製化與樣式細節",
@@ -529,13 +503,78 @@ const faqData: FaqItem[] = [
  *  元件
  * ──────────────────────────────────────────── */
 
+/** 為每個 FAQ 產生穩定的 DOM id（用 category + index） */
+function faqDomId(faq: FaqItem, idx: number): string {
+  const tab = CATEGORY_TABS.find((t) => t.label === faq.category);
+  return `faq-${tab?.id ?? "x"}-${idx}`;
+}
+
 export default function FAQPage() {
-  const [activeCategory, setActiveCategory] = useState<string>("全部");
+  const [activeTab, setActiveTab] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const cardRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const handleTabClick = useCallback((id: string) => {
+    setActiveTab(id);
+    setSearchQuery("");
+    requestAnimationFrame(() => {
+      if (listRef.current) {
+        const offset = 80;
+        const top = listRef.current.getBoundingClientRect().top + window.scrollY - offset;
+        window.scrollTo({ top, behavior: "smooth" });
+      }
+    });
+  }, []);
+
+  /** 搜尋建議：關鍵字比對 question + answer，最多顯示 8 筆 */
+  const suggestions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (q.length === 0) return [];
+    return faqData
+      .map((faq, idx) => ({ faq, idx }))
+      .filter(
+        ({ faq }) =>
+          faq.question.toLowerCase().includes(q) ||
+          faq.answer.toLowerCase().includes(q),
+      )
+      .slice(0, 8);
+  }, [searchQuery]);
+
+  /** 點擊搜尋建議：切到對應分頁 → scroll 到該題 → 高亮 */
+  const handleSuggestionClick = useCallback(
+    (faq: FaqItem, globalIdx: number) => {
+      const tab = CATEGORY_TABS.find((t) => t.label === faq.category);
+      const tabId = tab?.id ?? "all";
+      const domId = faqDomId(faq, globalIdx);
+
+      setActiveTab(tabId);
+      setSearchQuery("");
+      setHighlightId(domId);
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          const el = cardRefs.current[domId];
+          if (el) {
+            const offset = 90;
+            const top = el.getBoundingClientRect().top + window.scrollY - offset;
+            window.scrollTo({ top, behavior: "smooth" });
+          }
+          setTimeout(() => setHighlightId(null), 2500);
+        });
+      });
+    },
+    [],
+  );
 
   const filtered =
-    activeCategory === "全部"
+    activeTab === "all"
       ? faqData
-      : faqData.filter((f) => f.category === activeCategory);
+      : faqData.filter(
+          (f) => f.category === CATEGORY_TABS.find((t) => t.id === activeTab)?.label,
+        );
 
   return (
     <div className="min-h-[calc(100vh-64px)] py-12 bg-background">
@@ -544,78 +583,154 @@ export default function FAQPage() {
         <div className="text-center mb-10">
           <h1 className="mb-4 text-ink">常見問題 Q&A</h1>
           <p className="text-ink-muted text-lg">
-            以下是顧客最常詢問的問題，希望能幫助您快速找到答案
+            以下是顧客最常詢問的問題，點選分類查看
           </p>
         </div>
 
-        {/* Category Tabs */}
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
-          {CATEGORIES.map((cat) => {
-            const isActive = activeCategory === cat;
-            const count =
-              cat === "全部"
-                ? faqData.length
-                : faqData.filter((f) => f.category === cat).length;
+        {/* 關鍵字搜尋 */}
+        <div className="relative mb-8 max-w-md mx-auto">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-ink-muted pointer-events-none" />
+            <Input
+              type="text"
+              placeholder="輸入關鍵字搜尋問題..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setTimeout(() => setSearchFocused(false), 200)}
+              className="pl-10 pr-9"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-ink-muted hover:text-ink"
+                onClick={() => setSearchQuery("")}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+
+          {/* 搜尋建議下拉 */}
+          {searchFocused && suggestions.length > 0 && (
+            <div className="absolute z-50 left-0 right-0 mt-1 rounded-xl border border-border bg-background shadow-lg overflow-hidden">
+              {suggestions.map(({ faq, idx }) => {
+                const tab = CATEGORY_TABS.find((t) => t.label === faq.category);
+                return (
+                  <button
+                    key={`sug-${idx}`}
+                    type="button"
+                    className="hoverable-item w-full text-left px-4 py-3 hover:bg-brand-50 transition-colors border-b border-border/50 last:border-b-0"
+                    onMouseDown={() => handleSuggestionClick(faq, idx)}
+                  >
+                    <p className="text-sm font-medium text-ink line-clamp-1">{faq.question}</p>
+                    <p className="text-xs text-ink-muted mt-0.5">{tab?.label}</p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {searchFocused && searchQuery.trim().length > 0 && suggestions.length === 0 && (
+            <div className="absolute z-50 left-0 right-0 mt-1 rounded-xl border border-border bg-background shadow-lg p-4 text-center text-sm text-ink-muted">
+              找不到相關問題
+            </div>
+          )}
+        </div>
+
+        {/* Category Tab 圖片卡片：電腦 4 欄、手機 2 欄 */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-10">
+          {CATEGORY_TABS.map((tab) => {
+            const isActive = activeTab === tab.id;
             return (
               <button
-                key={cat}
+                key={tab.id}
                 type="button"
-                onClick={() => setActiveCategory(cat)}
+                onClick={() => handleTabClick(tab.id)}
                 className={cn(
-                  "px-4 py-2 rounded-full text-sm font-medium transition-colors border",
+                  "hoverable-item group flex flex-col items-center rounded-xl border p-3 transition-all",
                   isActive
-                    ? "bg-brand-600 text-white border-brand-600"
-                    : "bg-background text-ink-muted border-border hover:bg-brand-50 hover:text-brand-600",
+                    ? "border-brand-500 bg-brand-50 shadow-md ring-2 ring-brand-400/40"
+                    : "border-border bg-background hover:border-brand-400 hover:shadow-md hover:-translate-y-0.5",
                 )}
               >
-                {cat}
-                <span className="ml-1 text-xs opacity-70">({count})</span>
+                <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden bg-brand-50">
+                  <Image
+                    src={tab.image}
+                    alt={tab.label}
+                    fill
+                    className="object-cover transition-transform group-hover:scale-105"
+                    sizes="(max-width: 768px) 45vw, 22vw"
+                  />
+                </div>
+                <span
+                  className={cn(
+                    "mt-2.5 text-sm font-medium leading-snug text-center transition-colors",
+                    isActive ? "text-brand-600" : "text-ink",
+                  )}
+                >
+                  {tab.label}
+                </span>
               </button>
             );
           })}
         </div>
 
         {/* FAQ 列表 */}
-        <div className="space-y-4">
-          {filtered.map((faq, index) => (
-            <Card key={index} className="p-6" style={{ boxShadow: "var(--elev-card)" }}>
-              <div className="flex items-start gap-2 mb-1">
-                <span className="inline-block bg-brand-50 text-brand-600 text-[11px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
-                  {faq.category}
-                </span>
-              </div>
-              <h2 className="text-ink font-semibold mb-3 flex gap-2 text-base mt-2">
-                <span className="text-brand-600 shrink-0">Q：</span>
-                {faq.question}
-              </h2>
-              <div className="text-ink-muted text-base leading-relaxed pl-6 whitespace-pre-line">
-                <span className="text-brand-600 font-semibold">A：</span>{" "}
-                {faq.answer}
-              </div>
-
-              {/* 附圖：渲染在答案下方 */}
-              {faq.imageUrl && (
-                <div className="mt-4 pl-6">
-                  <a
-                    href={faq.imageLink || faq.imageUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-block group"
-                  >
-                    <img
-                      src={faq.imageUrl}
-                      alt={`${faq.question} 參考圖`}
-                      className="rounded-lg border border-border shadow-sm max-w-full max-h-[360px] object-contain transition-transform group-hover:scale-[1.01]"
-                      loading="lazy"
-                    />
-                    <span className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1 mt-1.5">
-                      點擊查看大圖 <ExternalLink size={12} />
+        <div ref={listRef} className="space-y-4">
+          {filtered.map((faq, index) => {
+            const globalIdx = faqData.indexOf(faq);
+            const domId = faqDomId(faq, globalIdx);
+            const isHighlighted = highlightId === domId;
+            return (
+              <Card
+                key={domId}
+                ref={(el) => { cardRefs.current[domId] = el; }}
+                className={cn(
+                  "p-6 transition-all duration-500",
+                  isHighlighted && "ring-2 ring-brand-500 bg-brand-50/40",
+                )}
+                style={{ boxShadow: "var(--elev-card)" }}
+              >
+                {activeTab === "all" && (
+                  <div className="mb-2">
+                    <span className="inline-block bg-brand-50 text-brand-600 text-[11px] font-medium px-2 py-0.5 rounded-full">
+                      {faq.category}
                     </span>
-                  </a>
+                  </div>
+                )}
+                <h2 className="text-ink font-semibold mb-3 flex gap-2 text-base">
+                  <span className="text-brand-600 shrink-0">Q：</span>
+                  {faq.question}
+                </h2>
+                <div className="text-ink-muted text-base leading-relaxed pl-6 whitespace-pre-line">
+                  <span className="text-brand-600 font-semibold">A：</span>{" "}
+                  {faq.answer}
                 </div>
-              )}
-            </Card>
-          ))}
+
+                {faq.imageUrl && (
+                  <div className="mt-4 pl-6">
+                    <a
+                      href={faq.imageLink || faq.imageUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block group"
+                    >
+                      <img
+                        src={faq.imageUrl}
+                        alt={`${faq.question} 參考圖`}
+                        className="rounded-lg border border-border shadow-sm max-w-full max-h-[360px] object-contain transition-transform group-hover:scale-[1.01]"
+                        loading="lazy"
+                      />
+                      <span className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1 mt-1.5">
+                        點擊查看大圖 <ExternalLink size={12} />
+                      </span>
+                    </a>
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
 
         {/* 底部提示 */}

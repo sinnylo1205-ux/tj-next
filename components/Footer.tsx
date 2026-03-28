@@ -40,6 +40,11 @@ const Footer = () => {
                   隱私權政策
                 </Link>
               </li>
+              <li>
+                <Link href="/faq" className="text-ink-inverse/80 hover:text-ink-inverse transition-colors text-sm">
+                  常見問與答
+                </Link>
+              </li>
               {ADMIN_URL && (
                 <li>
                   <a
