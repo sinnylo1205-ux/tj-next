@@ -26,7 +26,7 @@ interface ChatStateRow {
   display_name: string | null;
   note: string | null;
   reply_mode: string | null;
-  created_at: string | null;
+  updated_at: string | null;
 }
 
 const AdminCustomersPanel = () => {
@@ -118,8 +118,8 @@ const AdminCustomersPanel = () => {
     try {
       const { data, error } = await supabase
         .from("chat_state")
-        .select("line_user_id, display_name, note, reply_mode, created_at")
-        .order("created_at", { ascending: false, nullsFirst: false });
+        .select("line_user_id, display_name, note, reply_mode, updated_at")
+        .order("updated_at", { ascending: false, nullsFirst: false });
       if (error) throw error;
       setChatStateList((data as ChatStateRow[]) || []);
     } catch (err: any) {
