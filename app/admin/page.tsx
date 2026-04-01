@@ -40,10 +40,10 @@ type AdminModule =
 const ADMIN_MODULES: { id: AdminModule; title: string; shortTitle: string; icon: React.ComponentType<any> }[] = [
   { id: "dashboard", title: "儀表板", shortTitle: "儀表板", icon: LayoutDashboard },
   { id: "orders", title: "訂單管理", shortTitle: "訂單", icon: ShoppingCart },
-  { id: "media", title: "內容管理", shortTitle: "內容", icon: Package },
   { id: "customers", title: "客戶管理", shortTitle: "客戶", icon: Users },
   { id: "quotations", title: "報價單管理", shortTitle: "報價", icon: FileText },
   { id: "eat_reservation", title: "預約試吃", shortTitle: "試吃", icon: UtensilsCrossed },
+  { id: "media", title: "內容管理", shortTitle: "內容", icon: Package },
   { id: "settings", title: "權限管理", shortTitle: "權限", icon: Settings },
 ];
 
