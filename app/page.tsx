@@ -31,7 +31,7 @@ const DESKTOP_LCP_URL =
   "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/home_page/home.webp";
 const LINE_ICON_URL =
   "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/Newline.png";
-const LINE_URL = ""https://rebrand.ly/official_web";
+const LINE_URL = "https://rebrand.ly/official_web";
 
 interface HomePageItem {
   id: string;
