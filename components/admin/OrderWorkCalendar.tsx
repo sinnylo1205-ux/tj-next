@@ -31,6 +31,8 @@ interface Order {
   total_amount: number;
   shipping_way: string | null;
   shipping_address_text: string | null;
+  payment_step: string | null;
+  order_status: string | null;
 }
 
 interface User {
@@ -54,7 +56,23 @@ interface WorkBlock {
   expected_pickup_date: string | null; // 客戶指定送達/取貨日期（不會因拖曳而變動）
   preview_url: string | null;
   customizations_json: any[];
+  order_status: string;
+  payment_step: string;
 }
+
+const ORDER_STATUS_LABEL: Record<string, string> = {
+  awaiting_payment: "待付款",
+  processing: "處理中",
+  shipped: "出貨中",
+  delivered: "已送達",
+  returned: "已退貨",
+};
+
+const PAYMENT_STEP_LABEL: Record<string, string> = {
+  pending: "未付款",
+  submitted: "已提交",
+  verified: "已確認",
+};
 
 // 預設顏色池（用於區分不同訂單）
 const ORDER_COLORS = [
@@ -94,11 +112,15 @@ const OrderWorkCalendar = () => {
   const loadProcessingOrders = async () => {
     setLoading(true);
 
-    // 1. 載入處理中的訂單
+    // 1. 載入符合條件的訂單：
+    //    - payment_step=pending 且 order_status IN (awaiting_payment, processing)
+    //    - payment_step=verified 且 order_status=processing
     const { data: ordersData, error: ordersError } = await supabase
       .from("orders")
       .select("*")
-      .eq("order_status", "processing");
+      .or(
+        "and(payment_step.eq.pending,order_status.in.(awaiting_payment,processing)),and(payment_step.eq.verified,order_status.eq.processing)"
+      );
 
     if (ordersError) {
       toast({ title: "載入訂單失敗", description: ordersError.message, variant: "destructive" });
@@ -196,6 +218,8 @@ const OrderWorkCalendar = () => {
         expected_pickup_date: expectedPickupDate,
         preview_url: item.preview_url,
         customizations_json: asOrderCustomizationsList(item.customizations_json),
+        order_status: order?.order_status || "awaiting_payment",
+        payment_step: order?.payment_step || "pending",
       });
     });
 
@@ -281,7 +305,9 @@ const OrderWorkCalendar = () => {
         ...selectedBlock,
         id: `${selectedBlock.id}-split-${idx}-${Date.now()}`,
         quantity: qty,
-        expected_pickup_date: selectedBlock.expected_pickup_date, // 保留原始客戶指定日期
+        expected_pickup_date: selectedBlock.expected_pickup_date,
+        order_status: selectedBlock.order_status,
+        payment_step: selectedBlock.payment_step,
       }));
       return [...filtered, ...newBlocks];
     });
@@ -386,9 +412,14 @@ const OrderWorkCalendar = () => {
                         onClick={() => handleBlockClick(block)}
                         className="text-xs p-1.5 rounded cursor-move hover:opacity-80 transition-opacity truncate"
                         style={{ backgroundColor: block.order_color, color: "white" }}
-                        title={`${block.user_name}/${block.product_name}/${block.quantity}個`}
+                        title={`${block.user_name}/${block.product_name}/${block.quantity}個 [${ORDER_STATUS_LABEL[block.order_status] || block.order_status}${block.payment_step !== "verified" ? `・${PAYMENT_STEP_LABEL[block.payment_step] || block.payment_step}` : ""}]`}
                       >
-                        <div className="font-medium truncate">{block.user_name}</div>
+                        <div className="font-medium truncate flex items-center gap-1">
+                          {block.user_name}
+                          <span className="inline-block text-[10px] leading-tight px-1 rounded bg-white/30">
+                            {ORDER_STATUS_LABEL[block.order_status] || block.order_status}
+                          </span>
+                        </div>
                         <div className="truncate">{block.product_name}/{block.quantity}個</div>
                       </div>
                     ))}
@@ -432,6 +463,8 @@ const OrderWorkCalendar = () => {
                   <p><span className="text-muted-foreground">數量：</span>{selectedBlock.quantity} 個</p>
                   <p><span className="text-muted-foreground">排程日期：</span>{selectedBlock.scheduled_date}</p>
                   <p><span className="text-muted-foreground">客戶指定送達/取貨日期：</span>{selectedBlock.expected_pickup_date || "未指定"}</p>
+                  <p><span className="text-muted-foreground">訂單狀態：</span>{ORDER_STATUS_LABEL[selectedBlock.order_status] || selectedBlock.order_status}</p>
+                  <p><span className="text-muted-foreground">付款狀態：</span>{PAYMENT_STEP_LABEL[selectedBlock.payment_step] || selectedBlock.payment_step}</p>
                 </div>
               </div>
 

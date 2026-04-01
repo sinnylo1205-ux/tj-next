@@ -608,6 +608,28 @@ const OrderStatusManager = () => {
     await handleStatusUpdate(orderId, "returned", "return");
   };
 
+  /** 未匯款先出貨：僅更新 order_status → processing，payment_step 維持不變 */
+  const handleForceProcessing = async (orderId: string) => {
+    if (loadingAction) return;
+    setLoadingAction({ orderId, action: "force_processing" });
+    try {
+      const { error } = await supabase
+        .from("orders")
+        .update({ order_status: "processing" })
+        .eq("id", orderId);
+      if (error) {
+        toast({ title: "操作失敗", description: error.message, variant: "destructive" });
+        return;
+      }
+      toast({ title: "✅ 已轉為處理中（付款狀態不變）" });
+      loadOrders();
+    } catch {
+      toast({ title: "操作失敗", description: "請稍後再試", variant: "destructive" });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   // 隱藏訂單（軟刪除）
   const handleDeleteOrder = async (orderId: string) => {
     try {
@@ -910,6 +932,19 @@ const OrderStatusManager = () => {
                                     : "確認收到匯款"}
                                 </Button>
                               )}
+                              {order.order_status === "awaiting_payment" && order.payment_step !== "verified" && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-amber-400 text-amber-700 hover:bg-amber-50"
+                                  onClick={() => handleForceProcessing(order.id)}
+                                  disabled={loadingAction !== null}
+                                >
+                                  {loadingAction?.orderId === order.id && loadingAction?.action === "force_processing"
+                                    ? "處理中..."
+                                    : "未匯款，先出貨"}
+                                </Button>
+                              )}
                               {order.order_status === "processing" && (
                                 <Button
                                   size="sm"
@@ -1103,12 +1138,28 @@ const OrderStatusManager = () => {
                               onMouseDown={(e) => e.stopPropagation()}
                             >
                               <div className="p-4 space-y-4">
+                                {/* 置頂：收件人、地址、電話、備註 */}
+                                <div className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white rounded-md p-3 border border-border">
+                                  <div>
+                                    <span className="font-semibold">收件人：</span>
+                                    {order.who_receive || "未填寫"}
+                                  </div>
+                                  <div>
+                                    <span className="font-semibold">電話：</span>
+                                    {order.phone || "未填寫"}
+                                  </div>
+                                  <div className="md:col-span-2">
+                                    <span className="font-semibold">地址：</span>
+                                    {order.shipping_address_text || "—"}
+                                  </div>
+                                  <div className="md:col-span-2">
+                                    <span className="font-semibold">備註：</span>
+                                    {order.notes || "—"}
+                                  </div>
+                                </div>
+
                                 <div className="grid md:grid-cols-2 gap-6 text-sm">
                                   <div className="space-y-3">
-                                    <div>
-                                      <span className="font-medium">收件人：</span>
-                                      {order.who_receive || "未填寫"}
-                                    </div>
                                     <div>
                                       <span className="font-medium">會員名（訂購人）：</span>
                                       {buyerDisplayName(userInfo) || "—"}
@@ -1118,10 +1169,6 @@ const OrderStatusManager = () => {
                                       {order.expected_pickup_date || "未指定"}
                                     </div>
                                     <div>
-                                      <span className="font-medium">電話：</span>
-                                      {order.phone || "未填寫"}
-                                    </div>
-                                    <div>
                                       <span className="font-medium">聯絡信箱：</span>
                                       {order.Email || "未填寫"}
                                     </div>
@@ -1129,6 +1176,12 @@ const OrderStatusManager = () => {
                                       <span className="font-medium">配送方式：</span>
                                       {order.shipping_way || "未指定"}
                                     </div>
+                                    {order.transfer_last5 && (
+                                      <div>
+                                        <span className="font-medium">轉帳末五碼：</span>
+                                        {order.transfer_last5}
+                                      </div>
+                                    )}
                                   </div>
                                   <div className="space-y-3">
                                     <div>
@@ -1152,25 +1205,6 @@ const OrderStatusManager = () => {
                                       {order.TAX_id ?? "—"}
                                     </div>
                                   </div>
-                                </div>
-
-                                <div className="space-y-2 text-sm border-t border-border pt-4">
-                                  <div>
-                                    <span className="font-medium">地址：</span>
-                                    {order.shipping_address_text || "—"}
-                                  </div>
-                                  {order.notes && (
-                                    <div>
-                                      <span className="font-medium">備註：</span>
-                                      {order.notes}
-                                    </div>
-                                  )}
-                                  {order.transfer_last5 && (
-                                    <div>
-                                      <span className="font-medium">轉帳末五碼：</span>
-                                      {order.transfer_last5}
-                                    </div>
-                                  )}
                                 </div>
 
                                 <Separator />
