@@ -549,7 +549,7 @@ const AdminHRPanel = () => {
                               return isLeave && !block ? (
                                 <div
                                   key={emp.id}
-                                  className="flex-1 flex items-center justify-center bg-red-50 text-red-300 text-[10px] select-none relative group"
+                                  className="flex-1 flex items-center justify-center bg-red-50 text-red-400 text-sm font-semibold select-none relative group"
                                   title={leaveNote ? `請假：${leaveNote}` : "請假"}
                                 >
                                   {full ? "假" : ""}
