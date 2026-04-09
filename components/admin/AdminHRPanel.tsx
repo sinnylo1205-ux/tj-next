@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { ChevronLeft, ChevronRight, Download, Trash2, Plus } from "lucide-react";
 import {
   format,
@@ -18,6 +19,7 @@ import {
 import { zhTW } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
 
 // ── 型別 ──
@@ -25,15 +27,15 @@ import * as XLSX from "xlsx";
 interface Employee {
   id: string;
   name: string;
-  color: string;     // block 背景（淡色）
-  textColor: string;  // block 文字
+  color: string;
+  textColor: string;
 }
 
 interface ScheduleBlock {
   id: string;
   employeeId: string;
-  date: string; // YYYY-MM-DD
-  hour: number; // 8–17
+  date: string;
+  slot: number; // 8, 8.5, 9, 9.5, … 17.5
 }
 
 // ── 常數 ──
@@ -43,12 +45,22 @@ const EMPLOYEES: Employee[] = [
   { id: "xinyi", name: "心怡", color: "#FED7AA", textColor: "#C2410C" },
 ];
 
-const HOURS = Array.from({ length: 10 }, (_, i) => 8 + i);
-const HOUR_LABELS = HOURS.map((h) => `${String(h).padStart(2, "0")}:00`);
+// 23 half-hour slots: 8, 8.5, 9, 9.5, … 18, 18.5, 19 (08:00–19:00)
+const SLOTS = Array.from({ length: 23 }, (_, i) => 8 + i * 0.5);
+
+function slotLabel(s: number): string {
+  const h = Math.floor(s);
+  const m = s % 1 === 0 ? "00" : "30";
+  return `${String(h).padStart(2, "0")}:${m}`;
+}
+
+function isFullHour(s: number): boolean {
+  return s % 1 === 0;
+}
 
 const DEFAULT_WORK_DAYS = [3, 4, 5]; // Wed, Thu, Fri
 const DEFAULT_START = 9;
-const DEFAULT_END = 18;
+const DEFAULT_END = 18; // 9:00–18:00 → slots 9, 9.5, 10, … 17.5
 
 function isWeekday(date: Date): boolean {
   const d = getDay(date);
@@ -62,18 +74,14 @@ function generateDefaultBlocks(month: Date): ScheduleBlock[] {
   const blocks: ScheduleBlock[] = [];
 
   days.forEach((day) => {
-    const dow = getDay(day);
-    if (!DEFAULT_WORK_DAYS.includes(dow)) return;
+    if (!DEFAULT_WORK_DAYS.includes(getDay(day))) return;
     const dateStr = format(day, "yyyy-MM-dd");
     EMPLOYEES.forEach((emp) => {
-      for (let h = DEFAULT_START; h < DEFAULT_END; h++) {
-        blocks.push({
-          id: `${emp.id}-${dateStr}-${h}`,
-          employeeId: emp.id,
-          date: dateStr,
-          hour: h,
-        });
-      }
+      SLOTS.forEach((slot) => {
+        if (slot >= DEFAULT_START && slot < DEFAULT_END) {
+          blocks.push({ id: `${emp.id}-${dateStr}-${slot}`, employeeId: emp.id, date: dateStr, slot });
+        }
+      });
     });
   });
   return blocks;
@@ -90,32 +98,141 @@ function getWeekdaysInMonth(month: Date): Date[] {
 const AdminHRPanel = () => {
   const { toast } = useToast();
   const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [blocks, setBlocks] = useState<ScheduleBlock[]>(() => generateDefaultBlocks(new Date()));
-  const [dragData, setDragData] = useState<{ blockId: string } | null>(null);
-
-  // 請假記錄：Set of "employeeId-date"
+  const [blocks, setBlocks] = useState<ScheduleBlock[]>([]);
   const [leaveRecords, setLeaveRecords] = useState<Set<string>>(new Set());
-
-  // 請假 Dialog
+  const [dragData, setDragData] = useState<{ blockId: string } | null>(null);
   const [leaveDialogDate, setLeaveDialogDate] = useState<string | null>(null);
+  const [leaveSelectedEmp, setLeaveSelectedEmp] = useState<string | null>(null);
+  const [leaveReason, setLeaveReason] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // 刪除備註：key = "employeeId-date-slot", value = reason
+  const [deleteNotes, setDeleteNotes] = useState<Map<string, string>>(new Map());
+  // 請假備註：key = "employeeId-date", value = reason
+  const [leaveReasons, setLeaveReasons] = useState<Map<string, string>>(new Map());
+  // 待刪除 block（顯示理由 dialog）
+  const [pendingDelete, setPendingDelete] = useState<{ blockId: string; employeeId: string; date: string; slot: number } | null>(null);
+  const [deleteReason, setDeleteReason] = useState("");
 
   const weekdays = useMemo(() => getWeekdaysInMonth(currentMonth), [currentMonth]);
 
   const blockMap = useMemo(() => {
     const m = new Map<string, ScheduleBlock>();
-    blocks.forEach((b) => m.set(`${b.employeeId}-${b.date}-${b.hour}`, b));
+    blocks.forEach((b) => m.set(`${b.employeeId}-${b.date}-${b.slot}`, b));
     return m;
   }, [blocks]);
 
-  const switchMonth = useCallback(
-    (dir: 1 | -1) => {
-      const next = dir === 1 ? addMonths(currentMonth, 1) : subMonths(currentMonth, 1);
-      setCurrentMonth(next);
-      setBlocks(generateDefaultBlocks(next));
-      setLeaveRecords(new Set());
-    },
-    [currentMonth],
-  );
+  // ── Supabase 載入 ──
+  const loadMonth = useCallback(async (month: Date) => {
+    setLoading(true);
+    const start = format(startOfMonth(month), "yyyy-MM-dd");
+    const end = format(endOfMonth(month), "yyyy-MM-dd");
+
+    const [schedRes, leaveRes, notesRes] = await Promise.all([
+      supabase.from("hr_schedule").select("*").gte("scheduled_date", start).lte("scheduled_date", end),
+      supabase.from("hr_leaves").select("*").gte("leave_date", start).lte("leave_date", end),
+      supabase.from("hr_notes").select("*").gte("note_date", start).lte("note_date", end),
+    ]);
+
+    if (schedRes.error) {
+      toast({ title: "載入排班失敗", description: schedRes.error.message, variant: "destructive" });
+      setLoading(false);
+      return;
+    }
+
+    const dbBlocks: ScheduleBlock[] = (schedRes.data || []).map((r: any) => ({
+      id: `${r.employee_id}-${r.scheduled_date}-${Number(r.slot)}`,
+      employeeId: r.employee_id,
+      date: r.scheduled_date,
+      slot: Number(r.slot),
+    }));
+
+    // If no schedule data for this month, generate defaults and save
+    if (dbBlocks.length === 0) {
+      const defaults = generateDefaultBlocks(month);
+      setBlocks(defaults);
+      await saveBlocksToDB(defaults, month);
+    } else {
+      setBlocks(dbBlocks);
+    }
+
+    const leaves = new Set<string>();
+    const lReasons = new Map<string, string>();
+    (leaveRes.data || []).forEach((r: any) => {
+      const key = `${r.employee_id}-${r.leave_date}`;
+      leaves.add(key);
+      if (r.reason) lReasons.set(key, r.reason);
+    });
+    setLeaveRecords(leaves);
+    setLeaveReasons(lReasons);
+
+    const notes = new Map<string, string>();
+    (notesRes.data || []).forEach((r: any) => {
+      notes.set(`${r.employee_id}-${r.note_date}-${Number(r.slot)}`, r.reason);
+    });
+    setDeleteNotes(notes);
+
+    setLoading(false);
+  }, [toast]);
+
+  useEffect(() => {
+    loadMonth(currentMonth);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Supabase 儲存 ──
+  const saveBlocksToDB = async (blocksToSave: ScheduleBlock[], month: Date) => {
+    const start = format(startOfMonth(month), "yyyy-MM-dd");
+    const end = format(endOfMonth(month), "yyyy-MM-dd");
+
+    // 1. 先刪除該月所有排班
+    const { error: delErr } = await supabase.from("hr_schedule").delete().gte("scheduled_date", start).lte("scheduled_date", end);
+    if (delErr) {
+      console.error("Delete schedule error:", delErr);
+    }
+
+    if (blocksToSave.length === 0) return;
+
+    const rows = blocksToSave.map((b) => ({
+      employee_id: b.employeeId,
+      scheduled_date: b.date,
+      slot: b.slot,
+    }));
+
+    // 2. 用 upsert 寫入（避免殘留 row 導致 duplicate key）
+    for (let i = 0; i < rows.length; i += 500) {
+      const batch = rows.slice(i, i + 500);
+      const { error } = await supabase
+        .from("hr_schedule")
+        .upsert(batch, { onConflict: "employee_id,scheduled_date,slot" });
+      if (error) {
+        console.error("Save schedule error:", error);
+        toast({ title: "儲存排班失敗", description: error.message, variant: "destructive" });
+        return;
+      }
+    }
+  };
+
+  const persistBlocks = useCallback(async (nextBlocks: ScheduleBlock[]) => {
+    setSaving(true);
+    await saveBlocksToDB(nextBlocks, currentMonth);
+    setSaving(false);
+  }, [currentMonth]);
+
+  // Helper: update blocks + persist
+  const updateBlocks = useCallback((updater: (prev: ScheduleBlock[]) => ScheduleBlock[]) => {
+    setBlocks((prev) => {
+      const next = updater(prev);
+      persistBlocks(next);
+      return next;
+    });
+  }, [persistBlocks]);
+
+  const switchMonth = useCallback(async (dir: 1 | -1) => {
+    const next = dir === 1 ? addMonths(currentMonth, 1) : subMonths(currentMonth, 1);
+    setCurrentMonth(next);
+    await loadMonth(next);
+  }, [currentMonth, loadMonth]);
 
   // ── Drag & Drop ──
   const handleDragStart = (e: React.DragEvent, blockId: string) => {
@@ -128,22 +245,21 @@ const AdminHRPanel = () => {
     e.dataTransfer.dropEffect = "move";
   };
 
-  const handleDrop = (e: React.DragEvent, targetDate: string, targetHour: number) => {
+  const handleDrop = (e: React.DragEvent, targetDate: string, targetSlot: number) => {
     e.preventDefault();
     if (!dragData) return;
     const block = blocks.find((b) => b.id === dragData.blockId);
     if (!block) return;
 
-    const existingKey = `${block.employeeId}-${targetDate}-${targetHour}`;
-    if (blockMap.has(existingKey)) {
+    if (blockMap.has(`${block.employeeId}-${targetDate}-${targetSlot}`)) {
       setDragData(null);
       return;
     }
 
-    setBlocks((prev) =>
+    updateBlocks((prev) =>
       prev.map((b) =>
         b.id === dragData.blockId
-          ? { ...b, date: targetDate, hour: targetHour, id: `${b.employeeId}-${targetDate}-${targetHour}` }
+          ? { ...b, date: targetDate, slot: targetSlot, id: `${b.employeeId}-${targetDate}-${targetSlot}` }
           : b,
       ),
     );
@@ -151,42 +267,77 @@ const AdminHRPanel = () => {
   };
 
   const handleDelete = (blockId: string) => {
-    setBlocks((prev) => prev.filter((b) => b.id !== blockId));
+    const block = blocks.find((b) => b.id === blockId);
+    if (!block) return;
+    setPendingDelete({ blockId, employeeId: block.employeeId, date: block.date, slot: block.slot });
+    setDeleteReason("");
   };
 
-  const handleAddBlock = (employeeId: string, date: string, hour: number) => {
-    const key = `${employeeId}-${date}-${hour}`;
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    const { blockId, employeeId, date, slot } = pendingDelete;
+    const reason = deleteReason.trim();
+
+    updateBlocks((prev) => prev.filter((b) => b.id !== blockId));
+
+    if (reason) {
+      const noteKey = `${employeeId}-${date}-${slot}`;
+      setDeleteNotes((prev) => new Map(prev).set(noteKey, reason));
+      await supabase.from("hr_notes").upsert(
+        { employee_id: employeeId, note_date: date, slot, reason },
+        { onConflict: "employee_id,note_date,slot" },
+      );
+    }
+
+    const emp = EMPLOYEES.find((e) => e.id === employeeId);
+    toast({ title: `✅ 已刪除 ${emp?.name ?? employeeId} ${slotLabel(slot)} 的排班` });
+    setPendingDelete(null);
+  };
+
+  const handleAddBlock = (employeeId: string, date: string, slot: number) => {
+    const key = `${employeeId}-${date}-${slot}`;
     if (blockMap.has(key)) return;
-    setBlocks((prev) => [...prev, { id: key, employeeId, date, hour }]);
+    updateBlocks((prev) => [...prev, { id: key, employeeId, date, slot }]);
   };
 
-  // ── 請假：批量刪除該員工當天所有 block ──
-  const handleLeave = (employeeId: string, date: string) => {
-    setBlocks((prev) => prev.filter((b) => !(b.employeeId === employeeId && b.date === date)));
-    setLeaveRecords((prev) => new Set(prev).add(`${employeeId}-${date}`));
+  // ── 請假 ──
+  const handleLeave = async (employeeId: string, date: string, reason: string) => {
+    updateBlocks((prev) => prev.filter((b) => !(b.employeeId === employeeId && b.date === date)));
+    const key = `${employeeId}-${date}`;
+    setLeaveRecords((prev) => new Set(prev).add(key));
+    if (reason) setLeaveReasons((prev) => new Map(prev).set(key, reason));
+    await supabase.from("hr_leaves").upsert(
+      { employee_id: employeeId, leave_date: date, reason: reason || "" },
+      { onConflict: "employee_id,leave_date" },
+    );
     const emp = EMPLOYEES.find((e) => e.id === employeeId);
     toast({ title: `✅ 已標記 ${emp?.name ?? employeeId} 於 ${date} 請假` });
+    setLeaveSelectedEmp(null);
+    setLeaveReason("");
   };
 
-  // ── 取消請假：移除請假記錄並恢復預設班表 ──
-  const handleCancelLeave = (employeeId: string, date: string) => {
+  const handleCancelLeave = async (employeeId: string, date: string) => {
     setLeaveRecords((prev) => {
       const next = new Set(prev);
       next.delete(`${employeeId}-${date}`);
       return next;
     });
+    await supabase.from("hr_leaves").delete().eq("employee_id", employeeId).eq("leave_date", date);
+
+    // Restore default blocks if it's a default work day
     const d = new Date(date);
-    const dow = getDay(d);
-    if (DEFAULT_WORK_DAYS.includes(dow)) {
+    if (DEFAULT_WORK_DAYS.includes(getDay(d))) {
       const restored: ScheduleBlock[] = [];
-      for (let h = DEFAULT_START; h < DEFAULT_END; h++) {
-        const key = `${employeeId}-${date}-${h}`;
-        if (!blockMap.has(key)) {
-          restored.push({ id: key, employeeId, date, hour: h });
+      SLOTS.forEach((slot) => {
+        if (slot >= DEFAULT_START && slot < DEFAULT_END) {
+          const key = `${employeeId}-${date}-${slot}`;
+          if (!blockMap.has(key)) {
+            restored.push({ id: key, employeeId, date, slot });
+          }
         }
-      }
+      });
       if (restored.length > 0) {
-        setBlocks((prev) => [...prev, ...restored]);
+        updateBlocks((prev) => [...prev, ...restored]);
       }
     }
     const emp = EMPLOYEES.find((e) => e.id === employeeId);
@@ -198,17 +349,15 @@ const AdminHRPanel = () => {
     const monthStr = format(currentMonth, "yyyyMM");
     const monthNum = format(currentMonth, "M");
     const daysInMonth = getDaysInMonth(currentMonth);
-
     const wb = XLSX.utils.book_new();
 
     EMPLOYEES.forEach((emp) => {
       const empBlocks = blocks.filter((b) => b.employeeId === emp.id);
-
-      const dateHours = new Map<string, number[]>();
+      const dateSlots = new Map<string, number[]>();
       empBlocks.forEach((b) => {
-        const arr = dateHours.get(b.date) || [];
-        arr.push(b.hour);
-        dateHours.set(b.date, arr);
+        const arr = dateSlots.get(b.date) || [];
+        arr.push(b.slot);
+        dateSlots.set(b.date, arr);
       });
 
       const rows: (string | number | null)[][] = [];
@@ -219,18 +368,32 @@ const AdminHRPanel = () => {
 
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = format(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d), "yyyy-MM-dd");
-        const hours = (dateHours.get(dateStr) || []).sort((a, b) => a - b);
+        const slots = (dateSlots.get(dateStr) || []).sort((a, b) => a - b);
         const isLeave = leaveRecords.has(`${emp.id}-${dateStr}`);
 
+        // 收集該天的刪除備註
+        const dayNotes: string[] = [];
+        deleteNotes.forEach((reason, key) => {
+          if (key.startsWith(`${emp.id}-${dateStr}-`) && reason) {
+            const s = Number(key.split("-").pop());
+            dayNotes.push(`${slotLabel(s)}: ${reason}`);
+          }
+        });
+        const leaveKey = `${emp.id}-${dateStr}`;
+        const leaveReasonStr = leaveReasons.get(leaveKey);
+        const leaveLabel = isLeave ? (leaveReasonStr ? `請假：${leaveReasonStr}` : "請假") : null;
+        const noteStr = leaveLabel ?? (dayNotes.length > 0 ? dayNotes.join("；") : null);
+
         if (isLeave) {
-          rows.push([dateStr, null, null, null, null, null, null, "請假"]);
-        } else if (hours.length === 0) {
-          rows.push([dateStr, null, null, null, null, null, null, null]);
+          rows.push([dateStr, null, null, null, null, null, null, noteStr]);
+        } else if (slots.length === 0) {
+          rows.push([dateStr, null, null, null, null, null, null, noteStr]);
         } else {
-          const clockIn = `${String(hours[0]).padStart(2, "0")}:00`;
-          const clockOut = `${String(hours[hours.length - 1] + 1).padStart(2, "0")}:00`;
-          totalWorkHours += hours.length;
-          rows.push([dateStr, clockIn, clockOut, null, null, null, null, null]);
+          const clockIn = slotLabel(slots[0]);
+          const lastSlot = slots[slots.length - 1];
+          const clockOut = slotLabel(lastSlot + 0.5);
+          totalWorkHours += slots.length * 0.5;
+          rows.push([dateStr, clockIn, clockOut, null, null, null, null, noteStr]);
         }
       }
 
@@ -254,7 +417,6 @@ const AdminHRPanel = () => {
   const weekGroups = useMemo(() => {
     const groups: Date[][] = [];
     let currentWeek: Date[] = [];
-
     weekdays.forEach((day) => {
       if (getDay(day) === 1 && currentWeek.length > 0) {
         groups.push(currentWeek);
@@ -266,12 +428,27 @@ const AdminHRPanel = () => {
     return groups;
   }, [weekdays]);
 
+  if (loading) {
+    return (
+      <div className="p-6">
+        <Card>
+          <CardContent className="p-8 text-center">
+            <p className="text-muted-foreground">載入排班資料...</p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 space-y-4">
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between flex-wrap gap-3">
-            <CardTitle>人事管理 — 員工排班</CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle>人事管理 — 員工排班</CardTitle>
+              {saving && <span className="text-xs text-muted-foreground animate-pulse">儲存中...</span>}
+            </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="icon" onClick={() => switchMonth(-1)}>
                 <ChevronLeft className="h-4 w-4" />
@@ -300,14 +477,12 @@ const AdminHRPanel = () => {
         <CardContent className="overflow-auto">
           {weekGroups.map((week, wi) => (
             <div key={wi} className="mb-6">
-              <div className="text-xs text-muted-foreground mb-1 font-medium">
-                第 {wi + 1} 週
-              </div>
+              <div className="text-xs text-muted-foreground mb-1 font-medium">第 {wi + 1} 週</div>
               <div className="border rounded-lg overflow-hidden">
-                {/* 表頭：日期（可點擊請假） */}
+                {/* 表頭 */}
                 <div
                   className="grid border-b bg-muted/40"
-                  style={{ gridTemplateColumns: `80px repeat(${week.length}, 1fr)` }}
+                  style={{ gridTemplateColumns: `72px repeat(${week.length}, 1fr)` }}
                 >
                   <div className="p-2 text-xs font-medium text-muted-foreground border-r">時段</div>
                   {week.map((day) => {
@@ -327,124 +502,230 @@ const AdminHRPanel = () => {
                   })}
                 </div>
 
-                {/* 每小時一列 */}
-                {HOURS.map((hour) => (
-                  <div
-                    key={hour}
-                    className="grid border-b last:border-b-0"
-                    style={{ gridTemplateColumns: `80px repeat(${week.length}, 1fr)` }}
-                  >
-                    <div className="p-1.5 text-xs text-muted-foreground border-r flex items-center justify-center bg-muted/20">
-                      {HOUR_LABELS[hour - 8]}
-                    </div>
-                    {week.map((day) => {
-                      const dateStr = format(day, "yyyy-MM-dd");
-                      const cellBlocks = EMPLOYEES.map((emp) => ({
-                        emp,
-                        block: blockMap.get(`${emp.id}-${dateStr}-${hour}`),
-                        isLeave: leaveRecords.has(`${emp.id}-${dateStr}`),
-                      }));
+                {/* 半小時列 */}
+                {SLOTS.map((slot) => {
+                  const full = isFullHour(slot);
+                  return (
+                    <div
+                      key={slot}
+                      className={cn(
+                        "grid",
+                        full ? "border-t border-border" : "border-t border-dashed border-border/50",
+                      )}
+                      style={{ gridTemplateColumns: `72px repeat(${week.length}, 1fr)` }}
+                    >
+                      <div
+                        className={cn(
+                          "px-1.5 text-[11px] text-muted-foreground border-r flex items-center justify-center bg-muted/20",
+                          full ? "font-medium" : "text-muted-foreground/60",
+                        )}
+                        style={{ height: full ? 32 : 24 }}
+                      >
+                        {slotLabel(slot)}
+                      </div>
+                      {week.map((day) => {
+                        const dateStr = format(day, "yyyy-MM-dd");
+                        const cellBlocks = EMPLOYEES.map((emp) => ({
+                          emp,
+                          block: blockMap.get(`${emp.id}-${dateStr}-${slot}`),
+                          isLeave: leaveRecords.has(`${emp.id}-${dateStr}`),
+                        }));
 
-                      return (
-                        <div
-                          key={dateStr}
-                          className="border-r last:border-r-0 flex min-h-[38px] relative"
-                          onDragOver={handleDragOver}
-                          onDrop={(e) => handleDrop(e, dateStr, hour)}
-                        >
-                          {cellBlocks.map(({ emp, block, isLeave }) =>
-                            isLeave && !block ? (
-                              <div
-                                key={emp.id}
-                                className="flex-1 flex items-center justify-center bg-red-50 text-red-300 text-xs select-none"
-                              >
-                                假
-                              </div>
-                            ) : block ? (
-                              <div
-                                key={block.id}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, block.id)}
-                                className="flex-1 flex items-center justify-center text-xs font-semibold cursor-move group relative select-none"
-                                style={{ backgroundColor: emp.color, color: emp.textColor }}
-                                title={`${emp.name} ${HOUR_LABELS[hour - 8]}–${HOUR_LABELS[hour - 7] || "19:00"}`}
-                              >
-                                {emp.name}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDelete(block.id);
-                                  }}
-                                  className="absolute top-0 right-0 p-0.5 bg-black/20 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                        return (
+                          <div
+                            key={dateStr}
+                            className="border-r last:border-r-0 flex relative"
+                            style={{ height: full ? 32 : 24 }}
+                            onDragOver={handleDragOver}
+                            onDrop={(e) => handleDrop(e, dateStr, slot)}
+                          >
+                            {cellBlocks.map(({ emp, block, isLeave }) => {
+                              const noteKey = `${emp.id}-${dateStr}-${slot}`;
+                              const note = deleteNotes.get(noteKey);
+
+                              const leaveKey = `${emp.id}-${dateStr}`;
+                              const leaveNote = leaveReasons.get(leaveKey);
+
+                              return isLeave && !block ? (
+                                <div
+                                  key={emp.id}
+                                  className="flex-1 flex items-center justify-center bg-red-50 text-red-300 text-[10px] select-none relative group"
+                                  title={leaveNote ? `請假：${leaveNote}` : "請假"}
                                 >
-                                  <Trash2 className="h-2.5 w-2.5" style={{ color: emp.textColor }} />
-                                </button>
-                              </div>
-                            ) : (
-                              <div
-                                key={emp.id}
-                                className="flex-1 flex items-center justify-center hover:bg-muted/40 transition-colors cursor-pointer"
-                                onClick={() => handleAddBlock(emp.id, dateStr, hour)}
-                                title={`新增 ${emp.name}`}
-                              >
-                                <Plus className="h-3 w-3 text-muted-foreground/30 hover:text-muted-foreground/60" />
-                              </div>
-                            ),
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+                                  {full ? "假" : ""}
+                                  {full && leaveNote && (
+                                    <div className="absolute hidden group-hover:block z-20 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 rounded bg-foreground text-background text-[10px] whitespace-nowrap shadow-lg pointer-events-none">
+                                      {emp.name} 請假：{leaveNote}
+                                    </div>
+                                  )}
+                                </div>
+                              ) : block ? (
+                                <div
+                                  key={block.id}
+                                  draggable
+                                  onDragStart={(e) => handleDragStart(e, block.id)}
+                                  className="flex-1 flex items-center justify-center text-xs font-semibold cursor-move group relative select-none"
+                                  style={{ backgroundColor: emp.color, color: emp.textColor }}
+                                  title={`${emp.name} ${slotLabel(slot)}–${slotLabel(slot + 0.5)}`}
+                                >
+                                  {full ? emp.name : ""}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => { e.stopPropagation(); handleDelete(block.id); }}
+                                    className="absolute top-0 right-0 p-0.5 bg-black/20 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <Trash2 className="h-2.5 w-2.5" style={{ color: emp.textColor }} />
+                                  </button>
+                                </div>
+                              ) : note ? (
+                                <div
+                                  key={emp.id}
+                                  className="flex-1 flex items-center justify-center bg-amber-50 cursor-default relative group"
+                                  title={`已刪除：${note}`}
+                                  onClick={() => handleAddBlock(emp.id, dateStr, slot)}
+                                >
+                                  <div className="w-full h-[1px] bg-amber-300" />
+                                  <div className="absolute hidden group-hover:block z-20 bottom-full left-1/2 -translate-x-1/2 mb-1 px-2 py-1 rounded bg-foreground text-background text-[10px] whitespace-nowrap shadow-lg pointer-events-none">
+                                    {emp.name}：{note}
+                                  </div>
+                                </div>
+                              ) : (
+                                <div
+                                  key={emp.id}
+                                  className="flex-1 flex items-center justify-center hover:bg-muted/40 transition-colors cursor-pointer"
+                                  onClick={() => handleAddBlock(emp.id, dateStr, slot)}
+                                  title={`新增 ${emp.name}`}
+                                >
+                                  <Plus className="h-2.5 w-2.5 text-muted-foreground/20 hover:text-muted-foreground/50" />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           ))}
         </CardContent>
       </Card>
 
+      {/* 刪除理由 Dialog */}
+      <Dialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>刪除排班</DialogTitle>
+          </DialogHeader>
+          {pendingDelete && (() => {
+            const emp = EMPLOYEES.find((e) => e.id === pendingDelete.employeeId);
+            return (
+              <div className="space-y-3 py-2">
+                <p className="text-sm">
+                  確定刪除 <span className="font-semibold">{emp?.name}</span> 在{" "}
+                  <span className="font-semibold">{pendingDelete.date}</span>{" "}
+                  <span className="font-semibold">{slotLabel(pendingDelete.slot)}</span> 的排班？
+                </p>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">刪除理由（選填，將寫入備註）</label>
+                  <Textarea
+                    placeholder="例如：臨時請假、調班…"
+                    value={deleteReason}
+                    onChange={(e) => setDeleteReason(e.target.value)}
+                    rows={2}
+                  />
+                </div>
+              </div>
+            );
+          })()}
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setPendingDelete(null)}>取消</Button>
+            <Button variant="destructive" onClick={confirmDelete}>確定刪除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* 請假 Dialog */}
-      <Dialog open={!!leaveDialogDate} onOpenChange={(open) => !open && setLeaveDialogDate(null)}>
+      <Dialog open={!!leaveDialogDate} onOpenChange={(open) => {
+        if (!open) { setLeaveDialogDate(null); setLeaveSelectedEmp(null); setLeaveReason(""); }
+      }}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>設定請假 — {leaveDialogDate}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3 py-2">
-            <p className="text-sm text-muted-foreground">選擇該日請假的員工，將批量移除當天所有排班：</p>
-            {EMPLOYEES.map((emp) => {
-              const key = `${emp.id}-${leaveDialogDate}`;
-              const alreadyOnLeave = leaveRecords.has(key);
 
-              return (
-                <div key={emp.id} className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    className="flex-1 justify-start gap-3 h-12"
-                    style={{ borderColor: alreadyOnLeave ? "#FCA5A5" : emp.color }}
-                    disabled={alreadyOnLeave}
-                    onClick={() => leaveDialogDate && handleLeave(emp.id, leaveDialogDate)}
-                  >
-                    <div className="w-4 h-4 rounded" style={{ backgroundColor: emp.color, border: `1px solid ${emp.textColor}` }} />
-                    <span className="font-medium">{emp.name}</span>
-                    {alreadyOnLeave && <span className="text-xs text-red-500 ml-auto">已請假</span>}
-                  </Button>
-                  {alreadyOnLeave && (
+          {!leaveSelectedEmp ? (
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-muted-foreground">選擇該日請假的員工：</p>
+              {EMPLOYEES.map((emp) => {
+                const key = `${emp.id}-${leaveDialogDate}`;
+                const alreadyOnLeave = leaveRecords.has(key);
+                const existingReason = leaveReasons.get(key);
+                return (
+                  <div key={emp.id} className="flex items-center gap-2">
                     <Button
-                      variant="destructive"
-                      size="sm"
-                      className="shrink-0"
-                      onClick={() => leaveDialogDate && handleCancelLeave(emp.id, leaveDialogDate)}
+                      variant="outline"
+                      className="flex-1 justify-start gap-3 h-12"
+                      style={{ borderColor: alreadyOnLeave ? "#FCA5A5" : emp.color }}
+                      disabled={alreadyOnLeave}
+                      onClick={() => { setLeaveSelectedEmp(emp.id); setLeaveReason(""); }}
                     >
-                      取消請假
+                      <div className="w-4 h-4 rounded" style={{ backgroundColor: emp.color, border: `1px solid ${emp.textColor}` }} />
+                      <span className="font-medium">{emp.name}</span>
+                      {alreadyOnLeave && (
+                        <span className="text-xs text-red-500 ml-auto">
+                          已請假{existingReason ? `（${existingReason}）` : ""}
+                        </span>
+                      )}
                     </Button>
-                  )}
+                    {alreadyOnLeave && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={() => leaveDialogDate && handleCancelLeave(emp.id, leaveDialogDate)}
+                      >
+                        取消請假
+                      </Button>
+                    )}
+                  </div>
+                );
+              })}
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setLeaveDialogDate(null)}>關閉</Button>
+              </DialogFooter>
+            </div>
+          ) : (() => {
+            const emp = EMPLOYEES.find((e) => e.id === leaveSelectedEmp);
+            return (
+              <div className="space-y-3 py-2">
+                <p className="text-sm">
+                  <span className="font-semibold">{emp?.name}</span> 於{" "}
+                  <span className="font-semibold">{leaveDialogDate}</span> 請假
+                </p>
+                <div>
+                  <label className="text-sm font-medium mb-1 block">請假事由</label>
+                  <Textarea
+                    placeholder="例如：家中有事、身體不適…"
+                    value={leaveReason}
+                    onChange={(e) => setLeaveReason(e.target.value)}
+                    rows={2}
+                    autoFocus
+                  />
                 </div>
-              );
-            })}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setLeaveDialogDate(null)}>關閉</Button>
-          </DialogFooter>
+                <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setLeaveSelectedEmp(null)}>返回</Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => leaveDialogDate && leaveSelectedEmp && handleLeave(leaveSelectedEmp, leaveDialogDate, leaveReason.trim())}
+                  >
+                    確定請假
+                  </Button>
+                </DialogFooter>
+              </div>
+            );
+          })()}
         </DialogContent>
       </Dialog>
     </div>
