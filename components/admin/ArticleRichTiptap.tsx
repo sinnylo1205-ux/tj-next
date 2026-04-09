@@ -44,6 +44,7 @@ interface ArticleRichTiptapProps {
   initialIsPublished: boolean;
   /** 與套版相同：true = noindex */
   initialSeoNoindex: boolean;
+  initialOgImageUrl: string | null;
   onSaved: () => void;
 }
 
@@ -61,6 +62,7 @@ export default function ArticleRichTiptap({
   initialBody,
   initialIsPublished,
   initialSeoNoindex,
+  initialOgImageUrl,
   onSaved,
 }: ArticleRichTiptapProps) {
   const { toast } = useToast();
@@ -71,6 +73,8 @@ export default function ArticleRichTiptap({
   const [pickedFileName, setPickedFileName] = useState<string | null>(null);
   const [isPublished, setIsPublished] = useState(initialIsPublished);
   const [seoNoindex, setSeoNoindex] = useState(initialSeoNoindex);
+  const [ogImageUrl, setOgImageUrl] = useState<string | null>(initialOgImageUrl);
+  const [ogUploading, setOgUploading] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkHref, setLinkHref] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
@@ -83,6 +87,33 @@ export default function ArticleRichTiptap({
   useEffect(() => {
     setSeoNoindex(initialSeoNoindex);
   }, [articleId, initialSeoNoindex]);
+
+  useEffect(() => {
+    setOgImageUrl(initialOgImageUrl);
+  }, [articleId, initialOgImageUrl]);
+
+  const uploadOgImage = useCallback(
+    async (file: File) => {
+      setOgUploading(true);
+      try {
+        const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+        const fileName = `blog_og/${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
+        const { error } = await supabase.storage.from("custom_asset").upload(fileName, webpFile, { upsert: true, contentType: "image/webp" });
+        if (error) {
+          toast({ title: "OG 圖上傳失敗", description: error.message, variant: "destructive" });
+          return;
+        }
+        const { data } = supabase.storage.from("custom_asset").getPublicUrl(fileName);
+        setOgImageUrl(data.publicUrl);
+        toast({ title: "OG 圖已上傳" });
+      } catch {
+        toast({ title: "OG 圖上傳失敗", variant: "destructive" });
+      } finally {
+        setOgUploading(false);
+      }
+    },
+    [toast],
+  );
 
   const editor = useEditor({
     extensions: [
@@ -150,6 +181,7 @@ export default function ArticleRichTiptap({
         content_mode: "richtext",
         is_published: isPublished,
         seo_noindex: seoNoindex,
+        og_image_url: ogImageUrl,
       })
       .eq("id", articleId);
     setSaving(false);
@@ -268,6 +300,42 @@ export default function ArticleRichTiptap({
             若未勾選，儲存後前台不會出現此文章；與「套版撰寫」的發布開關為同一欄位。
           </p>
         )}
+      </div>
+
+      <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-2">
+        <Label className="text-sm font-semibold">OG 社群分享圖</Label>
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            readOnly
+            value={ogImageUrl || ""}
+            placeholder="上傳圖片或貼上網址"
+            className="flex-1 min-w-[200px]"
+            onChange={(e) => setOgImageUrl(e.target.value || null)}
+            onClick={(e) => (e.target as HTMLInputElement).readOnly = false}
+            onBlur={(e) => (e.target as HTMLInputElement).readOnly = true}
+          />
+          <label className="inline-flex items-center gap-1.5 cursor-pointer rounded-md border px-3 py-1.5 text-sm hover:bg-muted transition-colors">
+            <Upload className="h-4 w-4" />
+            {ogUploading ? "上傳中…" : "上傳"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={ogUploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) void uploadOgImage(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          {ogImageUrl && (
+            <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => setOgImageUrl(null)}>
+              清除
+            </Button>
+          )}
+        </div>
+        {ogImageUrl && <img src={ogImageUrl} alt="OG preview" className="max-h-32 rounded border mt-1" />}
       </div>
 
       <Button type="button" onClick={() => void save()} disabled={saving}>
