@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { convertToWebP } from "@/lib/convert-to-webp";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -103,9 +104,9 @@ export default function ArticleTemplateTab() {
   };
 
   const uploadOg = async (file: File) => {
-    const ext = file.name.split(".").pop();
-    const fileName = `blog_og/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("custom_asset").upload(fileName, file, { upsert: true });
+    const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+    const fileName = `blog_og/${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
+    const { error } = await supabase.storage.from("custom_asset").upload(fileName, webpFile, { upsert: true, contentType: "image/webp" });
     if (error) {
       toast({ title: "上傳失敗", description: error.message, variant: "destructive" });
       return;

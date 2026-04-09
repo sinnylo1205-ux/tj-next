@@ -14,38 +14,9 @@ interface UploadRecord {
   uploadedAt: string;
 }
 
-const HISTORY_KEY = "admin_ig_upload_history";
+import { convertToWebP } from "@/lib/convert-to-webp";
 
-const convertToWebP = (file: File, quality = 0.85): Promise<File> => {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth;
-      canvas.height = img.naturalHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return reject(new Error("Canvas not supported"));
-      ctx.drawImage(img, 0, 0);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) return reject(new Error("轉換失敗"));
-          const webpFile = new File([blob], file.name.replace(/\.\w+$/, ".webp"), {
-            type: "image/webp",
-          });
-          URL.revokeObjectURL(img.src);
-          resolve(webpFile);
-        },
-        "image/webp",
-        quality,
-      );
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(img.src);
-      reject(new Error("圖片載入失敗"));
-    };
-    img.src = URL.createObjectURL(file);
-  });
-};
+const HISTORY_KEY = "admin_ig_upload_history";
 
 const BatchUploadTab = () => {
   const { toast } = useToast();

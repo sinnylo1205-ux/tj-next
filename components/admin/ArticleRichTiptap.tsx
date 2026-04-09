@@ -19,6 +19,7 @@ import {
 import { getArticleEditorExtensions, ARTICLE_TEXT_COLORS } from "@/lib/tiptap/article-extensions";
 import { Loader2, Save, ImagePlus, Upload, Link2 } from "lucide-react";
 import type { JSONContent } from "@tiptap/core";
+import { convertToWebP } from "@/lib/convert-to-webp";
 
 /** custom_asset bucket 內路徑（文章新排版自訂上傳） */
 export const ARTICLE_SELF_UPLOAD_STORAGE_PREFIX = "website_img/article/self_upload";
@@ -102,9 +103,9 @@ export default function ArticleRichTiptap({
 
   const uploadFile = useCallback(
     async (file: File): Promise<string | null> => {
-      const ext = file.name.split(".").pop();
-      const fileName = `${ARTICLE_SELF_UPLOAD_STORAGE_PREFIX}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from("custom_asset").upload(fileName, file, { upsert: true });
+      const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+      const fileName = `${ARTICLE_SELF_UPLOAD_STORAGE_PREFIX}/${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
+      const { error } = await supabase.storage.from("custom_asset").upload(fileName, webpFile, { upsert: true, contentType: "image/webp" });
       if (error) {
         toast({ title: "圖片上傳失敗", description: error.message, variant: "destructive" });
         return null;

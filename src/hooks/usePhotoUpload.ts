@@ -4,6 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { convertToWebP } from "@/lib/convert-to-webp";
 import type { DecorationOption } from "./useHierarchicalOptions";
 
 interface PhotoFrame {
@@ -94,16 +95,13 @@ export function usePhotoUpload(
         throw new Error("圖片大小不能超過 2MB");
       }
 
-      // 然後產生乾淨的檔名 (這裡您已經改好了)
-      const fileExt = file.name.split(".").pop() || "jpg";
-      const cleanFileName = `photo_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const webpFile = await convertToWebP(file);
+      const cleanFileName = `photo_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
 
-      //再上傳 (使用新變數 cleanFileName)
-      const { data, error } = await supabase.storage.from("customizer_uploads").upload(cleanFileName, file, {
-        // <--- 這裡用 cleanFileName
+      const { data, error } = await supabase.storage.from("customizer_uploads").upload(cleanFileName, webpFile, {
         cacheControl: "3600",
         upsert: false,
-        contentType: file.type,
+        contentType: "image/webp",
       });
 
       if (error) throw error;

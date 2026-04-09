@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { convertToWebP } from "@/lib/convert-to-webp";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -298,12 +299,12 @@ const handleQuotationImageUpload = async (file: File): Promise<string> => {
   if (!file.type.startsWith("image/")) throw new Error("只能上傳圖片");
   if (file.size > 2 * 1024 * 1024) throw new Error("圖片不超過 2MB");
 
-  const ext = file.name.split(".").pop() || "jpg";
-  const fileName = `quotation/quote_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+  const webpFile = await convertToWebP(file);
+  const fileName = `quotation/quote_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
 
   const { error } = await supabase.storage
     .from("custom_asset")
-    .upload(fileName, file, { cacheControl: "3600", upsert: false, contentType: file.type });
+    .upload(fileName, webpFile, { cacheControl: "3600", upsert: false, contentType: "image/webp" });
 
   if (error) throw error;
 

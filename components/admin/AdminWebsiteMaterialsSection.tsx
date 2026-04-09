@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { convertToWebP } from "@/lib/convert-to-webp";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -57,9 +58,9 @@ const AdminWebsiteMaterialsSection = () => {
   };
 
   const uploadImage = async (file: File, folder: string): Promise<string | null> => {
-    const ext = file.name.split(".").pop();
-    const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
-    const { error } = await supabase.storage.from("custom_asset").upload(fileName, file, { upsert: true });
+    const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+    const fileName = `${folder}/${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
+    const { error } = await supabase.storage.from("custom_asset").upload(fileName, webpFile, { upsert: true, contentType: "image/webp" });
     if (error) {
       toast({ title: "上傳失敗", description: error.message, variant: "destructive" });
       return null;

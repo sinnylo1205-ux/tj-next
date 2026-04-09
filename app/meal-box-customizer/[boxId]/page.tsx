@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useRef, useState } from "react";
 import { toPng } from "html-to-image";
 import { supabase } from "@/integrations/supabase/client";
+import { convertToWebP } from "@/lib/convert-to-webp";
 import { useCart } from "@/contexts/CartContext";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -126,15 +127,13 @@ export default function MealBoxCustomizerPage() {
         throw new Error("圖片大小不能超過 2MB");
       }
 
-      // 產生乾淨的檔名
-      const fileExt = file.name.split(".").pop() || "jpg";
-      const cleanFileName = `mealbox_photo_${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+      const webpFile = await convertToWebP(file);
+      const cleanFileName = `mealbox_photo_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
 
-      // 上傳到 Storage
-      const { data, error } = await supabase.storage.from("customizer_uploads").upload(cleanFileName, file, {
+      const { data, error } = await supabase.storage.from("customizer_uploads").upload(cleanFileName, webpFile, {
         cacheControl: "3600",
         upsert: false,
-        contentType: file.type,
+        contentType: "image/webp",
       });
 
       if (error) throw error;
@@ -263,10 +262,11 @@ export default function MealBoxCustomizerPage() {
       if (mealBoxCaptureRef.current) {
         const dataUrl = await toPng(mealBoxCaptureRef.current, { quality: 0.9, skipFonts: true, cacheBust: true });
         const blob = await fetch(dataUrl).then((res) => res.blob());
-        const fileName = `mealbox_${productId}_${Date.now()}.png`;
+        const webpFile = await convertToWebP(new File([blob], "mealbox.png", { type: "image/png" }));
+        const fileName = `mealbox_${productId}_${Date.now()}.webp`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("customizer_uploads")
-          .upload(fileName, blob, { contentType: "image/png" });
+          .upload(fileName, webpFile, { contentType: "image/webp" });
 
         if (uploadError) throw uploadError;
         const { data: publicUrlData } = supabase.storage.from("customizer_uploads").getPublicUrl(uploadData.path);
@@ -278,10 +278,11 @@ export default function MealBoxCustomizerPage() {
       if (packageCaptureRef.current) {
         const dataUrl = await toPng(packageCaptureRef.current, { quality: 0.9, skipFonts: true, cacheBust: true });
         const blob = await fetch(dataUrl).then((res) => res.blob());
-        const fileName = `package_${productId}_${Date.now()}.png`;
+        const webpFile = await convertToWebP(new File([blob], "package.png", { type: "image/png" }));
+        const fileName = `package_${productId}_${Date.now()}.webp`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("customizer_uploads")
-          .upload(fileName, blob, { contentType: "image/png" });
+          .upload(fileName, webpFile, { contentType: "image/webp" });
 
         if (uploadError) throw uploadError;
         const { data: publicUrlData } = supabase.storage.from("customizer_uploads").getPublicUrl(uploadData.path);

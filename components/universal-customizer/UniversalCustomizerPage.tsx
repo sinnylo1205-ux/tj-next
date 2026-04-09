@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
 import { getProductConfig, ProductConfig } from "@/config/product-registry";
 import { supabase } from "@/lib/supabase";
+import { convertToWebP } from "@/lib/convert-to-webp";
 import { useUniversalCustomizer } from "@/hooks/useUniversalCustomizer";
 import { useUniversalPackageCustomizer, type BoxColorOption } from "@/hooks/useUniversalPackageCustomizer";
 import { useHierarchicalOptions } from "@/hooks/useHierarchicalOptions";
@@ -263,10 +264,11 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
   // ✅ 上傳客製化貼紙/插卡照片
   const handlePackageDecorationPhotoUpload = async (optionId: number, file: File) => {
     try {
-      const fileName = `package-deco-${optionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${file.name.split(".").pop()}`;
+      const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+      const fileName = `package-deco-${optionId}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.webp`;
       const { data, error } = await supabase.storage
         .from("customizer_uploads")
-        .upload(fileName, file, { contentType: file.type });
+        .upload(fileName, webpFile, { contentType: "image/webp" });
 
       if (error) throw error;
 

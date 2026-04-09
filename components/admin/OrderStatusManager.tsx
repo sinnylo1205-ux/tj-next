@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { convertToWebP } from "@/lib/convert-to-webp";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -309,11 +310,11 @@ const OrderStatusManager = () => {
       const itemKey = `${orderId}-${orderItemId}`;
       setUploadingItemKey(itemKey);
 
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `${ORDER_ADMIN_MEDIA_PREFIX}/${orderId}/item_${orderItemId}_${Date.now()}_${Math.random().toString(36).slice(2)}.${ext}`;
+      const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+      const path = `${ORDER_ADMIN_MEDIA_PREFIX}/${orderId}/item_${orderItemId}_${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
       console.log("[admin-media] uploading to storage:", path);
 
-      const { error: upErr } = await supabase.storage.from("custom_asset").upload(path, file, { upsert: true });
+      const { error: upErr } = await supabase.storage.from("custom_asset").upload(path, webpFile, { upsert: true, contentType: "image/webp" });
       if (upErr) {
         console.error("[admin-media] storage upload error:", upErr);
         toast({ title: "上傳失敗", description: upErr.message, variant: "destructive" });

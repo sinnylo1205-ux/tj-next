@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { toBlob } from "html-to-image";
 import { supabase } from "@/integrations/supabase/client";
+import { convertToWebP } from "@/lib/convert-to-webp";
 import { useState } from "react";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 
@@ -152,12 +153,12 @@ export function useAddToCart() {
 
             if (!blob) throw new Error("截圖生成失敗（blob 為空）");
 
-            const fileName = `preview-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.png`;
+            const webpBlob = await convertToWebP(new File([blob], "screenshot.png", { type: "image/png" }));
+            const fileName = `preview-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.webp`;
 
-            // 上傳到 Supabase Storage
             const { data: uploadData, error: uploadError } = await supabase.storage
               .from("customizer_uploads")
-              .upload(fileName, blob, { contentType: "image/png" });
+              .upload(fileName, webpBlob, { contentType: "image/webp" });
 
             if (!uploadError && uploadData) {
               const { data: urlData } = supabase.storage.from("customizer_uploads").getPublicUrl(uploadData.path);
