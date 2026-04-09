@@ -24,6 +24,7 @@ const COUPON_DEFINITIONS: Record<string, { type: "free_shipping" | "discount"; d
   TJNOSHIP2011: { type: "free_shipping" },
   TJ9992011: { type: "discount", discount_rate: 0.9 },
   TJ8582011: { type: "discount", discount_rate: 0.85 },
+  TJ88888888: { type: "discount", discount_rate: 0.8 },
 };
 
 const FREE_SHIPPING_THRESHOLD = 10000;

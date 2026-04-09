@@ -13,6 +13,7 @@ import {
   FileText,
   UtensilsCrossed,
   MessageSquareText,
+  CalendarClock,
 } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
@@ -27,6 +28,7 @@ import AdminCustomersPanel from "@/components/admin/AdminCustomersPanel";
 import AdminSettingsPanel from "@/components/admin/AdminSettingsPanel";
 import AdminQuotationsPanel from "@/components/admin/AdminQuotationsPanel";
 import AdminEatReservationPanel from "@/components/admin/AdminEatReservationPanel";
+import AdminHRPanel from "@/components/admin/AdminHRPanel";
 
 type AdminModule =
   | "dashboard"
@@ -35,7 +37,8 @@ type AdminModule =
   | "customers"
   | "settings"
   | "quotations"
-  | "eat_reservation";
+  | "eat_reservation"
+  | "hr";
 
 const ADMIN_MODULES: { id: AdminModule; title: string; shortTitle: string; icon: React.ComponentType<any> }[] = [
   { id: "dashboard", title: "儀表板", shortTitle: "儀表板", icon: LayoutDashboard },
@@ -44,6 +47,7 @@ const ADMIN_MODULES: { id: AdminModule; title: string; shortTitle: string; icon:
   { id: "quotations", title: "報價單管理", shortTitle: "報價", icon: FileText },
   { id: "eat_reservation", title: "預約試吃", shortTitle: "試吃", icon: UtensilsCrossed },
   { id: "media", title: "內容管理", shortTitle: "內容", icon: Package },
+  { id: "hr", title: "人事管理", shortTitle: "人事", icon: CalendarClock },
   { id: "settings", title: "權限管理", shortTitle: "權限", icon: Settings },
 ];
 
@@ -134,6 +138,8 @@ export default function AdminPage() {
         return <AdminQuotationsPanel />;
       case "eat_reservation":
         return <AdminEatReservationPanel />;
+      case "hr":
+        return <AdminHRPanel />;
       case "settings":
         return <AdminSettingsPanel />;
       default:
@@ -189,7 +195,7 @@ export default function AdminPage() {
       {/* 手機版底部 Tab Bar */}
       {isMobile && (
         <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-border z-50">
-          <div className="grid grid-cols-7">
+          <div className="grid grid-cols-8">
             {ADMIN_MODULES.map((module) => (
               <button
                 key={module.id}
