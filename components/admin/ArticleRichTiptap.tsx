@@ -355,7 +355,8 @@ export default function ArticleRichTiptap({
         </span>
       </button>
 
-      <div className="flex flex-wrap gap-2 items-center border rounded-md p-2 bg-muted/30 justify-start">
+      {/* 捲動時固定於主內容區頂端（後台右欄編輯區） */}
+      <div className="sticky top-0 z-20 flex flex-wrap gap-2 items-center rounded-md border border-border p-2 bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/90 justify-start">
         <span className="text-xs text-muted-foreground mr-2">標題</span>
         {[1, 2, 3].map((level) => (
           <Button
