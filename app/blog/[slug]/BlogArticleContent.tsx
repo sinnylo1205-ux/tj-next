@@ -48,6 +48,8 @@ export interface ProductArticle {
 }
 
 const productPaths: Record<string, string> = {
+  /** 後台新增文章預設 product_id，無對應商品時導向首頁 */
+  blog: "/",
   marshmallow: "/product/cotton",
   fortune_cookie: "/product/luck",
   cookies: "/product/cookie",
