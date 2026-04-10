@@ -340,7 +340,7 @@ export function PreviewCanvas({
                       width={frame.ui_width || 100}
                       height={frame.ui_height || 100}
                       crossOrigin="anonymous"
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain object-center"
                       style={{
                         ...frameStyles[frameType],
                         backgroundColor: frameType === "none" ? "transparent" : "white",
@@ -451,7 +451,7 @@ export function PreviewCanvas({
                 width={meta?.ui_width || 100}
                 height={meta?.ui_height || 100}
                 crossOrigin="anonymous"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain object-center"
                 style={{
                   transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
                   transformOrigin: "center center",

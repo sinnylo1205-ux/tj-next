@@ -1672,6 +1672,19 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
           </a>
         </div>
 
+        <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+          建議可先到第三方平台為照片
+          <a
+            href="https://www.remove.bg/zh-tw"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-brand-600 underline underline-offset-2 hover:text-brand-700 mx-0.5"
+          >
+            remove.bg（去背工具）
+          </a>
+          處理去背後再上傳，預覽與成品才不會帶入雜亂背景。
+        </p>
+
         <DecorationTree
           options={hierarchicalState.decorationOptions}
           selectedDecorations={hierarchicalState.selectedDecorations}

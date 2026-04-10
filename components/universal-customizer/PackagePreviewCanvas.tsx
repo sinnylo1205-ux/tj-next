@@ -153,7 +153,7 @@ export function PackagePreviewCanvas({
                 alt="上傳的照片"
                 width={200}
                 height={200}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-contain object-center"
                 style={{
                   ...frameStyles[frameType],
                   backgroundColor: frameType === "none" ? "transparent" : "white",
