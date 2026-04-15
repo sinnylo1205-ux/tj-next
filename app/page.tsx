@@ -1,8 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -79,7 +79,6 @@ const HOME_QUERY_KEYS = {
 function HomePageContent() {
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const isMobile = useIsMobile();
   const [productNames, setProductNames] = useState<Record<string, string>>({});
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -91,9 +90,12 @@ function HomePageContent() {
   const DESIGN_WIDTH = 1680;
   const DESIGN_HEIGHT = 1050;
 
+  /** 勿用 useSearchParams：會迫使外層 Suspense 長時間顯示 fallback，行動 LCP 變成「載入中…」 */
   useEffect(() => {
-    const rtnCode = searchParams.get("RtnCode");
-    const rtnMsg = searchParams.get("RtnMsg");
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const rtnCode = params.get("RtnCode");
+    const rtnMsg = params.get("RtnMsg");
 
     if (rtnCode) {
       const isSuccess = rtnCode === "1";
@@ -101,11 +103,9 @@ function HomePageContent() {
       setPaymentMessage(rtnMsg || (isSuccess ? "付款成功" : "付款失敗"));
       setShowPaymentResult(true);
       router.replace(pathname || "/");
-      if (typeof window !== "undefined") {
-        localStorage.removeItem("last_creditcard_order_id");
-        localStorage.removeItem("last_creditcard_started_at");
-      }
-    } else if (typeof window !== "undefined") {
+      localStorage.removeItem("last_creditcard_order_id");
+      localStorage.removeItem("last_creditcard_started_at");
+    } else {
       const lastOrderId = localStorage.getItem("last_creditcard_order_id");
       const startedAt = localStorage.getItem("last_creditcard_started_at");
       if (lastOrderId && startedAt) {
@@ -119,7 +119,7 @@ function HomePageContent() {
         localStorage.removeItem("last_creditcard_started_at");
       }
     }
-  }, [searchParams, pathname, router]);
+  }, [pathname, router]);
 
   const handleLineClick = () => {
     if (typeof window !== "undefined" && (window as any).gtag) {
@@ -499,9 +499,5 @@ function HomePageContent() {
 }
 
 export default function HomePage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-pulse text-muted-foreground">載入中...</div></div>}>
-      <HomePageContent />
-    </Suspense>
-  );
+  return <HomePageContent />;
 }
