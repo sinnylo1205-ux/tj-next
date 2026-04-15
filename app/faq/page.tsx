@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { ExternalLink, Search, X } from "lucide-react";
 import Link from "next/link";
 import Image from "next/image";
+import { SafeImage } from "@/components/SafeImage";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 
@@ -716,11 +717,13 @@ export default function FAQPage() {
                       rel="noopener noreferrer"
                       className="inline-block group"
                     >
-                      <img
+                      <SafeImage
                         src={faq.imageUrl}
                         alt={`${faq.question} 參考圖`}
-                        className="rounded-lg border border-border shadow-sm max-w-full max-h-[360px] object-contain transition-transform group-hover:scale-[1.01]"
-                        loading="lazy"
+                        width={800}
+                        height={360}
+                        className="max-h-[360px] max-w-full rounded-lg border border-border object-contain shadow-sm transition-transform group-hover:scale-[1.01]"
+                        sizes="(max-width: 768px) 100vw, 800px"
                       />
                       <span className="text-xs text-brand-600 hover:underline inline-flex items-center gap-1 mt-1.5">
                         點擊查看大圖 <ExternalLink size={12} />

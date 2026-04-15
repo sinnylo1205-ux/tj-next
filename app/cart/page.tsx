@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { zhTW } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { SafeImage } from "@/components/SafeImage";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
@@ -378,13 +379,13 @@ export default function CartPage() {
                           />
                         </div>
                         <div className="flex-shrink-0">
-                          <div className="w-20 h-20 md:w-24 md:h-24 rounded-lg border border-border bg-muted/30 overflow-hidden">
-                            <img
+                          <div className="relative h-20 w-20 overflow-hidden rounded-lg border border-border bg-muted/30 md:h-24 md:w-24">
+                            <SafeImage
                               src={item.preview_url || item.image_url || "https://placehold.co/100x100?text=商品"}
                               alt={item.name}
-                              width={96}
-                              height={96}
-                              className="object-cover w-full h-full"
+                              fill
+                              className="object-cover"
+                              sizes="96px"
                             />
                           </div>
                         </div>

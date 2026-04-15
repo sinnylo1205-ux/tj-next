@@ -14,6 +14,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { SafeImage } from "@/components/SafeImage";
 
 interface ProductItem {
   id: string;
@@ -147,11 +148,9 @@ export default function OrderPage() {
           }}
         >
           {backgroundUrl && (
-            <img
-              src={backgroundUrl}
-              alt="背景圖"
-              className="absolute top-16 left-0 w-full h-[calc(100%-4rem)] object-cover"
-            />
+            <div className="absolute left-0 top-16 h-[calc(100%-4rem)] w-full">
+              <SafeImage src={backgroundUrl} alt="背景圖" fill className="object-cover" sizes="100vw" />
+            </div>
           )}
           <div className="absolute inset-0 bg-black/5" />
 
@@ -173,12 +172,16 @@ export default function OrderPage() {
                 className={`transition-transform duration-300 ${baseScaleClass} ${hoverScaleClass} cursor-pointer`}
               >
                 {item.product_image_url && (
-                  <img
-                    src={item.product_image_url}
-                    alt={item.name}
-                    className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-[1.02]"
-                    onClick={() => handleItemClick(item.id)}
-                  />
+                  <div className="relative h-full w-full">
+                    <SafeImage
+                      src={item.product_image_url}
+                      alt={item.name}
+                      fill
+                      className="object-contain transition-transform duration-300 group-hover:scale-[1.02]"
+                      sizes="200px"
+                      onClick={() => handleItemClick(item.id)}
+                    />
+                  </div>
                 )}
 
                 <div
@@ -231,8 +234,8 @@ export default function OrderPage() {
       {/* 手機版 */}
       <div className="block sm:hidden relative min-h-screen">
         {backgroundUrl && (
-          <div className="absolute inset-0 z-0">
-            <img src={backgroundUrl} alt="背景圖" className="w-full h-full object-cover" />
+          <div className="absolute inset-0 z-0 relative">
+            <SafeImage src={backgroundUrl} alt="背景圖" fill className="object-cover" sizes="100vw" />
             <div className="absolute inset-0 bg-black/5" />
           </div>
         )}
@@ -245,14 +248,13 @@ export default function OrderPage() {
                 onClick={() => handleItemClick(item.id)}
                 className="flex flex-col items-center cursor-pointer"
               >
-                <div className="w-full aspect-square">
-                  <img
+                <div className="relative aspect-square w-full">
+                  <SafeImage
                     src={item.product_image_url || ""}
                     alt={item.name || "產品圖片"}
-                    className="w-full h-full object-contain drop-shadow-md"
-                    loading="lazy"
-                    width={150}
-                    height={150}
+                    fill
+                    className="object-contain drop-shadow-md"
+                    sizes="50vw"
                   />
                 </div>
                 <p className="mt-2 text-[#4b2e1e] text-sm text-center">{item.name}</p>

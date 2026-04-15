@@ -4,6 +4,7 @@ import { createSupabasePublicUncached } from "@/lib/supabase-blog-public";
 import BlogArticleContent, { type ProductArticle } from "./BlogArticleContent";
 import { articleJsonToHtml } from "@/lib/tiptap/article-json-to-html";
 import { decodeBlogSlugParam } from "@/lib/blog-slug";
+import { rewriteSupabaseImgSrcInArticleHtml } from "@/lib/next-image-proxy-url";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,9 @@ export default async function BlogSlugPage({ params }: PageProps) {
   };
 
   const richBodyHtml =
-    row.content_mode === "richtext" && row.body_json ? articleJsonToHtml(row.body_json) : null;
+    row.content_mode === "richtext" && row.body_json
+      ? rewriteSupabaseImgSrcInArticleHtml(articleJsonToHtml(row.body_json))
+      : null;
 
   return <BlogArticleContent article={article} richBodyHtml={richBodyHtml} />;
 }

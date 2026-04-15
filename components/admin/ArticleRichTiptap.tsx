@@ -21,6 +21,7 @@ import { getArticleEditorExtensions, ARTICLE_TEXT_COLORS } from "@/lib/tiptap/ar
 import { Loader2, Save, ImagePlus, Upload, Link2 } from "lucide-react";
 import type { JSONContent } from "@tiptap/core";
 import { convertToWebP } from "@/lib/convert-to-webp";
+import { SafeImage } from "@/components/SafeImage";
 
 /** custom_asset bucket 內路徑（文章新排版自訂上傳） */
 export const ARTICLE_SELF_UPLOAD_STORAGE_PREFIX = "website_img/article/self_upload";
@@ -473,7 +474,16 @@ export default function ArticleRichTiptap({
             </Button>
           )}
         </div>
-        {ogImageUrl && <img src={ogImageUrl} alt="OG preview" className="max-h-32 rounded border mt-1" />}
+        {ogImageUrl && (
+          <SafeImage
+            src={ogImageUrl}
+            alt="OG preview"
+            width={400}
+            height={200}
+            className="mt-1 max-h-32 w-auto rounded border object-contain"
+            sizes="200px"
+          />
+        )}
       </div>
 
       <Button type="button" onClick={() => void save()} disabled={saving}>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SafeImage } from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, ChevronLeft } from "lucide-react";
 import {
@@ -97,7 +98,16 @@ export default function BlogArticleContent({
           <>
             <header className="mb-8">
               {article.og_image_url && (
-                <img src={article.og_image_url} alt={article.item_name} className="w-full h-64 object-cover rounded-xl mb-4" />
+                <div className="relative mb-4 h-64 w-full overflow-hidden rounded-xl">
+                  <SafeImage
+                    src={article.og_image_url}
+                    alt={article.item_name}
+                    fill
+                    className="object-cover"
+                    sizes="(max-width: 768px) 100vw, 768px"
+                    priority
+                  />
+                </div>
               )}
             </header>
             <div
@@ -109,7 +119,16 @@ export default function BlogArticleContent({
           <>
             <header className="mb-8">
           {article.og_image_url && (
-            <img src={article.og_image_url} alt={article.item_name} className="w-full h-64 object-cover rounded-xl mb-4" />
+            <div className="relative mb-4 h-64 w-full overflow-hidden rounded-xl">
+              <SafeImage
+                src={article.og_image_url}
+                alt={article.item_name}
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 768px"
+                priority
+              />
+            </div>
           )}
           <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">客製化{article.item_name}</h1>
           <p className="text-muted-foreground text-lg">{article.intro}</p>

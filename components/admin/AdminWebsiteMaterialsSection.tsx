@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Save, Upload, Loader2 } from "lucide-react";
 import BatchUploadTab from "./BatchUploadTab";
+import { SafeImage } from "@/components/SafeImage";
 
 interface Product {
   id: string;
@@ -311,7 +312,7 @@ const ImageUploadBox = ({ label, imageUrl, isUploading, onUpload, small }: Image
         {isUploading ? (
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
         ) : imageUrl ? (
-          <img src={imageUrl} alt={label} className="w-full h-full object-cover" />
+          <SafeImage src={imageUrl} alt={label} fill className="object-cover" sizes="144px" />
         ) : (
           <Upload className="h-6 w-6 text-muted-foreground" />
         )}

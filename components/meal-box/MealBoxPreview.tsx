@@ -4,6 +4,7 @@
 
 import { SelectedItem } from "@/hooks/useMealBoxCustomizer";
 import { cn } from "@/lib/utils";
+import { SafeImage } from "@/components/SafeImage";
 
 interface MealBoxPreviewProps {
   slots: string[];
@@ -74,7 +75,7 @@ export function MealBoxPreview({
               }}
             >
               {hasItem ? (
-                <img src={item.image_url!} alt={item.name} className="w-full h-full object-contain p-2" width={100} height={100} />
+                <SafeImage src={item.image_url!} alt={item.name} fill className="object-contain p-2" sizes="200px" />
               ) : (
                 <span
                   className={cn(

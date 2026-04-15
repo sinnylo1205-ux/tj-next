@@ -7,6 +7,7 @@ import { DessertOption, SelectedItem } from "@/hooks/useMealBoxCustomizer";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SafeImage } from "@/components/SafeImage";
 
 interface SlotSelectorProps {
   slotId: string;
@@ -51,13 +52,13 @@ export function SlotSelector({
               )}
             >
               {option.item_image_url ? (
-                <img
+                <SafeImage
                   src={option.item_image_url}
                   alt={option.option_name_zh}
-                  className={cn(
-                    "object-contain",
-                    isCompact ? "w-12 h-12" : "w-16 h-16"
-                  )}
+                  width={isCompact ? 48 : 64}
+                  height={isCompact ? 48 : 64}
+                  className={cn("object-contain", isCompact ? "h-12 w-12" : "h-16 w-16")}
+                  sizes={isCompact ? "48px" : "64px"}
                 />
               ) : (
                 <div className={cn(

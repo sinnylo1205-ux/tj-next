@@ -5,6 +5,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { SafeImage } from "@/components/SafeImage";
 
 export interface OrbitalItem {
   id: string;
@@ -161,32 +162,32 @@ export function OrbitalSelector({
                   `}
                 >
                   {/* 主圖片 */}
-                  <img
+                  <SafeImage
                     src={item.imageUrl}
                     alt={item.name}
+                    fill
                     className={`
-                      w-full h-full object-contain p-2
+                      object-contain p-2
                       transition-opacity duration-200
                       ${isHovered && item.hoverImageUrl ? "opacity-0" : "opacity-100"}
                     `}
                     draggable={false}
-                    width={208}
-                    height={208}
+                    sizes="(max-width: 768px) 160px, 208px"
                   />
 
                   {/* Hover 圖片 */}
                   {item.hoverImageUrl && (
-                    <img
+                    <SafeImage
                       src={item.hoverImageUrl}
                       alt={`${item.name} hover`}
+                      fill
                       className={`
-                        absolute inset-0 w-full h-full object-contain p-2
+                        object-contain p-2
                         transition-opacity duration-200
                         ${isHovered ? "opacity-100" : "opacity-0"}
                       `}
                       draggable={false}
-                      width={208}
-                      height={208}
+                      sizes="(max-width: 768px) 160px, 208px"
                     />
                   )}
 

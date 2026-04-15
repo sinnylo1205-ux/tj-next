@@ -29,6 +29,7 @@ import { MacaronColorQuantitySelector } from "@/components/universal-customizer/
 import { UserDesignUploader } from "@/components/universal-customizer/UserDesignUploader";
 import { ClearSettingsButton } from "@/components/universal-customizer/ClearSettingsButton";
 import { RightSlideHint } from "@/components/RightSlideHint";
+import { SafeImage } from "@/components/SafeImage";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,6 +58,10 @@ function CustomizerSkeleton({ productType }: { productType?: string }) {
   const loadingImageUrl = productType
     ? `https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/loading/${productType}.webp`
     : DEFAULT_LOADING_IMAGE;
+  const [loadingSrc, setLoadingSrc] = useState(loadingImageUrl);
+  useEffect(() => {
+    setLoadingSrc(loadingImageUrl);
+  }, [loadingImageUrl]);
 
   return (
     <div className="min-h-[calc(100vh-120px)] flex flex-col bg-background">
@@ -66,16 +71,14 @@ function CustomizerSkeleton({ productType }: { productType?: string }) {
           <Loader2 className="animate-spin h-6 w-6" />
           <span>客製化模組載入中…</span>
         </div>
-        <div className="w-full max-w-[800px] aspect-square flex items-center justify-center mb-8">
-          <img
-            src={loadingImageUrl}
+        <div className="relative mb-8 flex aspect-square w-full max-w-[800px] max-h-[70vh] items-center justify-center">
+          <SafeImage
+            src={loadingSrc}
             alt="客製化須知"
-            width={700}
-            height={700}
-            className="w-full max-w-[800px] h-auto max-h-[70vh] object-contain rounded-xl"
-            onError={(e) => {
-              e.currentTarget.src = DEFAULT_LOADING_IMAGE;
-            }}
+            fill
+            className="object-contain rounded-xl"
+            sizes="(max-width: 900px) 90vw, 800px"
+            onError={() => setLoadingSrc(DEFAULT_LOADING_IMAGE)}
           />
         </div>
         <p className="mt-2 text-sm text-ink-muted/80">請稍候，正在載入編輯器</p>

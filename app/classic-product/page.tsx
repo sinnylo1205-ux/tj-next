@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCart } from "@/contexts/CartContext";
 import { calculatePrice } from "@/lib/priceApi";
 import { useQuantityInput } from "@/hooks/useQuantityInput";
+import { SafeImage } from "@/components/SafeImage";
 
 interface Product {
   id: string;
@@ -299,12 +300,13 @@ function ClassicProductPageContent() {
           )}
 
           <div className="w-full bg-white rounded-2xl p-6 flex items-center justify-center">
-            <img
+            <SafeImage
               src={product.product_image_url}
               alt={product.name}
-              className="w-full max-w-xs h-auto object-contain"
+              className="h-auto w-full max-w-xs object-contain"
               width={320}
               height={320}
+              sizes="320px"
             />
           </div>
 
@@ -393,11 +395,11 @@ function ClassicProductPageContent() {
                 <button
                   key={tab.key}
                   onClick={() => handleTabClick(tab.key)}
-                  className={`w-16 h-20 rounded-lg overflow-hidden transition-all duration-200 hover:scale-105 ${
+                  className={`relative h-20 w-16 overflow-hidden rounded-lg transition-all duration-200 hover:scale-105 ${
                     tabCategory === tab.key ? "ring-2 ring-primary ring-offset-2" : ""
                   }`}
                 >
-                  <img src={tab.image} alt={tab.key} className="w-full h-full object-contain" width={64} height={80} />
+                  <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="64px" />
                 </button>
               ))}
             </div>
@@ -462,12 +464,13 @@ function ClassicProductPageContent() {
             </div>
 
             <div className="flex items-center justify-center mt-20">
-              <img
+              <SafeImage
                 src={product.product_image_url}
                 alt={product.name}
-                className="w-full max-w-xl h-auto object-contain drop-shadow-2xl"
+                className="h-auto w-full max-w-xl object-contain drop-shadow-2xl"
                 width={576}
                 height={576}
+                sizes="(max-width: 1280px) 50vw, 576px"
               />
             </div>
 
@@ -534,11 +537,11 @@ function ClassicProductPageContent() {
                 <button
                   key={tab.key}
                   onClick={() => handleTabClick(tab.key)}
-                  className={`w-24 h-32 rounded-xl overflow-hidden transition-all duration-200 hover:scale-105 ${
+                  className={`relative h-32 w-24 overflow-hidden rounded-xl transition-all duration-200 hover:scale-105 ${
                     tabCategory === tab.key ? "ring-2 ring-primary ring-offset-2" : ""
                   }`}
                 >
-                  <img src={tab.image} alt={tab.key} className="w-full h-full object-contain" />
+                  <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="96px" />
                 </button>
               ))}
             </div>

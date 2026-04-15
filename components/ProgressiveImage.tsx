@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
+import { remoteSrcShouldBeUnoptimized } from "@/lib/remote-image-policy";
 
 interface ProgressiveImageProps {
   src: string;
@@ -15,6 +17,8 @@ interface ProgressiveImageProps {
   priority?: boolean;
   onClick?: () => void;
   style?: React.CSSProperties;
+  /** 供 next/image fill 用，預設全寬 */
+  sizes?: string;
 }
 
 /**
@@ -34,6 +38,7 @@ const ProgressiveImage = ({
   priority = false,
   onClick,
   style,
+  sizes = "100vw",
 }: ProgressiveImageProps) => {
   const [isLoaded, setIsLoaded] = useState(priority);
   const [isInView, setIsInView] = useState(priority);
@@ -84,15 +89,17 @@ const ProgressiveImage = ({
 
       {/* 實際圖片 - 只有在視窗內才載入 */}
       {isInView && (
-        <img
+        <Image
           src={src}
           alt={alt}
-          loading={priority ? "eager" : "lazy"}
+          fill
+          sizes={sizes}
+          priority={priority}
+          loading={priority ? undefined : "lazy"}
+          unoptimized={remoteSrcShouldBeUnoptimized(src)}
           onLoad={() => setIsLoaded(true)}
-          width={width ?? undefined}
-          height={height ?? undefined}
           className={cn(
-            "w-full h-full object-cover transition-opacity duration-300",
+            "object-cover transition-opacity duration-300",
             priority || isLoaded ? "opacity-100" : "opacity-0",
             className,
           )}

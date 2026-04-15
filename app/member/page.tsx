@@ -19,6 +19,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
+import { SafeImage } from "@/components/SafeImage";
 import {
   Clock,
   Package,
@@ -375,14 +376,14 @@ function MemberPageContent() {
                 return (
                 <div key={item.order_item_id} className="space-y-2 md:space-y-3 p-4 md:p-6 bg-background border border-border rounded-lg shadow-sm">
                   <div className="flex items-start gap-4 md:gap-5">
-                    <div className="w-20 h-20 md:w-24 md:h-24 flex-shrink-0 rounded overflow-hidden bg-muted">
+                    <div className="relative h-20 w-20 flex-shrink-0 overflow-hidden rounded bg-muted md:h-24 md:w-24">
                       {item.preview_url ? (
-                        <img
+                        <SafeImage
                           src={item.preview_url}
                           alt={item.product_name}
-                          width={96}
-                          height={96}
-                          className="w-full h-full object-cover cursor-pointer hover:opacity-80"
+                          fill
+                          className="cursor-pointer object-cover hover:opacity-80"
+                          sizes="96px"
                           onClick={() => setLightboxImage(item.preview_url)}
                         />
                       ) : (
@@ -658,7 +659,14 @@ function MemberPageContent() {
           <button type="button" className="absolute top-4 right-4 text-white hover:opacity-80" onClick={() => setLightboxImage(null)}>
             <X className="h-8 w-8" />
           </button>
-          <img src={lightboxImage} alt="預覽" className="max-w-[90vw] max-h-[90vh] object-contain" />
+          <SafeImage
+            src={lightboxImage}
+            alt="預覽"
+            width={1600}
+            height={1600}
+            className="max-h-[90vh] max-w-[90vw] object-contain"
+            sizes="90vw"
+          />
         </div>
       )}
     </div>

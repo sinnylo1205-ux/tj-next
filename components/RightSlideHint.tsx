@@ -1,4 +1,7 @@
+"use client";
+
 import { useEffect, useState } from "react";
+import { SafeImage } from "@/components/SafeImage";
 
 export function RightSlideHint() {
   const [visible, setVisible] = useState(false);
@@ -40,10 +43,13 @@ export function RightSlideHint() {
       `}
     >
       <a href="https://lin.ee/FJqAxNU" target="_blank" rel="noopener noreferrer" className="block">
-        <img
+        <SafeImage
           src="https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/hint2__1_-removebg-preview.png"
           alt="加入 T&J 官方 LINE"
-          className="w-[280px] max-w-[80vw] cursor-pointer select-none"
+          width={560}
+          height={200}
+          className="max-w-[80vw] w-[280px] cursor-pointer select-none"
+          sizes="280px"
         />
       </a>
     </div>

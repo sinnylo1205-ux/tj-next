@@ -3,6 +3,7 @@
 // ======================================================================
 
 import { cn } from "@/lib/utils";
+import { SafeImage } from "@/components/SafeImage";
 import type { GiftBoxColorOption } from "@/hooks/useGiftBoxColorCustomizer";
 
 interface GiftBoxColorSelectorProps {
@@ -44,14 +45,14 @@ export function GiftBoxColorSelector({
               )}
             >
               {/* 圖片預覽 */}
-              <div className="w-full aspect-square rounded-md overflow-hidden bg-muted mb-2">
+              <div className="relative mb-2 aspect-square w-full overflow-hidden rounded-md bg-muted">
                 {option.item_image_url ? (
-                  <img
+                  <SafeImage
                     src={option.item_image_url}
                     alt={option.option_name_zh}
-                    width={96}
-                    height={96}
-                    className="w-full h-full object-contain"
+                    fill
+                    className="object-contain"
+                    sizes="120px"
                   />
                 ) : (
                   <div

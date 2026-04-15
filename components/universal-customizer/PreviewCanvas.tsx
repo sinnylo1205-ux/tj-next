@@ -10,6 +10,7 @@ import type { SizeOption } from "@/components/universal-customizer/SizeSelector"
 import type { PackageStyleOption, BoxConfig, BoxCapacityOption } from "@/hooks/useUniversalPackageCustomizer";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Slider } from "@/components/ui/slider";
+import { SafeImage } from "@/components/SafeImage";
 
 interface PreviewCanvasProps {
   config: ProductConfig;
@@ -109,20 +110,15 @@ export function PreviewCanvas({
       }
 
       return (
-        <img
+        <SafeImage
           key={`${type}-${rootId}-${index}`}
           src={imageUrl}
           alt={name}
-          width={400}
-          height={400}
+          fill
           crossOrigin="anonymous"
-          className="absolute inset-0 w-full h-full object-contain scale-[0.8] translate-y-[5%]"
+          className="absolute inset-0 object-contain scale-[0.8] translate-y-[5%]"
           style={{ zIndex }}
-          onError={(e) => {
-            if (fallbackUrl && !e.currentTarget.src.endsWith(fallbackUrl)) {
-              e.currentTarget.src = fallbackUrl;
-            }
-          }}
+          sizes="400px"
         />
       );
     }
@@ -133,20 +129,15 @@ export function PreviewCanvas({
       const imageUrl = selectedOption?.image_url || fallbackUrl;
 
       return (
-        <img
+        <SafeImage
           key={`${type}-${rootId}-${index}`}
           src={imageUrl}
           alt={name}
-          width={400}
-          height={400}
+          fill
           crossOrigin="anonymous"
-          className="absolute inset-0 w-full h-full object-contain scale-[0.8] translate-y-[5%]"
+          className="absolute inset-0 object-contain scale-[0.8] translate-y-[5%]"
           style={{ zIndex }}
-          onError={(e) => {
-            if (fallbackUrl && !e.currentTarget.src.endsWith(fallbackUrl)) {
-              e.currentTarget.src = fallbackUrl;
-            }
-          }}
+          sizes="400px"
         />
       );
     }
@@ -161,15 +152,15 @@ export function PreviewCanvas({
       }
 
       return (
-        <img
+        <SafeImage
           key={`size-${rootId}-${index}`}
           src={imageUrl}
           alt={name}
-          width={400}
-          height={400}
+          fill
           crossOrigin="anonymous"
-          className="absolute inset-0 w-full h-full object-contain"
+          className="absolute inset-0 object-contain"
           style={{ zIndex }}
+          sizes="400px"
         />
       );
     }
@@ -184,15 +175,15 @@ export function PreviewCanvas({
       }
 
       return (
-        <img
+        <SafeImage
           key={`shape-${rootId}-${index}`}
           src={imageUrl}
           alt={name}
-          width={400}
-          height={400}
+          fill
           crossOrigin="anonymous"
-          className="absolute inset-0 w-full h-full object-contain"
+          className="absolute inset-0 object-contain"
           style={{ zIndex }}
+          sizes="400px"
         />
       );
     }
@@ -206,20 +197,20 @@ export function PreviewCanvas({
         "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/choco-color/text2.png";
 
       return (
-        <img
+        <SafeImage
           key={`text-${index}`}
           src={textImageUrl}
           alt="文字裝飾"
-          width={400}
-          height={400}
+          fill
           crossOrigin="anonymous"
           className="
             absolute inset-0
-            w-full h-full object-contain
+            object-contain
             scale-[0.3] translate-y-[6%]
             md:scale-[0.5] md:translate-y-[5%]
           "
           style={{ zIndex }}
+          sizes="400px"
         />
       );
     }
@@ -241,7 +232,7 @@ export function PreviewCanvas({
             const finalScale = scaleFactor * mobileScale;
 
             return (
-              <img
+              <SafeImage
                 key={id}
                 src={option.item_image_url}
                 alt={option.option_name_zh}
@@ -257,10 +248,10 @@ export function PreviewCanvas({
                   transform: `translate(
                   ${(meta?.ui_x || 0) * finalScale}px,
                   ${(meta?.ui_y || 0) * finalScale + verticalOffset}px
-                )`,
+                ) rotate(${meta?.rotation || 0}deg)`,
                   transformOrigin: "center",
-                  rotate: `${meta?.rotation || 0}deg`,
                 }}
+                sizes="200px"
               />
             );
           })}
@@ -334,21 +325,23 @@ export function PreviewCanvas({
                   }}
                 >
                   {uploadedPhotoUrl ? (
-                    <img
-                      src={uploadedPhotoUrl}
-                      alt={`上傳的照片 ${frameIndex + 1}`}
-                      width={frame.ui_width || 100}
-                      height={frame.ui_height || 100}
-                      crossOrigin="anonymous"
-                      className="w-full h-full object-contain object-center"
-                      style={{
-                        ...frameStyles[frameType],
-                        backgroundColor: frameType === "none" ? "transparent" : "white",
-                        border: frameType === "none" ? "none" : "1px solid white",
-                        transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
-                        transformOrigin: "center center", // ✅ 確保從中心縮放
-                      }}
-                    />
+                    <div className="relative h-full w-full">
+                      <SafeImage
+                        src={uploadedPhotoUrl}
+                        alt={`上傳的照片 ${frameIndex + 1}`}
+                        fill
+                        crossOrigin="anonymous"
+                        className="object-contain object-center"
+                        style={{
+                          ...frameStyles[frameType],
+                          backgroundColor: frameType === "none" ? "transparent" : "white",
+                          border: frameType === "none" ? "none" : "1px solid white",
+                          transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
+                          transformOrigin: "center center", // ✅ 確保從中心縮放
+                        }}
+                        sizes="200px"
+                      />
+                    </div>
                   ) : (
                     <div
                       className="w-full h-full flex items-center justify-center text-xs text-muted-foreground"
@@ -445,18 +438,20 @@ export function PreviewCanvas({
             }}
           >
             {uploadedPhotoUrl ? (
-              <img
-                src={uploadedPhotoUrl}
-                alt="上傳的照片"
-                width={meta?.ui_width || 100}
-                height={meta?.ui_height || 100}
-                crossOrigin="anonymous"
-                className="w-full h-full object-contain object-center"
-                style={{
-                  transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
-                  transformOrigin: "center center",
-                }}
-              />
+              <div className="relative h-full w-full">
+                <SafeImage
+                  src={uploadedPhotoUrl}
+                  alt="上傳的照片"
+                  fill
+                  crossOrigin="anonymous"
+                  className="object-contain object-center"
+                  style={{
+                    transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
+                    transformOrigin: "center center",
+                  }}
+                  sizes="200px"
+                />
+              </div>
             ) : (
               <div
                 className="w-full h-full flex items-center justify-center text-xs text-muted-foreground"
@@ -636,13 +631,13 @@ export function PreviewCanvas({
           {/* 包裝主圖 */}
           <div className="flex-1 relative">
             {packagePreviewImage ? (
-              <img
+              <SafeImage
                 src={packagePreviewImage}
                 alt="包裝預覽"
                 crossOrigin="anonymous"
-                className="w-full h-full object-contain p-1"
-                width={140}
-                height={140}
+                fill
+                className="object-contain p-1"
+                sizes="200px"
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center text-[10px] text-muted-foreground">
@@ -664,7 +659,7 @@ export function PreviewCanvas({
               // 如果有 metadata_product 位置資訊，使用絕對定位
               if (meta && (meta.ui_x !== undefined || meta.ui_y !== undefined)) {
                 return (
-                  <img
+                  <SafeImage
                     key={opt.option_id}
                     src={opt.item_image_url}
                     alt={opt.option_name_zh}
@@ -680,21 +675,22 @@ export function PreviewCanvas({
                       transform: meta.rotation ? `rotate(${meta.rotation}deg)` : undefined,
                       zIndex: 101 + idx,
                     }}
+                    sizes="100px"
                   />
                 );
               }
 
               // 沒有位置資訊，使用預設填滿
               return (
-                <img
+                <SafeImage
                   key={opt.option_id}
                   src={opt.item_image_url}
                   alt={opt.option_name_zh}
-                  width={140}
-                  height={140}
+                  fill
                   crossOrigin="anonymous"
-                  className="absolute inset-0 w-full h-full object-contain p-1"
+                  className="absolute inset-0 object-contain p-1"
                   style={{ zIndex: 101 + idx }}
+                  sizes="140px"
                 />
               );
             })}

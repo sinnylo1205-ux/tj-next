@@ -16,6 +16,7 @@ import {
 import { LoadingScreen } from "@/components/LoadingScreen";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ProgressiveImage from "@/components/ProgressiveImage";
+import { SafeImage } from "@/components/SafeImage";
 import type { ClassicInitialData, ClassicProduct } from "./types";
 import type { BackgroundSection, ForegroundItem, Section4TextItem } from "./types";
 
@@ -262,20 +263,14 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
                       <button
                         onClick={() => handleTabClick(tab.key)}
                         className={cn(
-                          "w-full aspect-[3/4] rounded-md md:rounded-xl overflow-hidden transition-all duration-200",
+                          "relative aspect-[3/4] w-full overflow-hidden rounded-md transition-all duration-200 md:rounded-xl",
                           "hover:scale-105",
                           activeTab === tab.key
                             ? "bg-primary ring-1 md:ring-2 ring-primary ring-offset-1 md:ring-offset-2"
                             : "bg-transparent",
                         )}
                       >
-                        <img
-                          src={tab.image}
-                          alt={tab.key}
-                          className="w-full h-full object-contain"
-                          width={80}
-                          height={107}
-                        />
+                        <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="120px" />
                       </button>
                     </CarouselItem>
                   ))}
@@ -304,16 +299,19 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
                       width: item.ui_width ? `${item.ui_width}%` : "40%",
                     }}
                   >
-                    <img
+                    <SafeImage
                       src={item.photo_url}
                       alt={item.item_name || "裝飾"}
-                      className={`object-contain pointer-events-auto ${
-                        item.go_to_where ? "cursor-pointer hover:scale-105 transition-transform" : ""
+                      width={1200}
+                      height={900}
+                      className={`pointer-events-auto object-contain ${
+                        item.go_to_where ? "cursor-pointer transition-transform hover:scale-105" : ""
                       }`}
                       style={{
                         width: "100%",
                         height: item.ui_height ? `${item.ui_height}px` : "auto",
                       }}
+                      sizes="40vw"
                       onClick={() => {
                         if (item.go_to_where) router.push(item.go_to_where);
                       }}
@@ -441,11 +439,10 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
 
       {section4 && (
         <section className="relative w-full">
-          <img
+          <SafeImage
             src={section4.photo_url}
             alt="Section 4"
-            className="w-full h-auto block"
-            loading="lazy"
+            className="block h-auto w-full"
             width={section4.ui_width || 4167}
             height={section4.ui_height || 2784}
             style={{
@@ -454,6 +451,7 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
                   ? `${section4.ui_width} / ${section4.ui_height}`
                   : "4167 / 2784",
             }}
+            sizes="100vw"
           />
           {currentSection4Text &&
             (currentSection4Text.text_left || currentSection4Text.text_right) && (

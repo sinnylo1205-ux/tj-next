@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { format, addDays, isSameDay, isWithinInterval, getDay } from "date-fns";
 import { CUSTOMIZER_PATHS } from "@/lib/product-notice-url";
+import { SafeImage } from "@/components/SafeImage";
 
 export interface ProductNoticeData {
   product_id: string;
@@ -109,7 +110,7 @@ export function ProductNoticeClient({
             </div>
             {productImageUrl ? (
               <div className="flex justify-center -ml-3">
-                <img src={productImageUrl} alt={displayName} className="w-28 h-28 object-contain rounded-xl shadow-sm" loading="lazy" />
+                <SafeImage src={productImageUrl} alt={displayName} width={112} height={112} className="h-28 w-28 object-contain rounded-xl shadow-sm" sizes="112px" />
               </div>
             ) : (
               <div />
@@ -121,7 +122,7 @@ export function ProductNoticeClient({
           </div>
           {productImageUrl && (
             <div className="mt-4 flex justify-center md:hidden">
-              <img src={productImageUrl} alt={displayName} className="w-32 h-32 object-contain rounded-xl shadow-sm" loading="lazy" />
+              <SafeImage src={productImageUrl} alt={displayName} width={128} height={128} className="h-32 w-32 object-contain rounded-xl shadow-sm" sizes="128px" />
             </div>
           )}
         </div>

@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp, Upload, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { SafeImage } from "@/components/SafeImage";
 
 // ========== Types ==========
 interface QuotationOrder {
@@ -420,7 +421,7 @@ const ItemEditor = ({ item, unitPrice, previewUrl, whyPrice, onUnitPriceChange, 
         </div>
         {previewUrl && (
           <div className="flex items-center gap-2">
-            <img src={previewUrl} alt="preview" className="w-16 h-16 rounded object-cover" />
+            <SafeImage src={previewUrl} alt="preview" width={64} height={64} className="h-16 w-16 rounded object-cover" sizes="64px" />
             <a
               href={previewUrl}
               target="_blank"
@@ -1278,7 +1279,14 @@ const AdminQuotationsPanel = () => {
                                   <div key={item.id} className="p-3 border rounded-lg bg-background space-y-2">
                                     <div className="flex gap-3">
                                       {item.preview_url && (
-                                        <img src={item.preview_url} alt={item.product_name || ""} className="w-16 h-16 rounded object-cover shrink-0" />
+                                        <SafeImage
+                                          src={item.preview_url}
+                                          alt={item.product_name || ""}
+                                          width={64}
+                                          height={64}
+                                          className="h-16 w-16 shrink-0 rounded object-cover"
+                                          sizes="64px"
+                                        />
                                       )}
                                       <div className="min-w-0 flex-1">
                                         <p className="font-medium">{item.product_name}</p>

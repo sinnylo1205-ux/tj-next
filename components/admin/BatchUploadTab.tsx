@@ -15,6 +15,7 @@ interface UploadRecord {
 }
 
 import { convertToWebP } from "@/lib/convert-to-webp";
+import { SafeImage } from "@/components/SafeImage";
 
 const HISTORY_KEY = "admin_ig_upload_history";
 
@@ -196,12 +197,15 @@ const BatchUploadTab = () => {
               <div className="space-y-1 max-h-80 overflow-y-auto">
                 {batchResults.map((r, i) => (
                   <div key={i} className="flex items-center gap-2 text-xs bg-muted/50 rounded px-2 py-1.5">
-                    <img
+                    <SafeImage
                       src={r.url}
                       alt={r.fileName}
-                      className="h-10 w-10 object-cover rounded shrink-0"
+                      width={40}
+                      height={40}
+                      className="h-10 w-10 shrink-0 rounded object-cover"
+                      sizes="40px"
                       onError={(e) => {
-                        (e.target as HTMLImageElement).style.display = "none";
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
                       }}
                     />
                     <span className="font-medium shrink-0">{r.fileName}</span>
@@ -246,12 +250,15 @@ const BatchUploadTab = () => {
             <div className="space-y-1 max-h-80 overflow-y-auto">
               {history.map((r, i) => (
                 <div key={i} className="flex items-center gap-2 text-xs bg-muted/30 rounded px-2 py-1.5">
-                  <img
+                  <SafeImage
                     src={r.url}
                     alt={r.fileName}
-                    className="h-8 w-8 object-cover rounded shrink-0"
+                    width={32}
+                    height={32}
+                    className="h-8 w-8 shrink-0 rounded object-cover"
+                    sizes="32px"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).style.display = "none";
+                      (e.currentTarget as HTMLImageElement).style.display = "none";
                     }}
                   />
                   <span className="text-muted-foreground shrink-0 w-32">

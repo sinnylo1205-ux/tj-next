@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 interface LoadingOverlayProps {
@@ -25,10 +26,13 @@ export const LoadingOverlay = ({ isVisible, message = "處理中...", className 
       )}
     >
       <div className="flex flex-col items-center gap-4 p-8 rounded-2xl bg-white shadow-xl">
-        <img
+        <Image
           src="/images/loading.webp"
           alt="處理中"
+          width={160}
+          height={160}
           className="w-28 h-28 md:w-36 md:h-36 object-contain animate-bounce-gentle"
+          sizes="144px"
         />
         <p className="text-base md:text-lg font-medium text-foreground/80 animate-pulse">{message}</p>
       </div>

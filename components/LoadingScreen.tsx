@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 interface LoadingScreenProps {
@@ -25,12 +26,13 @@ export const LoadingScreen = ({ fullScreen = false, message = "載入中...", cl
         <div className="flex flex-col items-center gap-4">
           {/* ✅ 預留固定尺寸避免 CLS */}
           <div className="w-32 h-32 md:w-48 md:h-48">
-            <img
+            <Image
               src="/images/loading.webp"
               alt="載入中"
               width={192}
               height={192}
               className="w-full h-full object-contain animate-bounce-gentle"
+              sizes="192px"
             />
           </div>
           <p className="text-base md:text-lg text-foreground/70 animate-pulse">{message}</p>
@@ -43,12 +45,13 @@ export const LoadingScreen = ({ fullScreen = false, message = "載入中...", cl
     <div className={cn("flex flex-col items-center justify-center py-12", className)}>
       {/* ✅ 預留固定尺寸避免 CLS */}
       <div className="w-24 h-24 md:w-32 md:h-32">
-        <img
+        <Image
           src="/images/loading.webp"
           alt="載入中"
           width={128}
           height={128}
           className="w-full h-full object-contain animate-bounce-gentle"
+          sizes="128px"
         />
       </div>
       <p className="text-sm md:text-base text-foreground/70 mt-3 animate-pulse">{message}</p>

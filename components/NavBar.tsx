@@ -15,6 +15,7 @@ import {
   NavigationMenuTrigger,
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
+import { SafeImage } from "@/components/SafeImage";
 
 const LOGO_URL =
   "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/brand_logo1.png";
@@ -87,12 +88,13 @@ const NavBar = () => {
           href="/"
           className="hover:opacity-85 transition-opacity focus-visible:outline-2 focus-visible:outline-white/60 focus-visible:outline-offset-2 rounded"
         >
-          <img
+          <SafeImage
             src={LOGO_URL}
             alt="T&J 客製化甜點"
             className="h-12 md:h-20 w-auto"
-            width={58}
-            height={50}
+            width={120}
+            height={100}
+            sizes="120px"
           />
         </Link>
 

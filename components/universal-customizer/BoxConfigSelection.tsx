@@ -16,6 +16,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { BoxCapacityOption, BoxColorOption, BoxConfig } from "@/hooks/useUniversalPackageCustomizer";
+import { SafeImage } from "@/components/SafeImage";
 
 interface BoxConfigSelectionProps {
   dessertQuantity: number;
@@ -202,12 +203,13 @@ export function BoxConfigSelection({
                   }`}
                 >
                   {option.item_image_url && (
-                    <img
+                    <SafeImage
                       src={option.item_image_url}
                       alt={option.option_name_zh}
                       width={64}
                       height={64}
-                      className="w-16 h-16 object-contain mb-2"
+                      className="mb-2 h-16 w-16 object-contain"
+                      sizes="64px"
                     />
                   )}
                   <span className="text-sm font-medium">{option.option_name_zh}</span>
@@ -239,10 +241,13 @@ export function BoxConfigSelection({
                   }`}
                 >
                   {color.item_image_url && (
-                    <img
+                    <SafeImage
                       src={color.item_image_url}
                       alt={color.option_name_zh}
-                      className="w-16 h-16 object-contain mb-2"
+                      width={64}
+                      height={64}
+                      className="mb-2 h-16 w-16 object-contain"
+                      sizes="64px"
                     />
                   )}
                   <span className="text-sm font-medium">{color.option_name_zh}</span>
@@ -312,12 +317,13 @@ export function BoxConfigSelection({
                     }`}
                   >
                     {option.item_image_url && (
-                      <img
+                      <SafeImage
                         src={option.item_image_url}
                         alt={option.option_name_zh}
                         width={64}
                         height={64}
-                        className="w-16 h-16 object-contain mb-2"
+                        className="mb-2 h-16 w-16 object-contain"
+                        sizes="64px"
                       />
                     )}
                     <span className="text-sm font-medium">{option.option_name_zh}</span>
@@ -349,12 +355,13 @@ export function BoxConfigSelection({
                     }`}
                   >
                     {color.item_image_url && (
-                      <img
+                      <SafeImage
                         src={color.item_image_url}
                         alt={color.option_name_zh}
                         width={64}
                         height={64}
-                        className="w-16 h-16 object-contain mb-2"
+                        className="mb-2 h-16 w-16 object-contain"
+                        sizes="64px"
                       />
                     )}
                     <span className="text-sm font-medium">{color.option_name_zh}</span>

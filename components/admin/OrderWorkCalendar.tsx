@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, X, Split, ExternalLink } from "lucide-react"
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, subDays, getDay, startOfWeek, endOfWeek } from "date-fns";
 import { zhTW } from "date-fns/locale";
 import { cn } from "@/lib/utils";
+import { SafeImage } from "@/components/SafeImage";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 
 interface OrderItem {
@@ -444,10 +445,13 @@ const OrderWorkCalendar = () => {
             <div className="space-y-4">
               <div className="flex gap-4">
                 {selectedBlock.preview_url && (
-                  <img
+                  <SafeImage
                     src={selectedBlock.preview_url}
                     alt={selectedBlock.product_name}
-                    className="w-24 h-24 rounded object-cover"
+                    width={96}
+                    height={96}
+                    className="h-24 w-24 rounded object-cover"
+                    sizes="96px"
                   />
                 )}
                 <div className="flex-1 space-y-2">

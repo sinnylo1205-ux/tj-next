@@ -10,6 +10,7 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import ProgressiveImage from "@/components/ProgressiveImage";
 import { QUERY_KEYS } from "@/hooks/usePreloadData";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { SafeImage } from "@/components/SafeImage";
 
 export type NavigateFn = (url: string) => void;
 
@@ -309,16 +310,17 @@ export function GiftBoxesClient({ navigate }: { navigate: NavigateFn }) {
                             >
                               <div className={imageOnLeft ? "order-1" : "order-2"}>
                                 <div className="flex justify-center">
-                                  <div className="w-full max-w-[550px] aspect-[1/1] flex items-start justify-center">
-                                    <img
-                                      src={item.photo_url}
-                                      alt={item.item_name || "禮盒商品圖"}
-                                      className={`w-[85%] object-contain transition-transform duration-300 ${item.go_to_where ? "cursor-pointer hover:scale-[1.03]" : ""}`}
-                                      loading="lazy"
-                                      width={550}
-                                      height={550}
-                                      onClick={() => item.go_to_where && navigate(item.go_to_where)}
-                                    />
+                                  <div className="relative aspect-[1/1] w-full max-w-[550px]">
+                                    <div className="absolute inset-[7.5%]">
+                                      <SafeImage
+                                        src={item.photo_url}
+                                        alt={item.item_name || "禮盒商品圖"}
+                                        fill
+                                        className={`object-contain transition-transform duration-300 ${item.go_to_where ? "cursor-pointer hover:scale-[1.03]" : ""}`}
+                                        sizes="400px"
+                                        onClick={() => item.go_to_where && navigate(item.go_to_where)}
+                                      />
+                                    </div>
                                   </div>
                                 </div>
                               </div>

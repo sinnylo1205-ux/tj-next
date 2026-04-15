@@ -22,6 +22,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { SafeImage } from "@/components/SafeImage";
 import { CheckCircle, XCircle } from "lucide-react";
 
 const SECTION2_ID = "d032d21f-99d8-48ab-8234-5aa10db42cc3";
@@ -405,12 +406,14 @@ function HomePageContent() {
                       }}
                     >
                       <div
-                        className={`transition-transform duration-300 ease-out ${isActive ? "scale-[2.05]" : "scale-[2]"}`}
+                        className={`relative h-full w-full transition-transform duration-300 ease-out ${isActive ? "scale-[2.05]" : "scale-[2]"}`}
                       >
-                        <img
+                        <SafeImage
                           src={item.photo_url}
                           alt={item.description || "home item"}
-                          className="w-full h-full object-contain cursor-pointer"
+                          fill
+                          className="object-contain cursor-pointer"
+                          sizes="200px"
                           onClick={() => handleItemClick(item)}
                         />
                       </div>
@@ -428,7 +431,14 @@ function HomePageContent() {
             onClick={handleLineClick}
             className="absolute right-0 md:right-3 top-[60%] -translate-y-1/2 z-40 transition-transform duration-300 scale-[1] hover:scale-[1.2] md:scale-[1.3] md:hover:scale-[1.6]"
           >
-            <img src={LINE_ICON_URL} alt="加入 LINE 好友" className="w-16 h-16 md:w-24 md:h-24" loading="lazy" />
+            <SafeImage
+              src={LINE_ICON_URL}
+              alt="加入 LINE 好友"
+              width={96}
+              height={96}
+              className="h-16 w-16 md:h-24 md:w-24"
+              sizes="96px"
+            />
           </a>
         </section>
 

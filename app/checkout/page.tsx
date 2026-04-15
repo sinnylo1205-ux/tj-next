@@ -14,6 +14,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { SafeImage } from "@/components/SafeImage";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import {
   AlertDialog,
@@ -621,7 +622,7 @@ export default function CheckoutPage() {
                   return (
                   <div key={item.id} className="flex items-center gap-3 border-b pb-3">
                     {item.preview_url && (
-                      <img src={item.preview_url} alt={item.name} className="w-16 h-16 object-cover rounded" width={64} height={64} />
+                      <SafeImage src={item.preview_url} alt={item.name} width={64} height={64} className="h-16 w-16 rounded object-cover" sizes="64px" />
                     )}
                     <div className="flex-1">
                       <p className="font-medium">{item.name}</p>

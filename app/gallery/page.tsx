@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/card";
 import { LoadingScreen } from "@/components/LoadingScreen";
 import ProgressiveImage from "@/components/ProgressiveImage";
+import { SafeImage } from "@/components/SafeImage";
 
 interface Product {
   id: string;
@@ -38,10 +39,13 @@ export default function GalleryPage() {
         <h1 className="sr-only">甜點茶會佈置</h1>
         <div className="max-w-7xl mx-auto mb-12">
           <div className="relative w-full flex justify-center">
-            <img
+            <SafeImage
               src="https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/CanyBar/fuof.webp"
               alt="你的專屬風格甜點茶會佈置"
-              className="max-w-[700px] w-full object-contain border-0 shadow-none"
+              width={700}
+              height={400}
+              className="w-full max-w-[700px] border-0 object-contain shadow-none"
+              sizes="(max-width: 768px) 100vw, 700px"
             />
           </div>
         </div>
@@ -56,10 +60,13 @@ export default function GalleryPage() {
 
         <div className="max-w-7xl mx-auto">
           <div className="relative w-full flex justify-center">
-            <img
+            <SafeImage
               src="https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/CanyBar/newgellery.png"
               alt=""
-              className="max-w-[700px] w-full "
+              width={700}
+              height={400}
+              className="w-full max-w-[700px]"
+              sizes="(max-width: 768px) 100vw, 700px"
             />
           </div>
           <div className="grid md:grid-cols-2 gap-8">

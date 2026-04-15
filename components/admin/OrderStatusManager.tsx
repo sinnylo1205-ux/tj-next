@@ -18,6 +18,7 @@ import { format } from "date-fns";
 import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import ManualOrderForm from "./ManualOrderForm";
+import { SafeImage } from "@/components/SafeImage";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -1230,19 +1231,21 @@ const OrderStatusManager = () => {
                                     return (
                                     <div key={item.order_item_id} className="flex gap-4 mb-4 p-3 bg-background rounded-lg border border-border/60">
                                       <div className="flex flex-col items-center gap-1.5 shrink-0 w-[104px]">
-                                        <div className="w-24 h-24 rounded border bg-muted/40 flex items-center justify-center overflow-hidden">
+                                        <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded border bg-muted/40">
                                           {thumbUrl ? (
                                             <a
                                               href={thumbUrl}
                                               target="_blank"
                                               rel="noopener noreferrer"
-                                              className="block w-full h-full"
+                                              className="relative block h-full w-full"
                                               title="開啟圖片"
                                             >
-                                              <img
+                                              <SafeImage
                                                 src={thumbUrl}
                                                 alt={item.product_name}
-                                                className="w-full h-full object-cover"
+                                                fill
+                                                className="object-cover"
+                                                sizes="96px"
                                               />
                                             </a>
                                           ) : (

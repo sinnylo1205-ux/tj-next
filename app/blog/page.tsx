@@ -2,6 +2,7 @@ import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { BookOpen } from "lucide-react";
 import { createSupabasePublicUncached } from "@/lib/supabase-blog-public";
+import { SafeImage } from "@/components/SafeImage";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -76,12 +77,15 @@ export default async function BlogIndexPage() {
               className="group block bg-card rounded-xl border border-border overflow-hidden hover:shadow-lg transition-shadow"
             >
               {article.og_image_url ? (
-                <img
-                  src={article.og_image_url}
-                  alt={`客製化${article.item_name}`}
-                  className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
-                  loading="lazy"
-                />
+                <div className="relative h-48 w-full overflow-hidden">
+                  <SafeImage
+                    src={article.og_image_url}
+                    alt={`客製化${article.item_name}`}
+                    fill
+                    className="object-cover transition-transform duration-300 group-hover:scale-105"
+                    sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  />
+                </div>
               ) : (
                 <div className="w-full h-48 bg-muted flex items-center justify-center">
                   <BookOpen className="w-12 h-12 text-muted-foreground" />

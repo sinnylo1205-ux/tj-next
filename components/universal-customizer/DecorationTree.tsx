@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight, X } from "lucide-react";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { DecorationOption } from "@/hooks/useHierarchicalOptions";
+import { SafeImage } from "@/components/SafeImage";
 
 interface DecorationTreeProps {
   title?: string;
@@ -201,12 +202,13 @@ export function DecorationTree({
         {/* 裝飾品選項縮圖預覽 */}
         {option.is_final_option && isSelected && option.item_image_url && !isPhotoCarrierGroup && (
           <div className="mt-2 mb-4 ml-4">
-            <img
+            <SafeImage
               src={option.thumbnail_url || option.item_image_url}
               alt={option.option_name_zh}
               width={80}
               height={80}
-              className="w-20 h-20 object-contain border rounded"
+              className="h-20 w-20 rounded border object-contain"
+              sizes="80px"
             />
           </div>
         )}
@@ -235,12 +237,13 @@ export function DecorationTree({
                           }`}
                         >
                           {child.item_image_url && (
-                            <img
+                            <SafeImage
                               src={child.thumbnail_url || child.item_image_url}
                               alt={child.option_name_zh}
                               width={80}
                               height={80}
-                              className="w-14 h-14 sm:w-20 sm:h-20 lg:w-20 lg:h-20 object-contain mb-1 sm:mb-2"
+                              className="mb-1 h-14 w-14 object-contain sm:mb-2 sm:h-20 sm:w-20 lg:h-20 lg:w-20"
+                              sizes="80px"
                             />
                           )}
                           <p className="font-medium text-xs sm:text-sm">{child.option_name_zh}</p>

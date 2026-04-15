@@ -5,6 +5,8 @@
 import type { PackageStyleOption, BoxConfig } from "@/hooks/useUniversalPackageCustomizer";
 import type { DecorationOption } from "@/hooks/useHierarchicalOptions";
 import type { PackageStylePhotoMetadata } from "@/components/universal-customizer/PackageStyleSelector";
+import type { CSSProperties } from "react";
+import { SafeImage } from "@/components/SafeImage";
 
 interface PackagePreviewCanvasProps {
   selectedPackageStyle: PackageStyleOption | null;
@@ -55,32 +57,40 @@ export function PackagePreviewCanvas({
           // 盒裝：規格一置中放大，規格二縮小於右下角
           <>
             {boxConfig1 && (
-              <img
-                src={boxConfig1.color.item_image_url}
-                alt={`${boxConfig1.capacity.option_name_zh} - ${boxConfig1.color.option_name_zh}`}
-                width={400}
-                height={400}
-                className="absolute inset-0 w-full h-full object-contain p-8"
-              />
+              <div className="absolute inset-0">
+                <SafeImage
+                  src={boxConfig1.color.item_image_url}
+                  alt={`${boxConfig1.capacity.option_name_zh} - ${boxConfig1.color.option_name_zh}`}
+                  fill
+                  className="object-contain p-8"
+                  sizes="50vw"
+                />
+              </div>
             )}
             {boxConfig2 && (
-              <img
-                src={boxConfig2.color.item_image_url}
-                alt={`${boxConfig2.capacity.option_name_zh} - ${boxConfig2.color.option_name_zh}`}
-                width={133}
-                height={133}
-                className="absolute bottom-4 right-4 w-1/3 h-1/3 object-contain"
-              />
+              <div className="absolute bottom-4 right-4 h-1/3 w-1/3">
+                <SafeImage
+                  src={boxConfig2.color.item_image_url}
+                  alt={`${boxConfig2.capacity.option_name_zh} - ${boxConfig2.color.option_name_zh}`}
+                  fill
+                  className="object-contain"
+                  sizes="25vw"
+                />
+              </div>
             )}
           </>
         ) : (
           // 預設包裝：顯示單張預設包裝圖
           selectedPackageStyle?.item_image_url && (
-            <img
-              src={selectedPackageStyle.item_image_url}
-              alt={selectedPackageStyle.option_name_zh}
-              className="w-full h-full object-contain p-8"
-            />
+            <div className="relative h-full w-full">
+              <SafeImage
+                src={selectedPackageStyle.item_image_url}
+                alt={selectedPackageStyle.option_name_zh}
+                fill
+                className="object-contain p-8"
+                sizes="50vw"
+              />
+            </div>
           )
         )}
       </div>
@@ -103,21 +113,24 @@ export function PackagePreviewCanvas({
 
           if (!decor.item_image_url) return null;
 
+          const dw = metadata?.ui_width ?? 100;
+          const dh = metadata?.ui_height ?? 100;
           return (
-            <img
+            <SafeImage
               key={decor.option_id}
               src={decor.item_image_url}
               alt={decor.option_name_zh}
-              width={metadata?.ui_width || 100}
-              height={metadata?.ui_height || 100}
-              className="absolute"
+              width={dw}
+              height={dh}
+              className="absolute max-h-none max-w-none object-contain"
               style={{
                 left: metadata?.ui_x ? `calc(50% + ${metadata.ui_x}px)` : "50%",
                 top: metadata?.ui_y ? `calc(50% + ${metadata.ui_y}px)` : "50%",
-                width: metadata?.ui_width ? `${metadata.ui_width}px` : "auto",
-                height: metadata?.ui_height ? `${metadata.ui_height}px` : "auto",
+                width: metadata?.ui_width ? `${metadata.ui_width}px` : undefined,
+                height: metadata?.ui_height ? `${metadata.ui_height}px` : undefined,
                 transform: `translate(-50%, -50%) rotate(${metadata?.rotation || 0}deg)`,
               }}
+              sizes="200px"
             />
           );
         })}
@@ -140,7 +153,7 @@ export function PackagePreviewCanvas({
             const frameType = activePhotoMetadata.photo_carrier_type ?? "none";
             
             // 框架樣式映射
-            const frameStyles: Record<string, React.CSSProperties> = {
+            const frameStyles: Record<string, CSSProperties> = {
               diamond: { clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" },
               square: {},
               circle: { borderRadius: "50%" },
@@ -148,19 +161,21 @@ export function PackagePreviewCanvas({
             };
 
             return uploadedPhotoUrl ? (
-              <img
-                src={uploadedPhotoUrl}
-                alt="上傳的照片"
-                width={200}
-                height={200}
-                className="w-full h-full object-contain object-center"
-                style={{
-                  ...frameStyles[frameType],
-                  backgroundColor: frameType === "none" ? "transparent" : "white",
-                  border: frameType === "none" ? "none" : "2px solid white",
-                  borderRadius: frameType === "square" ? "8px" : frameType === "circle" ? "50%" : "0",
-                }}
-              />
+              <div className="relative h-full w-full">
+                <SafeImage
+                  src={uploadedPhotoUrl}
+                  alt="上傳的照片"
+                  fill
+                  className="object-contain object-center"
+                  style={{
+                    ...frameStyles[frameType],
+                    backgroundColor: frameType === "none" ? "transparent" : "white",
+                    border: frameType === "none" ? "none" : "2px solid white",
+                    borderRadius: frameType === "square" ? "8px" : frameType === "circle" ? "50%" : "0",
+                  }}
+                  sizes="200px"
+                />
+              </div>
             ) : (
               <div
                 className="w-full h-full flex items-center justify-center text-xs text-secondary-foreground/70"
