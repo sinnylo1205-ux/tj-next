@@ -291,6 +291,66 @@ export default function ArticleRichTiptap({
         </div>
       )}
 
+      {/* 內文區：功能列在編輯器正上方，sticky 釘在後台主捲動區頂端（勿讓父層 overflow-hidden 吃掉 sticky） */}
+      <div className="-mx-6 border-y border-border bg-muted/20">
+        <div className="sticky top-0 z-50 flex flex-wrap gap-2 items-center px-6 py-2.5 bg-background/98 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/95 border-b border-border justify-start">
+          <span className="text-xs font-medium text-muted-foreground mr-2">內文格式</span>
+          <span className="text-xs text-muted-foreground mr-2">標題</span>
+          {[1, 2, 3].map((level) => (
+            <Button
+              key={level}
+              type="button"
+              size="sm"
+              variant={editor.isActive("heading", { level }) ? "default" : "outline"}
+              className="h-8"
+              onClick={() => editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run()}
+            >
+              H{level}
+            </Button>
+          ))}
+          <span className="text-xs text-muted-foreground mx-2">顏色</span>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8"
+            onClick={() => editor.chain().focus().setColor(ARTICLE_TEXT_COLORS.black).run()}
+          >
+            黑
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 text-[#b91c1c] border-[#b91c1c]"
+            onClick={() => editor.chain().focus().setColor(ARTICLE_TEXT_COLORS.red).run()}
+          >
+            紅
+          </Button>
+          <Button type="button" size="sm" variant="secondary" className="h-8" onClick={() => setImgOpen(true)}>
+            <ImagePlus className="h-4 w-4 mr-1" />
+            插入圖片
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-8"
+            onClick={() => {
+              setLinkHref("");
+              setLinkLabel("");
+              setLinkOpen(true);
+            }}
+          >
+            <Link2 className="h-4 w-4 mr-1" />
+            加入連結
+          </Button>
+        </div>
+        <div className="px-6 pt-3 pb-1">
+          <EditorContent editor={editor} />
+        </div>
+      </div>
+
       <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
         <p className="text-sm font-semibold">文章網址與 SEO</p>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -355,62 +415,6 @@ export default function ArticleRichTiptap({
         </span>
       </button>
 
-      {/* 捲動時固定於主內容區頂端（後台右欄編輯區） */}
-      <div className="sticky top-0 z-20 flex flex-wrap gap-2 items-center rounded-md border border-border p-2 bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/90 justify-start">
-        <span className="text-xs text-muted-foreground mr-2">標題</span>
-        {[1, 2, 3].map((level) => (
-          <Button
-            key={level}
-            type="button"
-            size="sm"
-            variant={editor.isActive("heading", { level }) ? "default" : "outline"}
-            className="h-8"
-            onClick={() => editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run()}
-          >
-            H{level}
-          </Button>
-        ))}
-        <span className="text-xs text-muted-foreground mx-2">顏色</span>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8"
-          onClick={() => editor.chain().focus().setColor(ARTICLE_TEXT_COLORS.black).run()}
-        >
-          黑
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          className="h-8 text-[#b91c1c] border-[#b91c1c]"
-          onClick={() => editor.chain().focus().setColor(ARTICLE_TEXT_COLORS.red).run()}
-        >
-          紅
-        </Button>
-        <Button type="button" size="sm" variant="secondary" className="h-8" onClick={() => setImgOpen(true)}>
-          <ImagePlus className="h-4 w-4 mr-1" />
-          插入圖片
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="secondary"
-          className="h-8"
-          onClick={() => {
-            setLinkHref("");
-            setLinkLabel("");
-            setLinkOpen(true);
-          }}
-        >
-          <Link2 className="h-4 w-4 mr-1" />
-          加入連結
-        </Button>
-      </div>
-
-      <EditorContent editor={editor} />
-
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-4">
         <div className="flex items-center gap-3">
           <Switch id="article-publish" checked={isPublished} onCheckedChange={setIsPublished} />
@@ -431,7 +435,7 @@ export default function ArticleRichTiptap({
         </div>
         {!isPublished && (
           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
-            若未勾選，儲存後前台不會出現此文章；與「套版撰寫」的發布開關為同一欄位。
+            若未勾選，儲存後前台不會出現此文章。
           </p>
         )}
       </div>

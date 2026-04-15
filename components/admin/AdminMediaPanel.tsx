@@ -20,7 +20,8 @@ const AdminMediaPanel = () => {
           <AdminWebsiteMaterialsSection />
         </TabsContent>
 
-        <TabsContent value="articles" className="mt-6 focus-visible:outline-none">
+        {/* overflow-visible：避免 Radix Tabs 容器裁切子層 position:sticky（文章編輯功能列） */}
+        <TabsContent value="articles" forceMount className="mt-6 focus-visible:outline-none data-[state=inactive]:hidden overflow-visible">
           <AdminArticlesSection />
         </TabsContent>
       </Tabs>

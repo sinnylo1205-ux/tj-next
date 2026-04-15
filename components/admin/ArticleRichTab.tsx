@@ -141,14 +141,14 @@ export default function ArticleRichTab() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card className="overflow-visible">
         <CardHeader>
           <CardTitle className="text-lg">編輯文章</CardTitle>
           <p className="text-sm text-muted-foreground">
-            字型與前台一致。標題與 SEO 請在下方「文章網址與 SEO」填寫；內文支援 H1–H3、黑／紅、段落、圖片與外連。
+            先編輯內文（上方格式列會隨捲動固定）；slug 與 SEO 在內文區塊下方。支援 H1–H3、黑／紅、段落、圖片與外連。
           </p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="overflow-visible">
           {!selectedId || !selected ? (
             <p className="text-muted-foreground text-sm">請從左側選擇一篇文章，或點「新增文章」。</p>
           ) : (
