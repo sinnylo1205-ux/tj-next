@@ -303,10 +303,10 @@ function ClassicProductPageContent() {
             <SafeImage
               src={product.product_image_url}
               alt={product.name}
-              className="h-auto w-full max-w-xs object-contain"
-              width={320}
-              height={320}
-              sizes="320px"
+              className="h-auto w-full max-w-sm object-contain"
+              width={384}
+              height={384}
+              sizes="(max-width: 1024px) 92vw, 384px"
             />
           </div>
 
@@ -390,16 +390,16 @@ function ClassicProductPageContent() {
 
           <div className="pt-8 pb-4">
             <h3 className="text-center text-xs tracking-widest text-foreground/50 mb-4">探索其他</h3>
-            <div className="flex justify-center gap-3 flex-wrap">
+            <div className="flex justify-center gap-5 flex-wrap">
               {TABS.map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => handleTabClick(tab.key)}
-                  className={`relative h-20 w-16 overflow-hidden rounded-lg transition-all duration-200 hover:scale-105 ${
+                  className={`relative h-24 w-20 overflow-hidden rounded-lg transition-all duration-200 hover:scale-105 ${
                     tabCategory === tab.key ? "ring-2 ring-primary ring-offset-2" : ""
                   }`}
                 >
-                  <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="64px" />
+                  <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="80px" />
                 </button>
               ))}
             </div>
@@ -467,10 +467,10 @@ function ClassicProductPageContent() {
               <SafeImage
                 src={product.product_image_url}
                 alt={product.name}
-                className="h-auto w-full max-w-xl object-contain drop-shadow-2xl"
-                width={576}
-                height={576}
-                sizes="(max-width: 1280px) 50vw, 576px"
+                className="h-auto w-full max-w-2xl object-contain drop-shadow-2xl"
+                width={672}
+                height={672}
+                sizes="(max-width: 1280px) 52vw, 672px"
               />
             </div>
 
@@ -532,16 +532,16 @@ function ClassicProductPageContent() {
 
           <div className="pt-16 pb-8">
             <h3 className="text-center text-xs tracking-widest text-foreground/50 mb-4">探索其他</h3>
-            <div className="flex justify-center gap-4 flex-wrap">
+            <div className="flex justify-center gap-7 flex-wrap">
               {TABS.map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => handleTabClick(tab.key)}
-                  className={`relative h-32 w-24 overflow-hidden rounded-xl transition-all duration-200 hover:scale-105 ${
+                  className={`relative h-40 w-32 overflow-hidden rounded-xl transition-all duration-200 hover:scale-105 ${
                     tabCategory === tab.key ? "ring-2 ring-primary ring-offset-2" : ""
                   }`}
                 >
-                  <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="96px" />
+                  <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="128px" />
                 </button>
               ))}
             </div>

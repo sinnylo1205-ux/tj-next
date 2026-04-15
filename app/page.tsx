@@ -1,38 +1,43 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import {
-  Carousel,
-  CarouselContent,
-  CarouselItem,
-  CarouselPrevious,
-  CarouselNext,
-} from "@/components/ui/carousel";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ProgressiveImage from "@/components/ProgressiveImage";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { SafeImage } from "@/components/SafeImage";
-import { CheckCircle, XCircle } from "lucide-react";
+import { DESKTOP_HERO_FALLBACK_URL, MOBILE_HERO_URL } from "@/lib/home-lcp-urls";
+
+const HomePaymentResultDialog = dynamic(
+  () => import("@/components/home/HomePaymentResultDialog").then((m) => m.HomePaymentResultDialog),
+  { ssr: false },
+);
+
+const HomeSection2DesktopCarousel = dynamic(
+  () => import("@/components/home/HomeSection2DesktopCarousel").then((m) => m.HomeSection2DesktopCarousel),
+  { ssr: false },
+);
 
 const SECTION2_ID = "d032d21f-99d8-48ab-8234-5aa10db42cc3";
-const MOBILE_BG_URL =
-  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/home_page/iphone_home_11zon.webp";
-const DESKTOP_LCP_URL =
-  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/home_page/home.webp";
 const LINE_ICON_URL =
   "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/Newline.png";
 const LINE_URL = "https://rebrand.ly/official_web";
+
+/** Section 1 前景：在 Supabase `metadata_tab` 可為每筆素材獨立設定（與 `ui_position_*` 相加，單位：設計畫布 px） */
+type HomeSection1Metadata = {
+  home_offset_x?: number;
+  home_offset_y?: number;
+};
+
+function homeSection1OffsetsFromMetadata(metadata_tab: unknown): { ox: number; oy: number } {
+  if (!metadata_tab || typeof metadata_tab !== "object") return { ox: 0, oy: 0 };
+  const m = metadata_tab as HomeSection1Metadata;
+  const ox = typeof m.home_offset_x === "number" && Number.isFinite(m.home_offset_x) ? m.home_offset_x : 0;
+  const oy = typeof m.home_offset_y === "number" && Number.isFinite(m.home_offset_y) ? m.home_offset_y : 0;
+  return { ox, oy };
+}
 
 interface HomePageItem {
   id: string;
@@ -45,6 +50,9 @@ interface HomePageItem {
   ui_height: number | null;
   z_index: number | null;
   put_where: string;
+  /** 由 `metadata_tab.home_offset_x/y` 解析，與 ui_position 疊加 */
+  home_offset_x: number;
+  home_offset_y: number;
 }
 
 interface BackgroundSection {
@@ -182,18 +190,23 @@ function HomePageContent() {
 
   const items: HomePageItem[] = (foregroundData || [])
     .filter((item: any) => item.put_where === section1Id)
-    .map((item: any) => ({
-      id: item.id,
-      photo_url: item.photo_url || "",
-      description: item.description ?? null,
-      go_to_where: item.go_to_where ?? null,
-      ui_position_x: item.ui_position_x ?? null,
-      ui_position_y: item.ui_position_y ?? null,
-      ui_width: item.ui_width ?? null,
-      ui_height: item.ui_height ?? null,
-      z_index: item.z_index ?? 20,
-      put_where: item.put_where ?? "",
-    }));
+    .map((item: any) => {
+      const { ox, oy } = homeSection1OffsetsFromMetadata(item.metadata_tab);
+      return {
+        id: item.id,
+        photo_url: item.photo_url || "",
+        description: item.description ?? null,
+        go_to_where: item.go_to_where ?? null,
+        ui_position_x: item.ui_position_x ?? null,
+        ui_position_y: item.ui_position_y ?? null,
+        ui_width: item.ui_width ?? null,
+        ui_height: item.ui_height ?? null,
+        z_index: item.z_index ?? 20,
+        put_where: item.put_where ?? "",
+        home_offset_x: ox,
+        home_offset_y: oy,
+      };
+    });
 
   const galleryItems: GalleryItem[] = (foregroundData || [])
     .filter((item: any) => item.put_where === SECTION2_ID)
@@ -243,67 +256,55 @@ function HomePageContent() {
     <>
       <h1 className="sr-only">T&J 客製化甜點 - 專業甜點客製化服務</h1>
 
-      <Dialog open={showPaymentResult} onOpenChange={setShowPaymentResult}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              {paymentSuccess ? (
-                <>
-                  <CheckCircle className="h-6 w-6 text-green-500" />
-                  信用卡付款成功
-                </>
-              ) : (
-                <>
-                  <XCircle className="h-6 w-6 text-red-500" />
-                  信用卡付款失敗
-                </>
-              )}
-            </DialogTitle>
-            <DialogDescription className="pt-2">
-              {paymentMessage}
-              {paymentSuccess && (
-                <p className="mt-2 text-sm">您的訂單狀態已更新為「處理中」，可至會員中心查看訂單進度。</p>
-              )}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setShowPaymentResult(false)}>
-              關閉
-            </Button>
-            <Button
-              onClick={() => {
-                setShowPaymentResult(false);
-                router.push("/member?tab=processing");
-              }}
-            >
-              前往會員中心
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <HomePaymentResultDialog
+        open={showPaymentResult}
+        onOpenChange={setShowPaymentResult}
+        paymentSuccess={paymentSuccess}
+        paymentMessage={paymentMessage}
+      />
 
       <div className="relative w-full">
         <section className="relative w-full overflow-hidden">
           {isMobile ? (
-            <ProgressiveImage
-              src={MOBILE_BG_URL}
-              alt="Section 1 mobile background"
-              priority={true}
-              width={section1Bg?.ui_width ?? undefined}
-              height={section1Bg?.ui_height ?? undefined}
-              aspectRatio={section1Bg?.ui_width && section1Bg?.ui_height ? undefined : 1166 / 2072}
-              containerClassName="w-full"
-            />
+            <div
+              className="relative w-full overflow-hidden"
+              style={{
+                aspectRatio:
+                  section1Bg?.ui_width && section1Bg?.ui_height
+                    ? section1Bg.ui_width / section1Bg.ui_height
+                    : 1166 / 2072,
+              }}
+            >
+              <SafeImage
+                src={MOBILE_HERO_URL}
+                alt="Section 1 mobile background"
+                fill
+                className="object-cover"
+                sizes="100vw"
+                priority
+                fetchPriority="high"
+              />
+            </div>
           ) : (
-            <ProgressiveImage
-              src={section1Bg?.photo_url || DESKTOP_LCP_URL}
-              alt="Section 1 background"
-              priority={true}
-              width={section1Bg?.ui_width ?? undefined}
-              height={section1Bg?.ui_height ?? undefined}
-              aspectRatio={section1Bg?.ui_width && section1Bg?.ui_height ? undefined : 8334 / 3645}
-              containerClassName="w-full"
-            />
+            <div
+              className="relative w-full overflow-hidden"
+              style={{
+                aspectRatio:
+                  section1Bg?.ui_width && section1Bg?.ui_height
+                    ? section1Bg.ui_width / section1Bg.ui_height
+                    : 8334 / 3645,
+              }}
+            >
+              <img
+                src={section1Bg?.photo_url || DESKTOP_HERO_FALLBACK_URL}
+                alt="Section 1 background"
+                className="absolute inset-0 h-full w-full object-cover"
+                width={section1Bg?.ui_width ?? 8334}
+                height={section1Bg?.ui_height ?? 3645}
+                fetchPriority="high"
+                decoding="async"
+              />
+            </div>
           )}
 
           {!isMobile && hoveredId && (
@@ -326,13 +327,15 @@ function HomePageContent() {
             {items.map((item) => {
               const isActive = hoveredId === item.id;
               if (!item.description) return null;
+              const px = (item.ui_position_x ?? 0) + item.home_offset_x;
+              const py = (item.ui_position_y ?? 0) + item.home_offset_y;
               return (
                 <div
                   key={item.id}
                   className="absolute"
                   style={{
-                    top: `${item.ui_position_y ?? 0}px`,
-                    left: `${item.ui_position_x ?? 0}px`,
+                    top: `${py}px`,
+                    left: `${px}px`,
                     width: `${item.ui_width ?? 200}px`,
                     height: `${item.ui_height ?? 200}px`,
                     opacity: hoveredId && !isActive ? 0.2 : 1,
@@ -360,13 +363,14 @@ function HomePageContent() {
               <div className="flex justify-center items-end gap-2 px-4">
                 {items.map((item) => (
                   <div key={item.id} className="flex-shrink-0" style={{ width: "30%", maxWidth: "120px" }}>
-                    <ProgressiveImage
+                    <img
                       src={item.photo_url}
                       alt={item.description || "home item"}
-                      className="object-contain cursor-pointer"
-                      containerClassName="w-full"
-                      width={item.ui_width ?? undefined}
-                      height={item.ui_height ?? undefined}
+                      className="h-auto w-full cursor-pointer object-contain"
+                      width={item.ui_width ?? 200}
+                      height={item.ui_height ?? 200}
+                      loading="lazy"
+                      decoding="async"
                       onClick={() => handleItemClick(item)}
                     />
                   </div>
@@ -390,6 +394,8 @@ function HomePageContent() {
               >
                 {items.map((item) => {
                   const isActive = hoveredId === item.id;
+                  const px = (item.ui_position_x ?? 0) + item.home_offset_x;
+                  const py = (item.ui_position_y ?? 0) + item.home_offset_y;
                   return (
                     <div
                       key={item.id}
@@ -397,8 +403,8 @@ function HomePageContent() {
                       onMouseEnter={() => setHoveredId(item.id)}
                       onMouseLeave={() => setHoveredId(null)}
                       style={{
-                        top: `${item.ui_position_y ?? 0}px`,
-                        left: `${item.ui_position_x ?? 0}px`,
+                        top: `${py}px`,
+                        left: `${px}px`,
                         width: `${item.ui_width ?? 200}px`,
                         height: `${item.ui_height ?? 200}px`,
                         zIndex: isActive ? 1000 : 30,
@@ -408,12 +414,14 @@ function HomePageContent() {
                       <div
                         className={`relative h-full w-full transition-transform duration-300 ease-out ${isActive ? "scale-[2.05]" : "scale-[2]"}`}
                       >
-                        <SafeImage
+                        <img
                           src={item.photo_url}
                           alt={item.description || "home item"}
-                          fill
-                          className="object-contain cursor-pointer"
-                          sizes="200px"
+                          className="h-full w-full cursor-pointer object-contain"
+                          width={item.ui_width ?? 200}
+                          height={item.ui_height ?? 200}
+                          loading="lazy"
+                          decoding="async"
                           onClick={() => handleItemClick(item)}
                         />
                       </div>
@@ -431,13 +439,13 @@ function HomePageContent() {
             onClick={handleLineClick}
             className="absolute right-0 md:right-3 top-[60%] -translate-y-1/2 z-40 transition-transform duration-300 scale-[1] hover:scale-[1.2] md:scale-[1.3] md:hover:scale-[1.6]"
           >
-            <SafeImage
+            <img
               src={LINE_ICON_URL}
               alt="加入 LINE 好友"
               width={96}
               height={96}
               className="h-16 w-16 md:h-24 md:w-24"
-              sizes="96px"
+              decoding="async"
             />
           </a>
         </section>
@@ -479,32 +487,10 @@ function HomePageContent() {
           )}
 
           {!isMobile && section2Bg && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="w-full max-w-[1400px] px-6">
-                <Carousel opts={{ align: "start", slidesToScroll: 3 }} className="w-full">
-                  <CarouselContent className="-ml-4">
-                    {groupedGalleryItems.map((item) => (
-                      <CarouselItem key={item.id} className="pl-3 basis-1/6">
-                        <div onClick={() => handleGalleryClick(item)} className="cursor-pointer group">
-                          <div className="rounded-lg overflow-hidden shadow-lg group-hover:shadow-xl transition-all duration-300 group-hover:scale-105">
-                            <ProgressiveImage
-                              src={item.photo_url}
-                              alt="gallery item"
-                              width={item.ui_width ?? undefined}
-                              height={item.ui_height ?? undefined}
-                              aspectRatio={item.ui_width && item.ui_height ? undefined : 1}
-                              containerClassName="w-full"
-                            />
-                          </div>
-                        </div>
-                      </CarouselItem>
-                    ))}
-                  </CarouselContent>
-                  <CarouselPrevious className="-left-12" />
-                  <CarouselNext className="-right-12" />
-                </Carousel>
-              </div>
-            </div>
+            <HomeSection2DesktopCarousel
+              groupedGalleryItems={groupedGalleryItems}
+              onGalleryItemClick={handleGalleryClick}
+            />
           )}
         </section>
       </div>

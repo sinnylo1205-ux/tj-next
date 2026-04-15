@@ -9,26 +9,25 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { SITE_CONFIG, getFullUrl } from "@/lib/site";
 import { productNoticeUrl } from "@/lib/product-notice-url";
-import { SpeedInsights } from "@vercel/speed-insights/next";
+import { DESKTOP_HERO_FALLBACK_URL, MOBILE_HERO_URL } from "@/lib/home-lcp-urls";
+import { DeferredSpeedInsights } from "@/components/DeferredSpeedInsights";
 
 const notoSerifTC = Noto_Serif_TC({
   variable: "--font-noto-serif-tc",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: ["400", "600"],
   display: "swap",
+  adjustFontFallback: true,
 });
 
 const notoSansTC = Noto_Sans_TC({
   variable: "--font-noto-sans-tc",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "700"],
   display: "swap",
+  adjustFontFallback: true,
 });
 
-const LCP_DESKTOP =
-  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/home_page/home.webp";
-const LCP_MOBILE =
-  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/home_page/phone_home%20(1)_11zon.webp";
 const GA4_ID = "G-N9Q3MSMYG5";
 
 export const metadata: Metadata = {
@@ -125,14 +124,14 @@ export default function RootLayout({
         <link
           rel="preload"
           as="image"
-          href={LCP_DESKTOP}
+          href={DESKTOP_HERO_FALLBACK_URL}
           fetchPriority="high"
           media="(min-width: 769px)"
         />
         <link
           rel="preload"
           as="image"
-          href={LCP_MOBILE}
+          href={MOBILE_HERO_URL}
           fetchPriority="high"
           media="(max-width: 768px)"
         />
@@ -144,9 +143,9 @@ export default function RootLayout({
         {/* GA4 全站僅在此處載入，勿重複埋碼 */}
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`}
-          strategy="afterInteractive"
+          strategy="lazyOnload"
         />
-        <Script id="ga-config" strategy="afterInteractive">
+        <Script id="ga-config" strategy="lazyOnload">
           {`
             window.dataLayer = window.dataLayer || [];
             function gtag(){dataLayer.push(arguments);}
@@ -160,7 +159,7 @@ export default function RootLayout({
               <NavBar />
               {children}
               <Footer />
-              <SpeedInsights />
+              <DeferredSpeedInsights />
             </CartProvider>
           </AuthProvider>
         </Providers>

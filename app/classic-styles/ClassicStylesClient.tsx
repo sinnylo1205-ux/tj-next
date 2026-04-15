@@ -257,9 +257,9 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
             <div className="w-[20%] md:w-[25%]" />
             <div className="w-[80%] md:w-[75%] flex items-center px-1 md:px-16">
               <Carousel opts={{ align: "start", slidesToScroll: 1 }} className="w-full">
-                <CarouselContent className="-ml-1 md:-ml-16">
+                <CarouselContent className="-ml-2 md:-ml-20">
                   {TABS.map((tab) => (
-                    <CarouselItem key={tab.key} className="pl-1 md:pl-16 basis-[22%] md:basis-[18%]">
+                    <CarouselItem key={tab.key} className="pl-2 md:pl-20 basis-[24%] md:basis-[20%]">
                       <button
                         onClick={() => handleTabClick(tab.key)}
                         className={cn(
@@ -270,7 +270,7 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
                             : "bg-transparent",
                         )}
                       >
-                        <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="120px" />
+                        <SafeImage src={tab.image} alt={tab.key} fill className="object-contain" sizes="(max-width: 768px) 24vw, 160px" />
                       </button>
                     </CarouselItem>
                   ))}
@@ -325,27 +325,28 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
 
         {showProducts && filteredProducts.length > 0 && (
           <div
-            className="absolute top-0 left-0 right-0 flex justify-center items-center"
-            style={{ height: "calc(min(100vw, 1400px) / 1.497 * 0.8)" }}
+            className="absolute top-0 left-0 right-0 flex justify-center items-center px-3 md:px-6"
+            style={{ height: "calc(min(100vw, 1400px) / 1.497 * 0.86)" }}
           >
-            <div className="w-full max-w-7xl px-4 md:px-8">
+            <div className="w-full max-w-7xl">
               {!isMobile && (
-                <div className="grid grid-cols-3 gap-6 justify-items-center">
+                <div className="grid w-full grid-cols-3 justify-items-center gap-5 md:gap-7">
                   {filteredProducts.map((product) => (
                     <div
                       key={product.id}
-                      className="cursor-pointer transition-transform duration-300 hover:scale-110 flex flex-col items-center"
+                      className="flex w-full min-w-0 max-w-[min(100%,260px)] cursor-pointer flex-col items-center sm:max-w-[min(100%,280px)] md:max-w-[min(100%,300px)] transition-transform duration-300 hover:scale-105"
                       onClick={() => handleProductClick(product)}
                     >
                       <ProgressiveImage
                         src={product.product_image_url}
                         alt={product.name}
                         aspectRatio={1}
-                        containerClassName="w-full max-w-[280px] md:max-w-[320px] p-3"
+                        containerClassName="aspect-square w-full max-w-full"
                         className="object-contain"
+                        sizes="(max-width: 1280px) 28vw, 300px"
                         priority
                       />
-                      <p className="text-center text-lg font-medium text-white mt-2 px-2 line-clamp-2 bg-black/20 rounded-md">
+                      <p className="mt-2 line-clamp-2 w-full rounded-md bg-black/20 px-1 text-center text-sm font-medium text-white md:text-base">
                         {product.name}
                       </p>
                     </div>
@@ -354,9 +355,9 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
               )}
               {isMobile && (
                 <Carousel opts={{ align: "center", slidesToScroll: 1 }} className="w-full">
-                  <CarouselContent className="-ml-2">
+                  <CarouselContent className="-ml-3">
                     {filteredProducts.map((product) => (
-                      <CarouselItem key={product.id} className="pl-2 basis-1/1">
+                      <CarouselItem key={product.id} className="pl-3 basis-1/1">
                         <div
                           className="cursor-pointer transition-transform duration-300 hover:scale-105 flex flex-col items-center"
                           onClick={() => handleProductClick(product)}
@@ -365,8 +366,9 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
                             src={product.product_image_url}
                             alt={product.name}
                             aspectRatio={1}
-                            containerClassName="w-full max-w-[180px] p-0.5"
+                            containerClassName="mx-auto aspect-square w-[min(72vw,17.5rem)] max-w-full"
                             className="object-contain"
+                            sizes="(max-width: 640px) 72vw, 280px"
                             priority
                           />
                           <p className="text-center text-[9px] font-medium text-foreground mt-0 px-0.5 line-clamp-2">
