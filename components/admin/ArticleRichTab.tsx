@@ -102,7 +102,7 @@ export default function ArticleRichTab() {
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(200px,280px)_1fr]">
+    <div className="grid min-h-0 gap-6 lg:grid-cols-[minmax(200px,280px)_minmax(0,1fr)]">
       <Card className="h-fit">
         <CardHeader className="pb-2">
           <CardTitle className="text-base">文章列表</CardTitle>
@@ -141,14 +141,15 @@ export default function ArticleRichTab() {
         </CardContent>
       </Card>
 
-      <Card className="overflow-visible">
-        <CardHeader>
+      {/* 右欄內獨立捲動，sticky 功能列才有正確的捲動容器（整頁 main 捲動時 sticky 常被吃掉） */}
+      <Card className="flex min-h-0 max-h-[calc(100dvh-14rem)] flex-col overflow-hidden sm:max-h-[calc(100dvh-12rem)] lg:max-h-[calc(100dvh-7rem)]">
+        <CardHeader className="shrink-0">
           <CardTitle className="text-lg">編輯文章</CardTitle>
           <p className="text-sm text-muted-foreground">
-            先編輯內文（上方格式列會隨捲動固定）；slug 與 SEO 在內文區塊下方。支援 H1–H3、黑／紅、段落、圖片與外連。
+            格式列會釘在此卡片頂端；請在右欄內捲動編輯。slug 與 SEO 在內文下方。支援 H1–H3、黑／紅、段落、圖片與外連。
           </p>
         </CardHeader>
-        <CardContent className="overflow-visible">
+        <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pt-0">
           {!selectedId || !selected ? (
             <p className="text-muted-foreground text-sm">請從左側選擇一篇文章，或點「新增文章」。</p>
           ) : (

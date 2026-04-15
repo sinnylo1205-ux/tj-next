@@ -291,9 +291,9 @@ export default function ArticleRichTiptap({
         </div>
       )}
 
-      {/* 內文區：功能列在編輯器正上方，sticky 釘在後台主捲動區頂端（勿讓父層 overflow-hidden 吃掉 sticky） */}
-      <div className="-mx-6 border-y border-border bg-muted/20">
-        <div className="sticky top-0 z-50 flex flex-wrap gap-2 items-center px-6 py-2.5 bg-background/98 shadow-md backdrop-blur supports-[backdrop-filter]:bg-background/95 border-b border-border justify-start">
+      {/* 內文區：功能列 sticky 釘在「父層可捲動容器」頂端（ArticleRichTab 右欄 CardContent） */}
+      <div className="border-y border-border bg-muted/20">
+        <div className="sticky top-0 z-30 flex flex-wrap gap-2 items-center border-b border-border bg-background py-2.5 shadow-sm justify-start">
           <span className="text-xs font-medium text-muted-foreground mr-2">內文格式</span>
           <span className="text-xs text-muted-foreground mr-2">標題</span>
           {[1, 2, 3].map((level) => (
