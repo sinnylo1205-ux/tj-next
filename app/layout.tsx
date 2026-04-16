@@ -118,8 +118,7 @@ export default function RootLayout({
   return (
     <html lang="zh-TW" className={`${notoSerifTC.variable} ${notoSansTC.variable}`}>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="" />
+        {/* next/font 字體由 /_next/static 自託管，不需 fonts.googleapis / gstatic preconnect（Lighthouse 會標未使用） */}
         <link rel="preconnect" href="https://akrxbdoxiopiubksgcrl.supabase.co" />
         <link
           rel="preload"

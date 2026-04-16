@@ -76,6 +76,7 @@ export function HomeSection1Mobile({
               .filter((item) => item.photo_url)
               .map((item, index, arr) => {
                 const isBottom = index === arr.length - 1;
+                const isLcpCandidate = index === 0;
                 return (
                   <button
                     key={item.id}
@@ -92,7 +93,8 @@ export function HomeSection1Mobile({
                       width={128}
                       height={128}
                       className="block h-auto max-h-[128px] w-full max-w-[140px] object-contain sm:max-h-[140px] sm:max-w-[156px]"
-                      loading="lazy"
+                      loading={isLcpCandidate ? "eager" : "lazy"}
+                      fetchPriority={isLcpCandidate ? "high" : undefined}
                       decoding="async"
                     />
                   </button>
