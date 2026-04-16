@@ -19,6 +19,9 @@ interface CustomerRow {
   line_user_id: string | null;
   order_count: number;
   feedbacks: Json[];
+  /** 該客戶所有訂單中，expected_pickup_date 最晚的一筆（YYYY-MM-DD） */
+  last_pickup_date: string | null;
+  after_sales_status: string | null;
 }
 
 interface ChatStateRow {
@@ -26,7 +29,8 @@ interface ChatStateRow {
   display_name: string | null;
   note: string | null;
   reply_mode: string | null;
-  updated_at: string | null;
+  /** DB 欄位為 `updated`（非 updated_at） */
+  updated: string | null;
 }
 
 const AdminCustomersPanel = () => {
@@ -41,6 +45,7 @@ const AdminCustomersPanel = () => {
   const [chatStateLoading, setChatStateLoading] = useState(false);
   const [chatStateUpdating, setChatStateUpdating] = useState<string | null>(null);
   const [noteSavingId, setNoteSavingId] = useState<string | null>(null);
+  const [afterSalesSavingName, setAfterSalesSavingName] = useState<string | null>(null);
 
   // Manual add user form
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -49,30 +54,36 @@ const AdminCustomersPanel = () => {
   const [newPhone, setNewPhone] = useState("");
   const [adding, setAdding] = useState(false);
 
+  const laterPickupDate = (current: string | null, next: string | null): string | null => {
+    if (!next) return current;
+    if (!current) return next;
+    return next > current ? next : current;
+  };
+
   const fetchCustomers = async () => {
     setLoading(true);
     try {
       // Fetch all orders with relevant fields
       const { data: orders, error } = await supabase
         .from("orders")
-        .select("who_receive, Email, line_user_id, user_id, feedback")
+        .select("who_receive, Email, line_user_id, user_id, feedback, expected_pickup_date")
         .not("who_receive", "is", null);
 
       if (error) throw error;
 
       // Fetch user_log_in for line_user_id mapping
-      const userIds = [...new Set((orders || []).map(o => o.user_id))];
-      const { data: users } = await supabase
-        .from("user_log_in")
-        .select("id, line_user_id")
-        .in("id", userIds);
-
+      const userIds = [...new Set((orders || []).map((o) => o.user_id).filter(Boolean))] as string[];
       const userLineMap: Record<string, string | null> = {};
-      users?.forEach(u => { userLineMap[u.id] = u.line_user_id; });
+      if (userIds.length > 0) {
+        const { data: users } = await supabase.from("user_log_in").select("id, line_user_id").in("id", userIds);
+        users?.forEach((u) => {
+          userLineMap[u.id] = u.line_user_id;
+        });
+      }
 
       // Group by who_receive
       const grouped: Record<string, CustomerRow> = {};
-      (orders || []).forEach(order => {
+      (orders || []).forEach((order) => {
         const name = order.who_receive || "";
         if (!name) return;
 
@@ -83,6 +94,8 @@ const AdminCustomersPanel = () => {
             line_user_id: null,
             order_count: 0,
             feedbacks: [],
+            last_pickup_date: null,
+            after_sales_status: null,
           };
         }
 
@@ -95,7 +108,13 @@ const AdminCustomersPanel = () => {
 
         // LINE user ID: prefer user_log_in, fallback to orders
         if (!grouped[name].line_user_id) {
-          grouped[name].line_user_id = userLineMap[order.user_id] || order.line_user_id || null;
+          grouped[name].line_user_id = userLineMap[order.user_id as string] || order.line_user_id || null;
+        }
+
+        // 上次購買／取貨日：取所有訂單 expected_pickup_date 中最晚的一筆
+        const pu = order.expected_pickup_date as string | null | undefined;
+        if (pu) {
+          grouped[name].last_pickup_date = laterPickupDate(grouped[name].last_pickup_date, pu);
         }
 
         // Collect feedbacks
@@ -104,7 +123,24 @@ const AdminCustomersPanel = () => {
         }
       });
 
-      setCustomers(Object.values(grouped).sort((a, b) => b.order_count - a.order_count));
+      const sorted = Object.values(grouped).sort((a, b) => b.order_count - a.order_count);
+      const names = sorted.map((c) => c.name);
+      if (names.length > 0) {
+        const { data: noteRows, error: noteErr } = await supabase
+          .from("customer_admin_notes")
+          .select("who_receive, after_sales_status")
+          .in("who_receive", names);
+        if (noteErr) {
+          console.error("Failed to fetch customer_admin_notes:", noteErr);
+        } else {
+          const nm = new Map((noteRows || []).map((r) => [r.who_receive, r.after_sales_status as string | null]));
+          sorted.forEach((c) => {
+            c.after_sales_status = nm.get(c.name) ?? null;
+          });
+        }
+      }
+
+      setCustomers(sorted);
     } catch (err) {
       console.error("Failed to fetch customers:", err);
       toast({ title: "載入客戶資料失敗", variant: "destructive" });
@@ -118,13 +154,21 @@ const AdminCustomersPanel = () => {
     try {
       const { data, error } = await supabase
         .from("chat_state")
-        .select("line_user_id, display_name, note, reply_mode, updated_at")
-        .order("updated_at", { ascending: false, nullsFirst: false });
+        .select("line_user_id, display_name, note, reply_mode, updated")
+        .order("updated", { ascending: false, nullsFirst: false });
       if (error) throw error;
       setChatStateList((data as ChatStateRow[]) || []);
     } catch (err: any) {
       console.error("Failed to fetch chat_state:", err);
-      toast({ title: "載入 LINE 客戶失敗", description: err.message, variant: "destructive" });
+      const hint =
+        typeof err?.message === "string" && err.message.includes("permission")
+          ? "（請確認登入帳號在 user_roles 具備 admin，且 chat_state RLS 已部署）"
+          : "";
+      toast({
+        title: "載入 LINE 客戶失敗",
+        description: `${err?.message ?? err}${hint}`,
+        variant: "destructive",
+      });
       setChatStateList([]);
     } finally {
       setChatStateLoading(false);
@@ -148,6 +192,31 @@ const AdminCustomersPanel = () => {
       toast({ title: "更新失敗", description: err.message, variant: "destructive" });
     } finally {
       setChatStateUpdating(null);
+    }
+  };
+
+  const handleAfterSalesBlur = async (whoReceive: string, value: string) => {
+    const row = customers.find((c) => c.name === whoReceive);
+    if (!row || (row.after_sales_status ?? "") === value.trim()) return;
+    setAfterSalesSavingName(whoReceive);
+    try {
+      const { error } = await supabase.from("customer_admin_notes").upsert(
+        {
+          who_receive: whoReceive,
+          after_sales_status: value.trim() || null,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "who_receive" },
+      );
+      if (error) throw error;
+      setCustomers((prev) =>
+        prev.map((c) => (c.name === whoReceive ? { ...c, after_sales_status: value.trim() || null } : c)),
+      );
+      toast({ title: "售後狀況已儲存" });
+    } catch (err: any) {
+      toast({ title: "儲存售後狀況失敗", description: err.message, variant: "destructive" });
+    } finally {
+      setAfterSalesSavingName(null);
     }
   };
 
@@ -213,6 +282,13 @@ const AdminCustomersPanel = () => {
     return String(feedback);
   };
 
+  const formatPickupDate = (iso: string | null): string => {
+    if (!iso) return "—";
+    const d = new Date(`${iso}T12:00:00`);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit" });
+  };
+
   return (
     <div className="p-4 md:p-8">
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between mb-6">
@@ -269,13 +345,20 @@ const AdminCustomersPanel = () => {
                       <TableHead>Email</TableHead>
                       <TableHead>LINE User ID</TableHead>
                       <TableHead className="text-center">購買次數</TableHead>
+                      <TableHead
+                        className="whitespace-nowrap"
+                        title="該客戶所有訂單中，expected_pickup_date（預定取貨／送達日）最晚的一筆"
+                      >
+                        上次購買日期
+                      </TableHead>
+                      <TableHead className="min-w-[180px]">售後狀況</TableHead>
                       <TableHead>用戶回饋</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
                           無客戶資料
                         </TableCell>
                       </TableRow>
@@ -288,6 +371,18 @@ const AdminCustomersPanel = () => {
                             {c.line_user_id || "-"}
                           </TableCell>
                           <TableCell className="text-center font-semibold">{c.order_count}</TableCell>
+                          <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
+                            {formatPickupDate(c.last_pickup_date)}
+                          </TableCell>
+                          <TableCell>
+                            <Input
+                              className="h-8 text-sm"
+                              placeholder="售後備註…"
+                              defaultValue={c.after_sales_status ?? ""}
+                              onBlur={(e) => handleAfterSalesBlur(c.name, e.target.value)}
+                              disabled={afterSalesSavingName === c.name}
+                            />
+                          </TableCell>
                           <TableCell>
                             {c.feedbacks.length === 0 ? (
                               <span className="text-muted-foreground text-sm">無</span>
