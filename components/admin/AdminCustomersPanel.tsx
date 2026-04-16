@@ -123,7 +123,15 @@ const AdminCustomersPanel = () => {
         }
       });
 
-      const sorted = Object.values(grouped).sort((a, b) => b.order_count - a.order_count);
+      // 依「上次購買日期」（expected_pickup_date 最晚一筆）新→舊；無日期者排最後
+      const sorted = Object.values(grouped).sort((a, b) => {
+        const da = a.last_pickup_date;
+        const db = b.last_pickup_date;
+        if (da && db) return db.localeCompare(da);
+        if (da && !db) return -1;
+        if (!da && db) return 1;
+        return a.name.localeCompare(b.name, "zh-Hant");
+      });
       const names = sorted.map((c) => c.name);
       if (names.length > 0) {
         const { data: noteRows, error: noteErr } = await supabase
@@ -342,9 +350,7 @@ const AdminCustomersPanel = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>用戶名稱</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>LINE User ID</TableHead>
-                      <TableHead className="text-center">購買次數</TableHead>
+                      <TableHead className="text-center whitespace-nowrap">購買次數</TableHead>
                       <TableHead
                         className="whitespace-nowrap"
                         title="該客戶所有訂單中，expected_pickup_date（預定取貨／送達日）最晚的一筆"
@@ -353,12 +359,13 @@ const AdminCustomersPanel = () => {
                       </TableHead>
                       <TableHead className="min-w-[180px]">售後狀況</TableHead>
                       <TableHead>用戶回饋</TableHead>
+                      <TableHead className="min-w-[200px]">Email / LINE</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                           無客戶資料
                         </TableCell>
                       </TableRow>
@@ -366,10 +373,6 @@ const AdminCustomersPanel = () => {
                       filtered.map(c => (
                         <TableRow key={c.name}>
                           <TableCell className="font-medium">{c.name}</TableCell>
-                          <TableCell className="text-sm">{c.email || "-"}</TableCell>
-                          <TableCell className="text-xs font-mono max-w-[150px] truncate" title={c.line_user_id || ""}>
-                            {c.line_user_id || "-"}
-                          </TableCell>
                           <TableCell className="text-center font-semibold">{c.order_count}</TableCell>
                           <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                             {formatPickupDate(c.last_pickup_date)}
@@ -405,6 +408,20 @@ const AdminCustomersPanel = () => {
                                 </CollapsibleContent>
                               </Collapsible>
                             )}
+                          </TableCell>
+                          <TableCell className="text-sm align-top">
+                            <div className="space-y-1.5">
+                              <div>
+                                <span className="text-xs text-muted-foreground">Email</span>
+                                <p className="break-all">{c.email || "—"}</p>
+                              </div>
+                              <div>
+                                <span className="text-xs text-muted-foreground">LINE</span>
+                                <p className="font-mono text-xs break-all" title={c.line_user_id || ""}>
+                                  {c.line_user_id || "—"}
+                                </p>
+                              </div>
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
