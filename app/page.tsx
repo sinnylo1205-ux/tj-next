@@ -5,10 +5,9 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { useIsMobile } from "@/hooks/use-mobile";
 import ProgressiveImage from "@/components/ProgressiveImage";
-import { SafeImage } from "@/components/SafeImage";
-import { DESKTOP_HERO_FALLBACK_URL, MOBILE_HERO_URL } from "@/lib/home-lcp-urls";
+import { HomeSection1Mobile } from "@/components/home/HomeSection1Mobile";
+import { DESKTOP_HERO_FALLBACK_URL } from "@/lib/home-lcp-urls";
 
 const HomePaymentResultDialog = dynamic(
   () => import("@/components/home/HomePaymentResultDialog").then((m) => m.HomePaymentResultDialog),
@@ -79,7 +78,6 @@ const HOME_QUERY_KEYS = {
 function HomePageContent() {
   const router = useRouter();
   const pathname = usePathname();
-  const isMobile = useIsMobile();
   const [productNames, setProductNames] = useState<Record<string, string>>({});
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
@@ -252,6 +250,14 @@ function HomePageContent() {
     return productA.localeCompare(productB);
   });
 
+  const section1HasDbAspect = Boolean(section1Bg?.ui_width && section1Bg?.ui_height);
+  const section1AspectStyle = section1HasDbAspect
+    ? { aspectRatio: (section1Bg!.ui_width! / section1Bg!.ui_height!) as number }
+    : undefined;
+  const section1AspectClass = section1HasDbAspect
+    ? "relative w-full overflow-hidden"
+    : "relative w-full overflow-hidden max-md:[aspect-ratio:1166/2072] md:[aspect-ratio:8334/3645]";
+
   return (
     <>
       <h1 className="sr-only">T&J 客製化甜點 - 專業甜點客製化服務</h1>
@@ -265,54 +271,33 @@ function HomePageContent() {
 
       <div className="relative w-full">
         <section className="relative w-full overflow-hidden">
-          {isMobile ? (
-            <div
-              className="relative w-full overflow-hidden"
-              style={{
-                aspectRatio:
-                  section1Bg?.ui_width && section1Bg?.ui_height
-                    ? section1Bg.ui_width / section1Bg.ui_height
-                    : 1166 / 2072,
-              }}
-            >
-              <SafeImage
-                src={MOBILE_HERO_URL}
-                alt="Section 1 mobile background"
-                fill
-                className="object-cover"
-                sizes="100vw"
-                priority
-                fetchPriority="high"
-              />
-            </div>
-          ) : (
-            <div
-              className="relative w-full overflow-hidden"
-              style={{
-                aspectRatio:
-                  section1Bg?.ui_width && section1Bg?.ui_height
-                    ? section1Bg.ui_width / section1Bg.ui_height
-                    : 8334 / 3645,
-              }}
-            >
-              <img
-                src={section1Bg?.photo_url || DESKTOP_HERO_FALLBACK_URL}
-                alt="Section 1 background"
-                className="absolute inset-0 h-full w-full object-cover"
-                width={section1Bg?.ui_width ?? 8334}
-                height={section1Bg?.ui_height ?? 3645}
-                fetchPriority="high"
-                decoding="async"
-              />
-            </div>
-          )}
+          {/* 桌機：全幅背景圖（勿在行動載入大圖） */}
+          <div className={`hidden md:block ${section1AspectClass}`} style={section1AspectStyle}>
+            <img
+              src={section1Bg?.photo_url || DESKTOP_HERO_FALLBACK_URL}
+              alt="Section 1 background"
+              className="absolute inset-0 h-full w-full object-cover"
+              width={section1Bg?.ui_width ?? 8334}
+              height={section1Bg?.ui_height ?? 3645}
+              fetchPriority="high"
+              decoding="async"
+            />
+          </div>
 
-          {!isMobile && hoveredId && (
-            <div className="fixed inset-0 z-20 pointer-events-none bg-black/30 transition-opacity duration-300" />
+          {/* 手機：純色區 + 左前景圖 + 右三按鈕（無背景照片） */}
+          <div className="md:hidden">
+            <HomeSection1Mobile
+              items={items}
+              onItemImageClick={(item) => handleItemClick(item as HomePageItem)}
+            />
+          </div>
+
+          {hoveredId && (
+            <div className="fixed inset-0 z-20 hidden pointer-events-none bg-black/30 transition-opacity duration-300 md:block" />
           )}
 
           <div
-            className="absolute z-[500] pointer-events-none"
+            className="absolute z-[500] hidden pointer-events-none md:block"
             style={{
               width: DESIGN_WIDTH,
               height: DESIGN_HEIGHT,
@@ -358,27 +343,7 @@ function HomePageContent() {
             })}
           </div>
 
-          {isMobile ? (
-            <div className="absolute bottom-3 left-0 right-0 z-30 pb-6">
-              <div className="flex justify-center items-end gap-2 px-4">
-                {items.map((item) => (
-                  <div key={item.id} className="flex-shrink-0" style={{ width: "30%", maxWidth: "120px" }}>
-                    <img
-                      src={item.photo_url}
-                      alt={item.description || "home item"}
-                      className="h-auto w-full cursor-pointer object-contain"
-                      width={item.ui_width ?? 200}
-                      height={item.ui_height ?? 200}
-                      loading="lazy"
-                      decoding="async"
-                      onClick={() => handleItemClick(item)}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="absolute inset-0 z-30 pointer-events-none">
+          <div className="absolute inset-0 z-30 hidden pointer-events-none md:block">
               <div
                 className="absolute pointer-events-auto"
                 style={{
@@ -429,15 +394,14 @@ function HomePageContent() {
                   );
                 })}
               </div>
-            </div>
-          )}
+          </div>
 
           <a
             href={LINE_URL}
             target="_blank"
             rel="noopener noreferrer"
             onClick={handleLineClick}
-            className="absolute right-0 md:right-3 top-[60%] -translate-y-1/2 z-40 transition-transform duration-300 scale-[1] hover:scale-[1.2] md:scale-[1.3] md:hover:scale-[1.6]"
+            className="absolute bottom-6 right-4 z-40 transition-transform duration-300 hover:scale-110 md:bottom-auto md:right-3 md:top-[60%] md:-translate-y-1/2 md:scale-[1.3] md:hover:scale-[1.6]"
           >
             <img
               src={LINE_ICON_URL}
@@ -451,20 +415,21 @@ function HomePageContent() {
         </section>
 
         <section className="relative w-full">
-          {!isMobile && section2Bg && (
-            <ProgressiveImage
-              src={section2Bg.photo_url}
-              alt="Section 2 background"
-              containerClassName="w-full block"
-              className="object-cover"
-              width={section2Bg.ui_width ?? undefined}
-              height={section2Bg.ui_height ?? undefined}
-              aspectRatio={section2Bg.ui_width && section2Bg.ui_height ? undefined : 16 / 9}
-            />
+          {section2Bg && (
+            <div className="hidden md:block">
+              <ProgressiveImage
+                src={section2Bg.photo_url}
+                alt="Section 2 background"
+                containerClassName="w-full block"
+                className="object-cover"
+                width={section2Bg.ui_width ?? undefined}
+                height={section2Bg.ui_height ?? undefined}
+                aspectRatio={section2Bg.ui_width && section2Bg.ui_height ? undefined : 16 / 9}
+              />
+            </div>
           )}
 
-          {isMobile && (
-            <div className="w-full bg-white py-8">
+          <div className="w-full bg-white py-8 md:hidden">
               <div className="grid grid-cols-2 gap-2 px-4">
                 {groupedGalleryItems.map((item) => (
                   <div
@@ -483,14 +448,15 @@ function HomePageContent() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
+          </div>
 
-          {!isMobile && section2Bg && (
-            <HomeSection2DesktopCarousel
-              groupedGalleryItems={groupedGalleryItems}
-              onGalleryItemClick={handleGalleryClick}
-            />
+          {section2Bg && (
+            <div className="hidden md:contents">
+              <HomeSection2DesktopCarousel
+                groupedGalleryItems={groupedGalleryItems}
+                onGalleryItemClick={handleGalleryClick}
+              />
+            </div>
           )}
         </section>
       </div>

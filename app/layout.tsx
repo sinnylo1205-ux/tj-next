@@ -9,7 +9,7 @@ import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
 import { SITE_CONFIG, getFullUrl } from "@/lib/site";
 import { productNoticeUrl } from "@/lib/product-notice-url";
-import { DESKTOP_HERO_FALLBACK_URL, MOBILE_HERO_URL } from "@/lib/home-lcp-urls";
+import { DESKTOP_HERO_FALLBACK_URL } from "@/lib/home-lcp-urls";
 import { DeferredSpeedInsights } from "@/components/DeferredSpeedInsights";
 
 const notoSerifTC = Noto_Serif_TC({
@@ -127,13 +127,6 @@ export default function RootLayout({
           href={DESKTOP_HERO_FALLBACK_URL}
           fetchPriority="high"
           media="(min-width: 769px)"
-        />
-        <link
-          rel="preload"
-          as="image"
-          href={MOBILE_HERO_URL}
-          fetchPriority="high"
-          media="(max-width: 768px)"
         />
       </head>
       <body className="antialiased custom-cursor">
