@@ -61,6 +61,8 @@ interface Order {
   line_user_id?: string | null;
   payment_method?: string | null;
   is_hide?: boolean;
+  /** 舊版訂單欄位；新流程以 payment_step 為準 */
+  payment_status?: string | null;
   /** 客戶類型：general | flash_ip | pr_agency */
   customer_type?: string | null;
   /** 歷史／手動單可能寫入；後台「訂購人」顯示一律依 user_id 查 user_log_in.name */
@@ -146,7 +148,8 @@ const OrderStatusManager = () => {
     const { data, error } = await supabase
       .from("orders")
       .select("*")
-      .eq("is_hide", false)
+      // NULL 與 false 皆視為「未隱藏」；.eq(false) 會排除 is_hide IS NULL 的舊列
+      .or("is_hide.is.null,is_hide.eq.false")
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -675,7 +678,14 @@ const OrderStatusManager = () => {
     // 1. 先按 Tab 篩選
     switch (activeTab) {
       case "pending":
-        filtered = filtered.filter((o) => o.payment_step === "pending" || o.payment_step === "submitted");
+        filtered = filtered.filter((o) => {
+          if (o.payment_step === "pending" || o.payment_step === "submitted") return true;
+          // 舊資料：僅有 payment_status=unpaid、payment_step 為空，仍應出現在「待付款」
+          const stepMissing = o.payment_step == null || String(o.payment_step).trim() === "";
+          const legacyUnpaid =
+            o.payment_status === "unpaid" || o.payment_status == null || o.payment_status === "";
+          return stepMissing && legacyUnpaid;
+        });
         break;
       case "processing":
         filtered = filtered.filter((o) => o.order_status === "processing");

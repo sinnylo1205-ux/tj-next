@@ -114,7 +114,7 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
       const { data: productsData, error: productsError } = await supabase
         .from("products")
         .select("id, name, category, price")
-        .eq("is_hide", false)
+        .or("is_hide.is.null,is_hide.eq.false")
         .order("category");
 
       if (!productsError && productsData) {
