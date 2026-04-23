@@ -196,10 +196,21 @@ h3 {
 }
 .article-tiptap-editor p,
 .article-rich-body p {
-  margin: 0.35rem 0;
+  /* 段落之間留白（比一般單行間距明顯） */
+  margin: 1rem 0;
   line-height: 1.75;
   /* 與後台編輯器一致：段落內換行／貼上含 \n 的文字會顯示換行（預設 normal 會把 \n 收成空白） */
   white-space: pre-line;
+}
+
+/* 連續按 Enter 產生的「空段落」：空 <p> 或僅含 <br> 時，瀏覽器常算成 0 高度，前台會看不到多空行 */
+.article-tiptap-editor p:empty,
+.article-rich-body p:empty {
+  min-height: 1.75em;
+}
+.article-tiptap-editor p:has(> br:only-child),
+.article-rich-body p:has(> br:only-child) {
+  min-height: 1.75em;
 }
 .article-tiptap-editor img.article-rich-body-img,
 .article-rich-body img {
