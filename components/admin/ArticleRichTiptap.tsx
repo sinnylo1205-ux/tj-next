@@ -18,10 +18,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getArticleEditorExtensions, ARTICLE_TEXT_COLORS } from "@/lib/tiptap/article-extensions";
+import {
+  ARTICLE_FONT_ZOOM_CHANGE_EVENT,
+  ARTICLE_FONT_ZOOM_DEFAULT_INDEX,
+  ARTICLE_FONT_ZOOM_LEVELS,
+  applyArticleFontZoomFromStorage,
+  type ArticleFontZoom,
+} from "@/lib/article-font-zoom";
 import { Loader2, Save, ImagePlus, Upload, Link2 } from "lucide-react";
 import type { JSONContent } from "@tiptap/core";
 import { convertToWebP } from "@/lib/convert-to-webp";
 import { SafeImage } from "@/components/SafeImage";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 /** custom_asset bucket 內路徑（文章新排版自訂上傳） */
 export const ARTICLE_SELF_UPLOAD_STORAGE_PREFIX = "website_img/article/self_upload";
@@ -106,7 +114,13 @@ export default function ArticleRichTiptap({
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkHref, setLinkHref] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
+  /** 與前台文章頁同一組 zoom（同一 localStorage），內文編輯區比例一致 */
+  const [editorBodyZoom, setEditorBodyZoom] = useState<ArticleFontZoom>(
+    () => ARTICLE_FONT_ZOOM_LEVELS[ARTICLE_FONT_ZOOM_DEFAULT_INDEX].zoom,
+  );
   const fileRef = useRef<HTMLInputElement>(null);
+  const isMobile = useIsMobile();
+  const editorDisplayZoom = isMobile ? 1 : editorBodyZoom;
 
   useEffect(() => {
     setIsPublished(initialIsPublished);
@@ -119,6 +133,17 @@ export default function ArticleRichTiptap({
   useEffect(() => {
     setOgImageUrl(initialOgImageUrl);
   }, [articleId, initialOgImageUrl]);
+
+  useEffect(() => {
+    applyArticleFontZoomFromStorage(setEditorBodyZoom);
+    const sync = () => applyArticleFontZoomFromStorage(setEditorBodyZoom);
+    window.addEventListener(ARTICLE_FONT_ZOOM_CHANGE_EVENT, sync);
+    window.addEventListener("storage", sync);
+    return () => {
+      window.removeEventListener(ARTICLE_FONT_ZOOM_CHANGE_EVENT, sync);
+      window.removeEventListener("storage", sync);
+    };
+  }, []);
 
   useEffect(() => {
     setSlug(initialSlug);
@@ -347,7 +372,10 @@ export default function ArticleRichTiptap({
             加入連結
           </Button>
         </div>
-        <div className="px-6 pt-3 pb-1">
+        <div
+          className="article-readable-zone origin-top px-6 pt-3 pb-1 min-h-[min(380px,45vh)]"
+          style={{ zoom: editorDisplayZoom }}
+        >
           <EditorContent editor={editor} />
         </div>
       </div>

@@ -157,14 +157,16 @@ h3 {
   font-weight: 400;
 }
 
-/* 文章 Tiptap 後台 / 前台富文本：宋體系、標題層級（SEO 友善結構） */
+/* 文章 Tiptap 後台 / 前台富文本：宋體系、標題層級（SEO 友善）；與 ARTICLE_FONT_ZOOM_LEVELS 一併縮放閱讀區 */
 .article-tiptap-editor,
 .article-rich-body {
   font-family: var(--font-serif);
+  /* 内文基底（繼承至段落）；標題維持下方 rem，與段落比例固定 */
+  font-size: 1.25rem;
 }
 .article-tiptap-editor h1,
 .article-rich-body h1 {
-  font-size: 1.75rem;
+  font-size: 2.125rem;
   font-weight: 700;
   margin-top: 0.75rem;
   margin-bottom: 0.5rem;
@@ -172,7 +174,7 @@ h3 {
 }
 .article-tiptap-editor h2,
 .article-rich-body h2 {
-  font-size: 1.375rem;
+  font-size: 1.625rem;
   font-weight: 600;
   margin-top: 0.75rem;
   margin-bottom: 0.5rem;
@@ -180,7 +182,7 @@ h3 {
 }
 .article-tiptap-editor h3,
 .article-rich-body h3 {
-  font-size: 1.125rem;
+  font-size: 1.375rem;
   font-weight: 600;
   margin-top: 0.5rem;
   margin-bottom: 0.35rem;
@@ -222,6 +224,35 @@ h3 {
   margin-left: auto;
   margin-right: auto;
   display: block;
+}
+
+/* 手機：維持較小字級（筆電以上仍用上方放大版） */
+@media (max-width: 767px) {
+  .article-tiptap-editor,
+  .article-rich-body {
+    font-size: 1rem;
+  }
+  .article-tiptap-editor h1,
+  .article-rich-body h1 {
+    font-size: 1.75rem;
+  }
+  .article-tiptap-editor h2,
+  .article-rich-body h2 {
+    font-size: 1.375rem;
+  }
+  .article-tiptap-editor h3,
+  .article-rich-body h3 {
+    font-size: 1.125rem;
+  }
+  .article-tiptap-editor p,
+  .article-rich-body p {
+    margin: 0.35rem 0;
+  }
+}
+
+/* H2 錨點捲動時預留頂部（避免被 fixed Nav 遮住） */
+.article-readable-zone h2 {
+  scroll-margin-top: 6rem;
 }
 
 /* 新排版「加入連結」：連結名稱 + 外連圖示 */

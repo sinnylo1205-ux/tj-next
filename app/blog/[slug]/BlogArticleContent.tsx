@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { SafeImage } from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, ChevronLeft } from "lucide-react";
@@ -14,6 +14,9 @@ import {
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { cn } from "@/lib/utils";
+import { ArticleTocNav, ArticleTocSidebar, type TocItem } from "@/components/blog/ArticleTocSidebar";
+import { scrollToArticleHeading } from "@/lib/article-heading-scroll";
 
 export interface CustomOption {
   title: string;
@@ -65,16 +68,6 @@ const productPaths: Record<string, string> = {
   donut: "/product/donut",
 };
 
-const ARTICLE_FONT_ZOOM_KEY = "tj-blog-article-font-zoom";
-
-const FONT_ZOOM_LEVELS = [
-  { zoom: 1, label: "標準" },
-  { zoom: 1.08, label: "舒適" },
-  { zoom: 1.18, label: "大" },
-] as const;
-
-type ArticleFontZoom = (typeof FONT_ZOOM_LEVELS)[number]["zoom"];
-
 export default function BlogArticleContent({
   article,
   richBodyHtml,
@@ -86,39 +79,54 @@ export default function BlogArticleContent({
   const noticePath = productPaths[article.product_id] || `/product/${article.product_id}`;
   const isRichtext = article.content_mode === "richtext" && richBodyHtml;
 
-  const [fontZoom, setFontZoom] = useState<ArticleFontZoom>(() => FONT_ZOOM_LEVELS[1].zoom);
+  const readableRef = useRef<HTMLDivElement>(null);
+  const [tocItems, setTocItems] = useState<TocItem[]>([]);
+  const setTocItemsStable = useCallback((items: TocItem[]) => setTocItems(items), []);
 
+  const tocRebuildKey = `${article.id}-${isRichtext ? `rt-${richBodyHtml?.length ?? 0}` : "tpl"}`;
+
+  /** 網址帶 #錨點時：待目錄掃描並寫入 id 後再捲動 */
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(ARTICLE_FONT_ZOOM_KEY);
-      if (raw === "0" || raw === "1" || raw === "2") {
-        setFontZoom(FONT_ZOOM_LEVELS[Number(raw)].zoom);
+    const raw = typeof window !== "undefined" ? window.location.hash.slice(1) : "";
+    let hash = raw;
+    if (raw) {
+      try {
+        hash = decodeURIComponent(raw);
+      } catch {
+        hash = raw;
       }
-    } catch {
-      /* ignore */
     }
-  }, []);
+    if (!hash || tocItems.length === 0) return;
+    const t = window.setTimeout(() => {
+      if (document.getElementById(hash)) scrollToArticleHeading(hash);
+    }, 200);
+    return () => window.clearTimeout(t);
+  }, [tocItems.length, tocRebuildKey]);
 
-  const persistZoom = (z: ArticleFontZoom) => {
-    setFontZoom(z);
-    const idx = FONT_ZOOM_LEVELS.findIndex((l) => l.zoom === z);
-    try {
-      if (idx >= 0) localStorage.setItem(ARTICLE_FONT_ZOOM_KEY, String(idx));
-    } catch {
-      /* ignore */
-    }
-  };
+  /** 左欄目錄頂端與本文第一行大致對齊（有頂圖時略過圖片區；僅富文本無圖時預留 header 下緣） */
+  const tocAsidePtClass =
+    tocItems.length === 0
+      ? ""
+      : article.og_image_url
+        ? "lg:pt-[calc(16rem+1rem+2rem)]"
+        : isRichtext
+          ? "lg:pt-8"
+          : "";
 
   return (
     <div className="container py-8 md:py-12">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
           <BreadcrumbItem>
-            <BreadcrumbLink asChild><Link href="/">首頁</Link></BreadcrumbLink>
+            <BreadcrumbLink asChild>
+              <Link href="/">首頁</Link>
+            </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbLink asChild><Link href="/blog">甜點部落格</Link></BreadcrumbLink>
+            <BreadcrumbLink asChild>
+              <Link href="/blog">甜點部落格</Link>
+            </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
@@ -127,132 +135,152 @@ export default function BlogArticleContent({
         </BreadcrumbList>
       </Breadcrumb>
 
-      <article className="max-w-3xl mx-auto">
-        <div className="mb-5 flex flex-wrap items-center gap-2 border-b border-border pb-4">
-          <span className="text-sm text-muted-foreground shrink-0">文章字體</span>
-          <div className="flex flex-wrap gap-1.5">
-            {FONT_ZOOM_LEVELS.map(({ zoom, label }) => (
-              <Button
-                key={zoom}
-                type="button"
-                variant={fontZoom === zoom ? "secondary" : "outline"}
-                size="sm"
-                className="h-8 min-w-[3.25rem] px-2 text-xs"
-                onClick={() => persistZoom(zoom)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </div>
-
-        <div className="article-readable-zone origin-top" style={{ zoom: fontZoom }}>
-          {isRichtext ? (
-            <>
-              <header className="mb-8">
-                {article.og_image_url && (
-                  <div className="relative mb-4 h-64 w-full overflow-hidden rounded-xl">
-                    <SafeImage
-                      src={article.og_image_url}
-                      alt={article.item_name}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 768px) 100vw, 768px"
-                      priority
-                    />
-                  </div>
-                )}
-              </header>
-              <div
-                className="article-rich-body text-foreground mb-8"
-                dangerouslySetInnerHTML={{ __html: richBodyHtml! }}
-              />
-            </>
-          ) : (
-            <>
-              <header className="mb-8">
-                {article.og_image_url && (
-                  <div className="relative mb-4 h-64 w-full overflow-hidden rounded-xl">
-                    <SafeImage
-                      src={article.og_image_url}
-                      alt={article.item_name}
-                      fill
-                      className="object-cover"
-                      sizes="(max-width: 768px) 100vw, 768px"
-                      priority
-                    />
-                  </div>
-                )}
-                <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-4">客製化{article.item_name}</h1>
-                <p className="text-muted-foreground text-lg whitespace-pre-line">{article.intro}</p>
-              </header>
-
-              {article.why_custom && (
-                <section className="mb-8">
-                  <h2 className="text-xl font-semibold mb-4">為什麼要客製化？</h2>
-                  <p className="text-foreground leading-relaxed whitespace-pre-line">{article.why_custom}</p>
-                </section>
+      {/* 左欄 sticky 目錄 + 中央閱讀欄約 680px */}
+      <div
+        className={cn(
+          "mx-auto w-full",
+          tocItems.length > 0
+            ? "max-w-[1200px] lg:w-fit lg:grid lg:grid-cols-[minmax(11rem,240px)_minmax(0,680px)] lg:gap-x-12 xl:gap-x-16 lg:items-stretch"
+            : "max-w-[680px]",
+        )}
+      >
+        {tocItems.length > 0 ? (
+          <aside className="hidden min-w-0 lg:col-start-1 lg:row-start-1 lg:block">
+            <div
+              className={cn(
+                "sticky top-28 max-h-[calc(100vh-8rem)] overflow-y-auto overscroll-y-contain pb-8",
+                tocAsidePtClass,
               )}
+            >
+              <ArticleTocNav items={tocItems} />
+            </div>
+          </aside>
+        ) : null}
 
-              {article.custom_options?.length > 0 && (
-                <section className="mb-8">
-                  <h2 className="text-xl font-semibold mb-4">客製化選項</h2>
-                  <Accordion type="single" collapsible className="space-y-2">
-                    {article.custom_options.map((opt, i) => (
-                      <AccordionItem key={i} value={`opt-${i}`} className="border rounded-lg px-4">
-                        <AccordionTrigger className="text-left font-medium">{opt.title}</AccordionTrigger>
-                        <AccordionContent className="text-muted-foreground">{opt.description}</AccordionContent>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                </section>
-              )}
-
-              {article.use_cases?.length > 0 && (
-                <section className="mb-8">
-                  <h2 className="text-xl font-semibold mb-4">適用場合</h2>
-                  <ul className="space-y-3">
-                    {article.use_cases.map((uc, i) => (
-                      <li key={i}>
-                        <strong className="text-foreground">{uc.title}</strong>
-                        <p className="text-muted-foreground text-sm">{uc.description}</p>
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-              )}
-
-              {article.faq?.length > 0 && (
-                <section className="mb-8">
-                  <h2 className="text-xl font-semibold mb-4">常見問題</h2>
-                  <Accordion type="single" collapsible className="space-y-2">
-                    {article.faq.map((item, i) => (
-                      <AccordionItem key={i} value={`faq-${i}`} className="border rounded-lg px-4">
-                        <AccordionTrigger className="text-left">{item.question}</AccordionTrigger>
-                        <AccordionContent className="text-muted-foreground">{item.answer}</AccordionContent>
-                      </AccordionItem>
-                    ))}
-                  </Accordion>
-                </section>
-              )}
-            </>
+        <article
+          className={cn(
+            "min-w-0",
+            tocItems.length === 0 && "mx-auto",
+            tocItems.length > 0 && "lg:col-start-2",
           )}
-        </div>
+        >
+          <div
+            ref={readableRef}
+            className="article-readable-zone"
+          >
+            {isRichtext ? (
+              <>
+                <header className="mb-8">
+                  {article.og_image_url && (
+                    <div className="relative mb-4 h-64 w-full overflow-hidden rounded-xl">
+                      <SafeImage
+                        src={article.og_image_url}
+                        alt={article.item_name}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 100vw, 768px"
+                        priority
+                      />
+                    </div>
+                  )}
+                </header>
+                <div
+                  className="article-rich-body text-foreground mb-8"
+                  dangerouslySetInnerHTML={{ __html: richBodyHtml! }}
+                />
+              </>
+            ) : (
+              <>
+                <header className="mb-8">
+                  {article.og_image_url && (
+                    <div className="relative mb-4 h-64 w-full overflow-hidden rounded-xl">
+                      <SafeImage
+                        src={article.og_image_url}
+                        alt={article.item_name}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 100vw, 768px"
+                        priority
+                      />
+                    </div>
+                  )}
+                  <h1 className="text-3xl font-bold text-foreground md:text-4xl mb-4">客製化{article.item_name}</h1>
+                  <p className="text-muted-foreground text-lg whitespace-pre-line">{article.intro}</p>
+                </header>
 
-        <div className="flex flex-wrap gap-4 pt-6">
-          <Button asChild>
-            <Link href={noticePath}>
-              進入選購與設計 <ArrowRight className="w-4 h-4 ml-2" />
-            </Link>
-          </Button>
-          <Button variant="outline" asChild>
-            <Link href="/blog">
-              <ChevronLeft className="w-4 h-4 mr-2" />
-              返回部落格
-            </Link>
-          </Button>
-        </div>
-      </article>
+                {article.why_custom && (
+                  <section className="mb-8">
+                    <h2 className="text-xl font-semibold mb-4">為什麼要客製化？</h2>
+                    <p className="text-foreground leading-relaxed whitespace-pre-line">{article.why_custom}</p>
+                  </section>
+                )}
+
+                {article.custom_options?.length > 0 && (
+                  <section className="mb-8">
+                    <h2 className="text-xl font-semibold mb-4">客製化選項</h2>
+                    <Accordion type="single" collapsible className="space-y-2">
+                      {article.custom_options.map((opt, i) => (
+                        <AccordionItem key={i} value={`opt-${i}`} className="border rounded-lg px-4">
+                          <AccordionTrigger className="text-left font-medium">{opt.title}</AccordionTrigger>
+                          <AccordionContent className="text-muted-foreground">{opt.description}</AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </section>
+                )}
+
+                {article.use_cases?.length > 0 && (
+                  <section className="mb-8">
+                    <h2 className="text-xl font-semibold mb-4">適用場合</h2>
+                    <ul className="space-y-3">
+                      {article.use_cases.map((uc, i) => (
+                        <li key={i}>
+                          <strong className="text-foreground">{uc.title}</strong>
+                          <p className="text-muted-foreground text-sm">{uc.description}</p>
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+                )}
+
+                {article.faq?.length > 0 && (
+                  <section className="mb-8">
+                    <h2 className="text-xl font-semibold mb-4">常見問題</h2>
+                    <Accordion type="single" collapsible className="space-y-2">
+                      {article.faq.map((item, i) => (
+                        <AccordionItem key={i} value={`faq-${i}`} className="border rounded-lg px-4">
+                          <AccordionTrigger className="text-left">{item.question}</AccordionTrigger>
+                          <AccordionContent className="text-muted-foreground">{item.answer}</AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </section>
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap gap-4 pt-6">
+            <Button asChild>
+              <Link href={noticePath}>
+                進入選購與設計 <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <Button variant="outline" asChild>
+              <Link href="/blog">
+                <ChevronLeft className="mr-2 h-4 w-4" />
+                返回部落格
+              </Link>
+            </Button>
+          </div>
+        </article>
+      </div>
+
+      <ArticleTocSidebar
+        rootRef={readableRef}
+        onItemsChange={setTocItemsStable}
+        rebuildKey={tocRebuildKey}
+      />
     </div>
   );
 }
