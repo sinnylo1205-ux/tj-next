@@ -3,7 +3,6 @@
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
-import { SECTION1_MOBILE_BACKGROUND_URL } from "@/lib/home-lcp-urls";
 
 const SECTION1_MOBILE_CTA = [
   {
@@ -29,7 +28,6 @@ export type HomeSection1MobileItem = {
   description: string | null;
   ui_width: number | null;
   ui_height: number | null;
-  go_to_where?: string | null;
 };
 
 function swapTopAndBottomImages<T>(list: T[]): T[] {
@@ -41,70 +39,67 @@ function swapTopAndBottomImages<T>(list: T[]): T[] {
 }
 
 /**
- * 手機首頁 Section 1：直式滿寬背景圖 + CMS 前景圖置於三枚導向鈕內（右側、等比縮小容納於鈕內）。
+ * 手機首頁 Section 1：三枚導向按鈕置中，CMS 前景圖疊於按鈕右側並遮住部分按鈕區。
  */
-export function HomeSection1Mobile({ items }: { items: HomeSection1MobileItem[] }) {
+export function HomeSection1Mobile({
+  items,
+  onItemImageClick,
+}: {
+  items: HomeSection1MobileItem[];
+  onItemImageClick: (item: HomeSection1MobileItem) => void;
+}) {
   const imageItems = swapTopAndBottomImages(items);
 
   return (
-    <div className="relative w-full">
-      {/* 整張圖依螢幕寬度縮放、維持比例，不裁切（勿用 object-cover） */}
-      <img
-        src={SECTION1_MOBILE_BACKGROUND_URL}
-        alt=""
-        className="pointer-events-none block h-auto w-full max-w-full select-none"
-        sizes="100vw"
-        aria-hidden
-        fetchPriority="high"
-        decoding="async"
-      />
-      <div
-        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background/15 via-transparent to-background/25"
-        aria-hidden
-      />
+    <div className="relative w-full bg-gradient-to-b from-[hsl(var(--brand-50))] via-background to-[hsl(var(--muted))]/35">
+      <div className="relative mx-auto flex min-h-[min(88dvh,640px)] max-w-lg flex-col items-center justify-center overflow-visible px-3 pb-28 pt-24">
+        <div className="relative w-[min(320px,90vw)] shrink-0">
+          {/* 下層：三按鈕（淡品牌粉） */}
+          <div className="relative z-10 flex min-w-0 flex-col gap-8 sm:gap-10">
+            {SECTION1_MOBILE_CTA.map((row) => (
+              <Link
+                key={row.href}
+                href={row.href}
+                className="flex flex-col rounded-3xl border border-brand-100/70 bg-brand-50/95 px-5 py-4.5 pr-11 shadow-sm transition-all hover:border-brand-300/40 hover:bg-brand-100/55 hover:shadow-md active:scale-[0.99] sm:px-6 sm:py-5 sm:pr-12"
+              >
+                <span className="text-[16px] font-semibold leading-tight text-foreground sm:text-[17px]">
+                  {row.title}
+                </span>
+                <span className="mt-2 text-left text-xs leading-snug text-muted-foreground sm:text-[13px]">{row.subtitle}</span>
+              </Link>
+            ))}
+          </div>
 
-      <div className="absolute inset-0 z-10 mx-auto flex max-w-lg flex-col items-center justify-center px-3 py-16 pb-24 pt-20">
-        <div className="w-full min-w-0 max-w-[min(360px,92vw)]">
-          <div className="flex min-w-0 flex-col gap-7 sm:gap-9">
-            {SECTION1_MOBILE_CTA.map((row, index) => {
-              const item = imageItems[index];
-              const href = (item?.go_to_where && item.go_to_where.trim()) || row.href;
-              return (
-                <Link
-                  key={row.href}
-                  href={href}
-                  className="flex min-h-0 min-w-0 flex-row items-stretch gap-2.5 overflow-hidden rounded-3xl border border-brand-100/80 bg-brand-50/95 px-3.5 py-3.5 shadow-sm transition-all hover:border-brand-300/50 hover:bg-brand-100/60 hover:shadow-md active:scale-[0.99] sm:gap-3 sm:px-4 sm:py-4"
-                >
-                  <div className="flex min-w-0 flex-1 flex-col justify-center pr-0.5">
-                    <span className="text-[15px] font-semibold leading-tight text-foreground sm:text-[16px]">
-                      {row.title}
-                    </span>
-                    <span className="mt-1.5 text-left text-[11px] leading-snug text-muted-foreground sm:mt-2 sm:text-xs">
-                      {row.subtitle}
-                    </span>
-                  </div>
-                  {item?.photo_url ? (
-                    <div
-                      className={cn(
-                        "flex w-[4.5rem] shrink-0 items-center justify-center self-center sm:w-[5.25rem]",
-                        "min-h-[3.25rem] max-h-[4.5rem] sm:min-h-16 sm:max-h-20",
-                      )}
-                    >
-                      <img
-                        src={item.photo_url}
-                        alt={item.description || "甜點"}
-                        width={item.ui_width ?? 200}
-                        height={item.ui_height ?? 200}
-                        className="max-h-full max-w-full object-contain object-center"
-                        loading={index === 0 ? "eager" : "lazy"}
-                        fetchPriority={index === 0 ? "high" : undefined}
-                        decoding="async"
-                      />
-                    </div>
-                  ) : null}
-                </Link>
-              );
-            })}
+          {/* 上層：前景圖貼按鈕右側、疊在按鈕上 */}
+          <div className="pointer-events-none absolute left-[54%] top-1/2 z-20 flex -translate-y-1/2 flex-col gap-2.5 sm:left-[56%]">
+            {imageItems
+              .filter((item) => item.photo_url)
+              .map((item, index, arr) => {
+                const isBottom = index === arr.length - 1;
+                const isLcpCandidate = index === 0;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onItemImageClick(item)}
+                    className={cn(
+                      "pointer-events-auto relative w-full max-w-[140px] drop-shadow-md transition-transform active:scale-[0.98] sm:max-w-[156px]",
+                      isBottom && "-translate-x-1.5 sm:-translate-x-2",
+                    )}
+                  >
+                    <img
+                      src={item.photo_url}
+                      alt={item.description || "甜點"}
+                      width={128}
+                      height={128}
+                      className="block h-auto max-h-[128px] w-full max-w-[140px] object-contain sm:max-h-[140px] sm:max-w-[156px]"
+                      loading={isLcpCandidate ? "eager" : "lazy"}
+                      fetchPriority={isLcpCandidate ? "high" : undefined}
+                      decoding="async"
+                    />
+                  </button>
+                );
+              })}
           </div>
         </div>
       </div>
