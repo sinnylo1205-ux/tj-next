@@ -34,11 +34,10 @@ const AlertDialogContent = React.forwardRef<
     <AlertDialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] z-50 grid min-h-0 w-full max-w-lg translate-x-[-50%] gap-4 border border-border bg-white text-foreground p-6 shadow-lg duration-200",
-        // 行動版：100vh 常大於實際可視高度導致底部被裁切；改用 dvh 並扣掉安全區
-        "max-h-[calc(100dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] overflow-y-auto overscroll-contain",
-        "top-[max(1rem,env(safe-area-inset-top))] translate-y-0 sm:top-[50%] sm:translate-y-[-50%]",
-        "sm:max-h-[calc(90dvh-2rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))]",
+        // 手機／桌機皆視窗正中置中（勿在手機貼頂，否則長內容會從底部被裁掉）
+        "fixed left-1/2 top-1/2 z-50 grid min-h-0 w-[min(100%,32rem)] max-w-[calc(100vw-1.5rem)] -translate-x-1/2 -translate-y-1/2 gap-4 border border-border bg-white text-foreground p-4 shadow-lg duration-200 sm:p-6",
+        // 高度上限：svh + 安全區，超出則框內捲動（避免超出可視區被裁切）
+        "max-h-[min(88dvh,calc(100svh-1.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom)))] overflow-y-auto overscroll-contain",
         "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg font-['Noto_Sans_TC',sans-serif]",
         className,
       )}
