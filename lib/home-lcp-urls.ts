@@ -1,12 +1,16 @@
 /**
- * 首頁 Section 1 hero：layout preload 與 `app/page.tsx` 必須使用同一 URL，否則行動 LCP 會多一次無效預載。
- *
- * **目標 &lt;100KiB（資產流程）**：以寬約 390–430px、品質約 75–82 輸出 WebP，上傳至同路徑或新檔名後，
- * 只更新 `MOBILE_HERO_URL`（並保留 layout preload 與此常數一致）。行動首屏已用 `next/image`（`SafeImage`）+ `sizes="100vw"` 帶寬請求。
+ * 首頁 Section 1：`layout` 預載須與 `SECTION1_BACKGROUND_URL`（桌機）／`SECTION1_MOBILE_BACKGROUND_URL`（手機）一致，
+ * 否則 LCP 會多一次請求。
  */
 const STORAGE =
   "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/home_page";
 
 export const MOBILE_HERO_URL = `${STORAGE}/iphone_home_11zon.webp`;
 
-export const DESKTOP_HERO_FALLBACK_URL = `${STORAGE}/home.webp`;
+/** 首頁 Section 1 桌機全寬背景（`app/page.tsx` fallback 與 layout 桌機預載需與此一致） */
+export const SECTION1_BACKGROUND_URL = `${STORAGE}/home.webp`;
+
+/** 首頁 Section 1 手機直式背景（`HomeSection1Mobile` 與 layout 行動預載需與此一致） */
+export const SECTION1_MOBILE_BACKGROUND_URL = `${STORAGE}/awdeq-iiez2_11zon.webp`;
+
+export const DESKTOP_HERO_FALLBACK_URL = SECTION1_BACKGROUND_URL;

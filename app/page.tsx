@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import ProgressiveImage from "@/components/ProgressiveImage";
 import { HomeSection1Mobile } from "@/components/home/HomeSection1Mobile";
-import { DESKTOP_HERO_FALLBACK_URL } from "@/lib/home-lcp-urls";
+import { SECTION1_BACKGROUND_URL } from "@/lib/home-lcp-urls";
 
 const HomePaymentResultDialog = dynamic(
   () => import("@/components/home/HomePaymentResultDialog").then((m) => m.HomePaymentResultDialog),
@@ -274,7 +274,7 @@ function HomePageContent() {
           {/* 桌機：全幅背景圖（勿在行動載入大圖） */}
           <div className={`hidden md:block ${section1AspectClass}`} style={section1AspectStyle}>
             <img
-              src={section1Bg?.photo_url || DESKTOP_HERO_FALLBACK_URL}
+              src={section1Bg?.photo_url || SECTION1_BACKGROUND_URL}
               alt="Section 1 background"
               className="absolute inset-0 h-full w-full object-cover"
               width={section1Bg?.ui_width ?? 8334}
@@ -286,10 +286,7 @@ function HomePageContent() {
 
           {/* 手機：純色區 + 左前景圖 + 右三按鈕（無背景照片） */}
           <div className="md:hidden">
-            <HomeSection1Mobile
-              items={items}
-              onItemImageClick={(item) => handleItemClick(item as HomePageItem)}
-            />
+            <HomeSection1Mobile items={items} />
           </div>
 
           {hoveredId && (
