@@ -1,8 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 
-/** 與儀表板「訂單營收」一致 */
+/** 與儀表板「訂單營收」一致：此三種 order_status 且須已確認到帳（見 sumRevenueInRange） */
 export const REVENUE_ORDER_STATUSES = ["processing", "shipped", "delivered"] as const;
+
+/** 營收只計「實收」：與後台付款步驟「已確認」一致（未匯款先標成處理中的單不會進營收） */
+export const REVENUE_PAYMENT_STEP = "verified" as const;
 
 /** 與客戶類型圓餅／備註筆數一致 */
 export const ANALYTICS_ORDER_STATUSES = [
@@ -87,6 +90,7 @@ async function sumRevenueInRange(
     .from("orders")
     .select("total_amount")
     .in("order_status", [...REVENUE_ORDER_STATUSES])
+    .eq("payment_step", REVENUE_PAYMENT_STEP)
     .gte("created_at", rangeStart.toISOString())
     .lte("created_at", rangeEnd.toISOString());
 

@@ -24,6 +24,7 @@ import {
   buildYearlyReportPayload,
   canonicalPopularProductName,
   customerTypeDisplayLabel as labelForCustomerType,
+  REVENUE_PAYMENT_STEP,
   type MonthlyReportPayload,
   type YearlyReportPayload,
 } from "@/lib/admin-reports";
@@ -88,7 +89,7 @@ function pieColorForName(name: string): string {
   return BRAND_SLICE_COLORS[h];
 }
 
-/** 客戶類型圓餅：value = 該類型訂單筆數（扇形比例）；營收／客單價供標籤與 Tooltip */
+/** 客戶類型圓餅：value = 該類型訂單筆數（扇形比例）；營收＝實收、客單價＝實收÷已確認筆數，供標籤與 Tooltip */
 interface CustomerTypePieSlice {
   name: string;
   value: number;
@@ -160,7 +161,7 @@ const AdminDashboard = () => {
 
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("customer_type, total_amount")
+      .select("customer_type, total_amount, payment_step")
       .in("order_status", [...CUSTOMER_TYPE_PIE_STATUSES])
       .gte("created_at", rangeStart.toISOString())
       .lte("created_at", rangeEnd.toISOString());
@@ -173,6 +174,7 @@ const AdminDashboard = () => {
 
     const countMap = new Map<string, number>();
     const revenueMap = new Map<string, number>();
+    const verifiedCountMap = new Map<string, number>();
 
     (orders || []).forEach((row) => {
       const key = row.customer_type?.trim() || "";
@@ -181,12 +183,16 @@ const AdminDashboard = () => {
       countMap.set(label, (countMap.get(label) ?? 0) + 1);
 
       const amt = Number(row.total_amount ?? 0);
-      revenueMap.set(label, (revenueMap.get(label) ?? 0) + amt);
+      if (row.payment_step === REVENUE_PAYMENT_STEP) {
+        revenueMap.set(label, (revenueMap.get(label) ?? 0) + amt);
+        verifiedCountMap.set(label, (verifiedCountMap.get(label) ?? 0) + 1);
+      }
     });
 
     const slices: CustomerTypePieSlice[] = Array.from(countMap.entries()).map(([name, count]) => {
       const revenue = revenueMap.get(name) ?? 0;
-      const aov = count > 0 ? Math.round(revenue / count) : 0;
+      const verifiedCount = verifiedCountMap.get(name) ?? 0;
+      const aov = verifiedCount > 0 ? Math.round(revenue / verifiedCount) : 0;
       return { name, value: count, revenue, aov, key: name };
     });
 
@@ -194,7 +200,7 @@ const AdminDashboard = () => {
     setCustomerTypePieData(slices);
   };
 
-  // 載入月度營收數據：訂單進入「處理中」(processing) 即併入計算，退貨(returned) 不計入
+  // 月營收＝實收：處理中／出貨中／已送達 且 付款已確認（排除未匯款先標處理中的金額）
   const loadRevenueData = async () => {
     const yearStart = startOfYear(new Date(selectedYear, 0, 1));
     const yearEnd = endOfYear(new Date(selectedYear, 0, 1));
@@ -203,6 +209,7 @@ const AdminDashboard = () => {
       .from("orders")
       .select("total_amount, created_at")
       .in("order_status", ["processing", "shipped", "delivered"])
+      .eq("payment_step", REVENUE_PAYMENT_STEP)
       .gte("created_at", yearStart.toISOString())
       .lte("created_at", yearEnd.toISOString());
 
@@ -365,8 +372,8 @@ const AdminDashboard = () => {
           <CardHeader>
             <CardTitle className="text-lg">訂單營收（新台幣）- {selectedYear}年</CardTitle>
             <p className="text-sm text-muted-foreground font-normal mt-1 leading-relaxed">
-              <span className="font-medium text-foreground/80">月營收邏輯：</span>
-              依訂單「建立日」落在哪一個月，把該筆訂單總金額加進該月；只計狀態為處理中、出貨中、已送達（每筆訂單只算一次）。不含待付款、已取消、退貨。
+              <span className="font-medium text-foreground/80">月營收（實收）邏輯：</span>
+              依訂單「建立日」落在哪一個月加總；僅計「處理中／出貨中／已送達」且付款為「已確認到帳」之訂單總金額（每筆只算一次）。未確認匯款者不計入，即使訂單已先標為處理中。不含待付款、已取消、退貨。
             </p>
           </CardHeader>
           <CardContent>
@@ -504,7 +511,7 @@ const AdminDashboard = () => {
               {tagPeriod === "month" ? "當月客戶類型分析" : "當年客戶類型分析"}
             </CardTitle>
             <p className="text-xs text-muted-foreground font-normal">
-              扇形依各類型訂單筆數；% 為筆數占比。標籤另附該類型營收與客單價（營收 ÷ 該類型訂單數）。訂單狀態含待付款／處理中／已出貨／已送達（不含已取消、退貨）
+              扇形依各類型訂單筆數；% 為筆數占比。標籤上的「營收」僅計已確認到帳之訂單；「客單價」＝該類型實收營收 ÷ 已確認到帳筆數。訂單狀態含待付款／處理中／已出貨／已送達（不含已取消、退貨）
               {tagPeriod === "month"
                 ? ` · ${selectedYear}年${tagMonth}月`
                 : ` · ${selectedYear}年`}
@@ -619,7 +626,7 @@ const AdminDashboard = () => {
                             <div className="font-medium mb-1">{p.name}</div>
                             <div>訂單 {p.value} 筆</div>
                             <div>營收 NT$ {p.revenue.toLocaleString()}</div>
-                            <div>客單價 NT$ {p.aov.toLocaleString()}（營收 ÷ 訂單數）</div>
+                            <div>客單價 NT$ {p.aov.toLocaleString()}（實收營收 ÷ 已確認到帳筆數）</div>
                           </div>
                         );
                       }}
@@ -668,6 +675,7 @@ const AdminDashboard = () => {
                     )}
                   >
                     <div className="text-sm md:text-base font-medium text-foreground/80">1. 當月收入（NT$）</div>
+                    <p className="mt-1 text-xs text-muted-foreground">實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸月（與上方營收長條邏輯一致）</p>
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {monthlyReport.revenue_ntd.toLocaleString()}
                     </p>
@@ -738,6 +746,7 @@ const AdminDashboard = () => {
                     )}
                   >
                     <div className="text-sm md:text-base font-medium text-foreground/80">1. 全年收入（NT$）</div>
+                    <p className="mt-1 text-xs text-muted-foreground">實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸屬該年各月後加總</p>
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {yearlyReport.revenue_ntd.toLocaleString()}
                     </p>

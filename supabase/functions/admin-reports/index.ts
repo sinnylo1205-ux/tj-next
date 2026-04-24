@@ -36,6 +36,8 @@ function canonicalPopularProductName(displayName: string): string {
 }
 
 const REVENUE_ORDER_STATUSES = ["processing", "shipped", "delivered"] as const;
+/** 與後台儀表板一致：營收僅計 payment_step=verified（實收） */
+const REVENUE_PAYMENT_STEP = "verified";
 const ANALYTICS_ORDER_STATUSES = [
   "awaiting_payment",
   "processing",
@@ -104,6 +106,7 @@ async function sumRevenueInRange(
     .from("orders")
     .select("total_amount")
     .in("order_status", [...REVENUE_ORDER_STATUSES])
+    .eq("payment_step", REVENUE_PAYMENT_STEP)
     .gte("created_at", rangeStart.toISOString())
     .lte("created_at", rangeEnd.toISOString());
   if (error) throw new Error(error.message);
