@@ -325,10 +325,13 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
   const captureRefMobile = useRef<HTMLDivElement | null>(null);
   const previewRefMobile = useRef<HTMLDivElement | null>(null);
   const captureRefDesktop = useRef<HTMLDivElement | null>(null);
+  /** 僅包裝小圖：第二次 toBlob（獨立 customizations 欄位） */
+  const captureRefPackage = useRef<HTMLDivElement | null>(null);
 
   // ✅ 智慧選擇截圖目標：必須截取「使用者實際看到的」預覽，比例才正確
   // - 桌面版 (lg+)：用 captureRefDesktop（畫面上看到的預覽）
   // - 手機版：非 iOS 用隱藏 300x300 容器；iOS 用畫面上 previewRefMobile（避免灰圖）
+  // - 主圖 toBlob 已用 filter 排除 data-capture-exclude（提示字／滑桿／包裝小圖），與強制統一 previewRef 相比較不易改比例行為
   const getCaptureTarget = () => {
     const isIOS =
       typeof navigator !== "undefined" && /iPhone|iPad|iPod/.test(navigator.userAgent);
@@ -1432,6 +1435,7 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
           fee: d.fee ?? d.amount ?? 0,
         })), // ✅ 使用驗證後的條件費用（轉成 addToCart 所需格式）
         verifiedGrandTotal, // ✅ 使用驗證後的總價
+        hasPackageSection ? captureRefPackage.current : null,
       );
     } finally {
       setIsAddingToCart(false);
@@ -1945,6 +1949,7 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
                   packageDecorationOptionsMap={packageDecorationState.optionsMap}
                   macaronPreviewImage={isMacaron ? macaronPreviewImage : undefined}
                   boxPreviewImageUrl={boxPreviewImageUrl || undefined}
+                  exportCaptureReady
                 />
               </div>
             </div>
@@ -2085,6 +2090,7 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
                     packageDecorationOptionsMap={packageDecorationState.optionsMap}
                     macaronPreviewImage={isMacaron ? macaronPreviewImage : undefined}
                     boxPreviewImageUrl={boxPreviewImageUrl || undefined}
+                    exportCaptureReady
                   />
                 </div>
               </div>
@@ -2185,8 +2191,11 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
         </div>
       </div>
 
-      {/* 隱藏版截圖容器（固定在畫面外，專門給 html-to-image 使用，避免 sticky / layout 影響座標） */}
-      <div className="fixed -left-[9999px] -top-[9999px] pointer-events-none opacity-0" aria-hidden="true">
+      {/* 隱藏版截圖容器：勿用 opacity-0，否則瀏覽器常延遲／略過底層圖層光栅化，html-to-image 易只剩高 z 圖層 */}
+      <div
+        className="fixed -left-[9999px] top-0 pointer-events-none z-0 h-[300px] w-[300px] overflow-hidden opacity-100"
+        aria-hidden="true"
+      >
         <div
           ref={captureRefMobile}
           className="relative w-[300px] h-[300px] overflow-hidden flex items-center justify-center bg-gradient-to-br from-brand-50 to-brand-100 rounded-lg"
@@ -2217,6 +2226,44 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
           />
         </div>
       </div>
+
+      {/* 隱藏：僅包裝小圖，供第二次 toBlob（與主預覽圖分開上傳） */}
+      {hasPackageSection ? (
+        <div
+          className="fixed -left-[9999px] top-[308px] z-0 h-[88px] w-[80px] overflow-hidden opacity-100 pointer-events-none"
+          aria-hidden="true"
+        >
+          <div
+            ref={captureRefPackage}
+            className="relative flex h-full w-full items-stretch justify-center rounded-lg bg-gradient-to-br from-brand-50 to-brand-100 p-0.5"
+          >
+            <PreviewCanvas
+              config={config}
+              colorGroups={colorGroups}
+              selectedColors={selectedColors}
+              flavorGroups={flavorGroups}
+              selectedFlavors={selectedFlavors}
+              selectedSizes={selectedSizes}
+              selectedDecorations={hierarchicalState.selectedDecorations}
+              decorationOptions={hierarchicalState.decorationOptions}
+              uploadedPhotoUrl={photoUpload.uploadedPhotoUrl}
+              photoFrame={photoUpload.photoFrame}
+              optionsMap={hierarchicalState.optionsMap}
+              isInBranch={hierarchicalState.isInBranch}
+              textInputData={textInputData}
+              showPackagePreview
+              selectedPackageStyle={packageState.selectedPackageStyle}
+              boxConfig1={packageState.boxConfig1}
+              boxConfig2={packageState.boxConfig2}
+              packageDecorations={packageDecorationState.selectedDecorations}
+              packageDecorationOptionsMap={packageDecorationState.optionsMap}
+              macaronPreviewImage={isMacaron ? macaronPreviewImage : undefined}
+              boxPreviewImageUrl={boxPreviewImageUrl || undefined}
+              renderMode="exportPackage"
+            />
+          </div>
+        </div>
+      ) : null}
 
       {/* ✅ 加入購物車確認視窗 */}
       <AlertDialog open={showAddToCartConfirm} onOpenChange={setShowAddToCartConfirm}>

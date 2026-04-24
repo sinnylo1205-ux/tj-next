@@ -22,6 +22,7 @@ const GROUP_NAME_MAP: Record<string, string> = {
   photo: "照片",
   text: "文字內容",
   screenshot: "預覽圖",
+  package_screenshot: "包裝預覽圖",
   package_style: "包裝款式",
   box_config: "盒裝配置",
   package_decoration: "包裝裝飾",
@@ -50,21 +51,102 @@ const normalizeGroup = (key: string) => {
 // 最小 Loading 顯示時間（毫秒）— 僅作短暫回饋，不再強制 2 秒
 const MIN_LOADING_DURATION = 600;
 
-// ✅ 等待容器內所有 img 載入完成（最多 timeout ms）
-const waitForImages = async (container: HTMLElement, timeout = 1500): Promise<void> => {
-  const images = container.querySelectorAll("img");
-  const pending = Array.from(images).filter((img) => !img.complete);
-  if (pending.length === 0) return;
+/**
+ * Tailwind `bg-gradient-to-br` 在 html-to-image（SVG foreignObject）路徑上常畫失敗，
+ * 呈現大片黑底或透明洞；截圖前改為與 brand-50 接近的實色。
+ */
+const CAPTURE_SURFACE_BG = "#fff5f7";
+
+type InlineBackgroundSnapshot = {
+  backgroundColor: string;
+  backgroundImage: string;
+  backgroundColorPriority: string;
+  backgroundImagePriority: string;
+};
+
+function snapshotInlineBackground(el: HTMLElement): InlineBackgroundSnapshot {
+  return {
+    backgroundColor: el.style.backgroundColor,
+    backgroundImage: el.style.backgroundImage,
+    backgroundColorPriority: el.style.getPropertyPriority("background-color"),
+    backgroundImagePriority: el.style.getPropertyPriority("background-image"),
+  };
+}
+
+function applySolidCaptureBackground(el: HTMLElement, solid: string) {
+  el.style.setProperty("background-image", "none", "important");
+  el.style.setProperty("background-color", solid, "important");
+}
+
+function restoreInlineBackground(el: HTMLElement, prev: InlineBackgroundSnapshot) {
+  const setOrRemove = (prop: "background-color" | "background-image", value: string, priority: string) => {
+    if (value) el.style.setProperty(prop, value, priority || undefined);
+    else el.style.removeProperty(prop);
+  };
+  setOrRemove("background-image", prev.backgroundImage, prev.backgroundImagePriority);
+  setOrRemove("background-color", prev.backgroundColor, prev.backgroundColorPriority);
+}
+
+/** 網址加 `?captureDebug=1` 或主控台執行 `localStorage.setItem('TJ_CAPTURE_DEBUG','1')` 後重整，加入購物車時會 log 截圖診斷資訊 */
+function isCaptureDebugEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    if (localStorage.getItem("TJ_CAPTURE_DEBUG") === "1") return true;
+    return new URLSearchParams(window.location.search).has("captureDebug");
+  } catch {
+    return false;
+  }
+}
+
+function logCaptureDebug(label: string, el: HTMLElement, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  console.info(`[capture-debug:${label}]`, {
+    offsetWidth: el.offsetWidth,
+    offsetHeight: el.offsetHeight,
+    clientWidth: el.clientWidth,
+    clientHeight: el.clientHeight,
+    blobSize: blob.size,
+    blobType: blob.type,
+    objectUrl: url,
+    hint: "在網址列貼上 objectUrl 可檢視原始截圖；檢查完請 revoke 或關分頁避免記憶體累積",
+  });
+}
+
+/** 解碼已 complete 的圖片，讓 foreignObject/canvas 截圖時像素已就緒 */
+async function decodeImageIfPossible(img: HTMLImageElement): Promise<void> {
+  if (!img.complete) return;
+  if (typeof img.decode === "function") {
+    try {
+      await img.decode();
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+/** 等待容器內所有 img：load → decode → 雙 rAF 穩定排版（最多 timeout ms） */
+const waitForImages = async (container: HTMLElement, timeout = 2500): Promise<void> => {
+  const images = Array.from(container.querySelectorAll("img"));
   await Promise.race([
-    Promise.all(
-      pending.map(
-        (img) =>
-          new Promise<void>((resolve) => {
-            img.onload = () => resolve();
-            img.onerror = () => resolve(); // 失敗也不阻塞
-          }),
-      ),
-    ),
+    (async () => {
+      await Promise.all(
+        images.map(async (img) => {
+          if (!img.complete) {
+            await new Promise<void>((resolve) => {
+              const done = () => resolve();
+              img.addEventListener("load", done, { once: true });
+              img.addEventListener("error", done, { once: true });
+            });
+          }
+          await decodeImageIfPossible(img);
+        }),
+      );
+      await new Promise<void>((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => resolve());
+        });
+      });
+    })(),
     new Promise<void>((resolve) => setTimeout(resolve, timeout)),
   ]);
 };
@@ -94,6 +176,8 @@ export function useAddToCart() {
     packageTotalPrice?: number, // 包裝總價（含盒裝+裝飾品）
     conditionalFeeDetails?: ConditionalFeeDetail[], // 條件費用明細
     backendGrandTotal?: number, // ✅ 後端計算的總價（購物車應信任此值）
+    /** 僅包裝小圖區塊：第二次 toBlob 上傳為獨立 customizations 群組 */
+    packageCaptureRef?: HTMLDivElement | null,
   ) => {
     // 如果提供了 onConfirm 回調，先執行確認邏輯
     if (onConfirm) {
@@ -120,38 +204,62 @@ export function useAddToCart() {
             offsetHeight: captureRef.offsetHeight,
           });
         } else {
-          // ✅ 暫存並清除 transform（避免 html-to-image 計算座標錯誤）
           const originalTransform = captureRef.style.transform;
           const originalTransformOrigin = captureRef.style.transformOrigin;
-          captureRef.style.transform = "none";
-          captureRef.style.transformOrigin = "";
+          const computedT = typeof window !== "undefined" ? getComputedStyle(captureRef).transform : "none";
+          const hadInlineOrComputedTransform =
+            originalTransform !== "" || (computedT !== "none" && computedT !== "");
 
-          // ✅ 等待所有圖片載入完成
-          await waitForImages(captureRef);
+          const bgSnap = snapshotInlineBackground(captureRef);
+          applySolidCaptureBackground(captureRef, CAPTURE_SURFACE_BG);
+
+          if (hadInlineOrComputedTransform) {
+            captureRef.style.transform = "none";
+            captureRef.style.transformOrigin = "";
+          }
 
           try {
-            // ✅ 行動裝置用 pixelRatio 1 加速截圖；桌機用 2 維持預覽品質
+            // ✅ 等待所有圖片載入完成
+            await waitForImages(captureRef);
+
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-            const isMobile = isIOS || (typeof window !== "undefined" && window.innerWidth < 768);
+
+            const excludeFromMainCapture = (node: unknown) => {
+              if (!(node instanceof HTMLElement)) return true;
+              return !node.closest("[data-capture-exclude]");
+            };
 
             const captureOptions = {
               quality: 0.9,
-              pixelRatio: isMobile ? 1 : 2,
+              /** 高 pixelRatio + 大節點在部分瀏覽器會光柵化異常（黑畫面）；縮圖以穩定為先 */
+              pixelRatio: 1,
               skipFonts: true,
-              cacheBust: true,
+              cacheBust: false,
+              backgroundColor: CAPTURE_SURFACE_BG,
+              filter: excludeFromMainCapture,
             };
 
             // ✅ 使用 toBlob 取代 toPng，避免 iOS 大 data URL 問題
             let blob = await toBlob(captureRef, captureOptions);
 
-            // ✅ iOS 首次渲染常失敗，自動重試一次
+            // ✅ 首次光栅化不完整時（常見於隱藏預覽樹），短暫等待後重試
+            if (!blob) {
+              console.warn("截圖 blob 為空，320ms 後重試…");
+              await new Promise((r) => setTimeout(r, 320));
+              await waitForImages(captureRef, 1200);
+              blob = await toBlob(captureRef, captureOptions);
+            }
             if (!blob && isIOS) {
-              console.warn("iOS 首次截圖失敗，300ms 後重試...");
+              console.warn("iOS 二次截圖失敗，300ms 後再試…");
               await new Promise((r) => setTimeout(r, 300));
               blob = await toBlob(captureRef, captureOptions);
             }
 
             if (!blob) throw new Error("截圖生成失敗（blob 為空）");
+
+            if (isCaptureDebugEnabled()) {
+              logCaptureDebug("main", captureRef, blob);
+            }
 
             const webpBlob = await convertToWebP(new File([blob], "screenshot.png", { type: "image/png" }));
             const fileName = `preview-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.webp`;
@@ -181,10 +289,67 @@ export function useAddToCart() {
               },
             });
           } finally {
-            // ✅ 一定還原 transform（即使截圖失敗）
-            captureRef.style.transform = originalTransform;
-            captureRef.style.transformOrigin = originalTransformOrigin;
+            if (hadInlineOrComputedTransform) {
+              captureRef.style.transform = originalTransform;
+              captureRef.style.transformOrigin = originalTransformOrigin;
+            }
+            restoreInlineBackground(captureRef, bgSnap);
           }
+        }
+      }
+
+      // ①b 包裝小圖：獨立截圖上傳（與主預覽圖分開欄位）
+      if (
+        packageCaptureRef &&
+        packageCaptureRef.offsetWidth > 0 &&
+        packageCaptureRef.offsetHeight > 0
+      ) {
+        const pkgBgSnap = snapshotInlineBackground(packageCaptureRef);
+        applySolidCaptureBackground(packageCaptureRef, CAPTURE_SURFACE_BG);
+        try {
+          await waitForImages(packageCaptureRef);
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+          const pkgOptions = {
+            quality: 0.9,
+            pixelRatio: 1,
+            skipFonts: true,
+            cacheBust: false,
+            backgroundColor: CAPTURE_SURFACE_BG,
+          };
+          let pkgBlob = await toBlob(packageCaptureRef, pkgOptions);
+          if (!pkgBlob) {
+            await new Promise((r) => setTimeout(r, 320));
+            await waitForImages(packageCaptureRef, 1200);
+            pkgBlob = await toBlob(packageCaptureRef, pkgOptions);
+          }
+          if (!pkgBlob && isIOS) {
+            await new Promise((r) => setTimeout(r, 300));
+            pkgBlob = await toBlob(packageCaptureRef, pkgOptions);
+          }
+          if (pkgBlob) {
+            if (isCaptureDebugEnabled()) {
+              logCaptureDebug("package", packageCaptureRef, pkgBlob);
+            }
+            const webpPkg = await convertToWebP(new File([pkgBlob], "package-screenshot.png", { type: "image/png" }));
+            const pkgFileName = `package-preview-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.webp`;
+            const { data: pkgUpload, error: pkgErr } = await supabase.storage
+              .from("customizer_uploads")
+              .upload(pkgFileName, webpPkg, { contentType: "image/webp" });
+            if (!pkgErr && pkgUpload) {
+              const { data: pkgUrl } = supabase.storage.from("customizer_uploads").getPublicUrl(pkgUpload.path);
+              collectedGroups.push({
+                group: "package_screenshot",
+                group_name_zh: GROUP_NAME_MAP["package_screenshot"],
+                items: [{ url: pkgUrl.publicUrl }],
+              });
+            } else if (pkgErr) {
+              console.error("包裝預覽截圖上傳失敗:", pkgErr);
+            }
+          }
+        } catch (pkgCaptureErr) {
+          console.error("包裝預覽截圖失敗:", pkgCaptureErr);
+        } finally {
+          restoreInlineBackground(packageCaptureRef, pkgBgSnap);
         }
       }
 
@@ -543,6 +708,7 @@ export function useAddToCart() {
             if (i.option_name) return i.option_name;
             // 針對 URL，給予更具體的 summary 文本
             if (c.group === "screenshot") return "已生成預覽圖";
+            if (c.group === "package_screenshot") return "已生成包裝預覽圖";
             if (c.group === "photo") return "已上傳照片";
             if (c.group === "text") return "已上傳文字檔案";
 
@@ -562,6 +728,7 @@ export function useAddToCart() {
             (c.group === "photo" ||
               c.group === "text" ||
               c.group === "screenshot" ||
+              c.group === "package_screenshot" ||
               c.group === "user_design" ||
               c.group === "package_decoration_upload" ||
               c.group === "luck_text_design") &&

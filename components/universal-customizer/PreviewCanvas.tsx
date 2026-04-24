@@ -2,7 +2,7 @@
 // PreviewCanvas.tsx — 通用預覽區域（基於 Customizer.tsx）+ 包裝縮圖
 // ======================================================================
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, type CSSProperties } from "react";
 import type { ProductConfig } from "@/config/product-registry";
 import type { ColorOption, FlavorOption } from "@/hooks/useUniversalCustomizer";
 import type { DecorationOption } from "@/hooks/useHierarchicalOptions";
@@ -11,6 +11,19 @@ import type { PackageStyleOption, BoxConfig, BoxCapacityOption } from "@/hooks/u
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Slider } from "@/components/ui/slider";
 import { SafeImage } from "@/components/SafeImage";
+import { cn } from "@/lib/utils";
+
+/** circle／square 用 overflow + 圓角裁切，利於 html-to-image；diamond／irregular 的 clip-path 放在外層 */
+function photoFrameOuterClipStyle(
+  frameType: string,
+  frameStyles: Record<string, CSSProperties>,
+): CSSProperties {
+  if (frameType === "diamond" || frameType === "irregular") {
+    const c = frameStyles[frameType]?.clipPath;
+    return c ? { clipPath: c } : {};
+  }
+  return {};
+}
 
 interface PreviewCanvasProps {
   config: ProductConfig;
@@ -46,6 +59,13 @@ interface PreviewCanvasProps {
   macaronPreviewImage?: string | null;
   /** 用於截圖的隱藏容器時為 true，包裝預覽改為 absolute 以出現在截圖內 */
   forScreenshot?: boolean;
+  /**
+   * 桌機／iOS 可見預覽也會當 toBlob 目標：與 forScreenshot 同樣強制圖片 eager + 原網址（unoptimized），
+   * 避免 `/_next/image` 在 svg foreignObject 內光柵化失敗（常見：整片黑、中央黑塊、比例異常）。
+   */
+  exportCaptureReady?: boolean;
+  /** `exportPackage`：僅渲染包裝小圖區（供獨立 toBlob），其餘為互動預覽 */
+  renderMode?: "interactive" | "exportPackage";
 }
 
 export function PreviewCanvas({
@@ -70,6 +90,8 @@ export function PreviewCanvas({
   boxPreviewImageUrl,
   macaronPreviewImage,
   forScreenshot = false,
+  exportCaptureReady = false,
+  renderMode = "interactive",
 }: PreviewCanvasProps) {
   const isMobile = useIsMobile();
   // 📱 手機版：這裡的 scaleFactor 只給「裝飾圖層」用
@@ -95,6 +117,17 @@ export function PreviewCanvas({
   // ✅ 包裝預覽放大狀態
   const [isPackagePreviewEnlarged, setIsPackagePreviewEnlarged] = useState(false);
 
+  /** 截圖／匯出用：強制 eager + 原 src（略過 next 遠端最佳化），利於 html-to-image */
+  const captureImgProps =
+    forScreenshot || renderMode === "exportPackage" || exportCaptureReady
+      ? ({
+          priority: true,
+          loading: "eager" as const,
+          decoding: "sync" as const,
+          unoptimized: true,
+        })
+      : {};
+
   // ==================== 渲染單一圖層 ====================
   const renderLayer = (layer: ProductConfig["layerStack"][0], index: number) => {
     const { type, rootId, zIndex, name, fallbackUrl } = layer;
@@ -116,6 +149,7 @@ export function PreviewCanvas({
           alt={name}
           fill
           crossOrigin="anonymous"
+          {...captureImgProps}
           className="absolute inset-0 object-contain scale-[0.8] translate-y-[5%]"
           style={{ zIndex }}
           sizes="400px"
@@ -135,6 +169,7 @@ export function PreviewCanvas({
           alt={name}
           fill
           crossOrigin="anonymous"
+          {...captureImgProps}
           className="absolute inset-0 object-contain scale-[0.8] translate-y-[5%]"
           style={{ zIndex }}
           sizes="400px"
@@ -158,6 +193,7 @@ export function PreviewCanvas({
           alt={name}
           fill
           crossOrigin="anonymous"
+          {...captureImgProps}
           className="absolute inset-0 object-contain"
           style={{ zIndex }}
           sizes="400px"
@@ -181,6 +217,7 @@ export function PreviewCanvas({
           alt={name}
           fill
           crossOrigin="anonymous"
+          {...captureImgProps}
           className="absolute inset-0 object-contain"
           style={{ zIndex }}
           sizes="400px"
@@ -203,6 +240,7 @@ export function PreviewCanvas({
           alt="文字裝飾"
           fill
           crossOrigin="anonymous"
+          {...captureImgProps}
           className="
             absolute inset-0
             object-contain
@@ -239,6 +277,7 @@ export function PreviewCanvas({
                 width={meta?.ui_width || 100}
                 height={meta?.ui_height || 100}
                 crossOrigin="anonymous"
+                {...captureImgProps}
                 className="absolute"
                 style={{
                   left: "50%",
@@ -288,7 +327,7 @@ export function PreviewCanvas({
         | undefined;
 
       // ✅ 框架樣式映射（新增 flag 類型）
-      const frameStyles: Record<string, React.CSSProperties> = {
+      const frameStyles: Record<string, CSSProperties> = {
         diamond: { clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" },
         irregular: { clipPath: "polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)" },
         circle: { clipPath: "circle(50%)" },
@@ -313,7 +352,11 @@ export function PreviewCanvas({
               return (
                 <div
                   key={`photo-frame-${frameIndex}`}
-                  className="absolute flex items-center justify-center overflow-hidden"
+                  className={cn(
+                    "absolute flex items-center justify-center overflow-hidden",
+                    frameType === "circle" && "rounded-full",
+                    frameType === "square" && "rounded-sm",
+                  )}
                   style={{
                     left: "50%",
                     top: "50%",
@@ -322,6 +365,7 @@ export function PreviewCanvas({
                     transform: `translate(${(frame.ui_x || 0) * photoScaleFactor}px, ${(frame.ui_y || 0) * photoScaleFactor + verticalOffset}px)`,
                     transformOrigin: "center",
                     rotate: `${frame.rotation || 0}deg`,
+                    ...photoFrameOuterClipStyle(frameType, frameStyles),
                   }}
                 >
                   {uploadedPhotoUrl ? (
@@ -331,9 +375,9 @@ export function PreviewCanvas({
                         alt={`上傳的照片 ${frameIndex + 1}`}
                         fill
                         crossOrigin="anonymous"
+                        {...captureImgProps}
                         className="object-contain object-center"
                         style={{
-                          ...frameStyles[frameType],
                           backgroundColor: frameType === "none" ? "transparent" : "white",
                           border: frameType === "none" ? "none" : "1px solid white",
                           transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
@@ -346,7 +390,6 @@ export function PreviewCanvas({
                     <div
                       className="w-full h-full flex items-center justify-center text-xs text-muted-foreground"
                       style={{
-                        ...frameStyles[frameType],
                         border: "2px dashed #ffc0cb",
                         backgroundColor: frameType === "none" ? "transparent" : "rgba(255,255,255,0.9)",
                       }}
@@ -423,16 +466,20 @@ export function PreviewCanvas({
             />
           )}
 
-          {/* 照片區域 - overflow-hidden 只影響照片 */}
+          {/* 照片區域 - overflow-hidden；circle／square 用圓角裁切取代 img 上 clip-path */}
           <div
-            className="relative overflow-hidden"
+            className={cn(
+              "relative overflow-hidden",
+              frameType === "circle" && "rounded-full",
+              frameType === "square" && "rounded-sm",
+            )}
             style={{
               position: "absolute",
               left: isFlag ? `${poleWidth + poleGap}px` : 0, // ✅ 照片在旗桿右側
               top: 0,
               width: `${photoWidth}px`,
               height: `${frameHeight}px`,
-              ...frameStyles[frameType],
+              ...photoFrameOuterClipStyle(frameType, frameStyles),
               backgroundColor: frameType === "none" ? "transparent" : "white",
               border: frameType === "none" ? "none" : "1px solid white",
             }}
@@ -444,6 +491,7 @@ export function PreviewCanvas({
                   alt="上傳的照片"
                   fill
                   crossOrigin="anonymous"
+                  {...captureImgProps}
                   className="object-contain object-center"
                   style={{
                     transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
@@ -496,9 +544,82 @@ export function PreviewCanvas({
     }
   };
 
+  if (renderMode === "exportPackage") {
+    if (!showPackagePreview) return null;
+    return (
+      <div className="relative flex h-full w-full min-h-[72px] flex-col overflow-hidden rounded-lg border border-border bg-white shadow-md">
+        <div className="relative min-h-0 flex-1">
+          {packagePreviewImage ? (
+            <SafeImage
+              src={packagePreviewImage}
+              alt="包裝預覽"
+              crossOrigin="anonymous"
+              {...captureImgProps}
+              fill
+              className="object-contain p-1"
+              sizes="200px"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center p-1 text-center text-[9px] text-muted-foreground">
+              {isBoxedStyle ? "選擇盒子" : "選擇包裝"}
+            </div>
+          )}
+          {packageDecorationImages.map((opt, idx) => {
+            const meta = opt.metadata_product as
+              | {
+                  ui_x?: number;
+                  ui_y?: number;
+                  ui_width?: number;
+                  ui_height?: number;
+                  rotation?: number;
+                }
+              | undefined;
+            if (meta && (meta.ui_x !== undefined || meta.ui_y !== undefined)) {
+              return (
+                <SafeImage
+                  key={opt.option_id}
+                  src={opt.item_image_url}
+                  alt={opt.option_name_zh}
+                  width={100}
+                  height={100}
+                  crossOrigin="anonymous"
+                  {...captureImgProps}
+                  className="absolute object-contain"
+                  style={{
+                    left: meta.ui_x !== undefined ? `${meta.ui_x}%` : "0%",
+                    top: meta.ui_y !== undefined ? `${meta.ui_y}%` : "0%",
+                    width: meta.ui_width ? `${meta.ui_width}%` : "auto",
+                    height: meta.ui_height ? `${meta.ui_height}%` : "auto",
+                    transform: meta.rotation ? `rotate(${meta.rotation}deg)` : undefined,
+                    zIndex: 101 + idx,
+                  }}
+                  sizes="100px"
+                />
+              );
+            }
+            return (
+              <SafeImage
+                key={opt.option_id}
+                src={opt.item_image_url}
+                alt={opt.option_name_zh}
+                fill
+                crossOrigin="anonymous"
+                {...captureImgProps}
+                className="absolute inset-0 object-contain p-1"
+                style={{ zIndex: 101 + idx }}
+                sizes="140px"
+              />
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <>
       <div
+        data-capture-exclude
         className="
     absolute z-[999] pointer-events-none
     font-medium text-ink-muted
@@ -531,6 +652,7 @@ export function PreviewCanvas({
       {/* ✅ 照片縮放滑桿（僅當有上傳照片時顯示）*/}
       {uploadedPhotoUrl && (
         <div
+          data-capture-exclude
           className="
       absolute z-[70]
       bg-white/30 backdrop-blur-sm rounded-lg shadow-md
@@ -607,9 +729,10 @@ export function PreviewCanvas({
         </div>
       )}
 
-      {/* ✅ 包裝預覽縮圖（右下角）- 支援 hover 放大（桌面）和點擊放大（手機）；截圖時用 absolute 以入鏡 */}
+      {/* ✅ 包裝預覽縮圖（右下角）- 支援 hover 放大（桌面）和點擊放大（手機）；截圖時用 absolute 以入鏡；主預覽 toBlob 用 filter 排除 */}
       {showPackagePreview && (
         <div
+          data-capture-exclude
           className={`
             border border-border rounded-lg overflow-hidden bg-white/90 shadow-md flex flex-col
             transition-all duration-300 ease-in-out cursor-pointer
@@ -635,6 +758,7 @@ export function PreviewCanvas({
                 src={packagePreviewImage}
                 alt="包裝預覽"
                 crossOrigin="anonymous"
+                {...captureImgProps}
                 fill
                 className="object-contain p-1"
                 sizes="200px"
@@ -666,6 +790,7 @@ export function PreviewCanvas({
                     width={100}
                     height={100}
                     crossOrigin="anonymous"
+                    {...captureImgProps}
                     className="absolute object-contain"
                     style={{
                       left: meta.ui_x !== undefined ? `${meta.ui_x}%` : "0%",
@@ -688,6 +813,7 @@ export function PreviewCanvas({
                   alt={opt.option_name_zh}
                   fill
                   crossOrigin="anonymous"
+                  {...captureImgProps}
                   className="absolute inset-0 object-contain p-1"
                   style={{ zIndex: 101 + idx }}
                   sizes="140px"
