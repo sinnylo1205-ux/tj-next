@@ -15,7 +15,10 @@ export const ANALYTICS_ORDER_STATUSES = [
 const CUSTOMER_TYPE_LABELS: Record<string, string> = {
   general: "一般用戶",
   flash_ip: "快閃店／IP",
-  pr_agency: "公關公司／福委會",
+  pr_agent: "公關代理",
+  company_self: "公司自己",
+  /** 遷移前舊值；報表／快取若仍見到此字串則顯示為公關代理 */
+  pr_agency: "公關代理",
 };
 
 export function customerTypeDisplayLabel(raw: string | null | undefined): string {

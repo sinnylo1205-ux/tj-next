@@ -63,7 +63,7 @@ interface Order {
   is_hide?: boolean;
   /** 舊版訂單欄位；新流程以 payment_step 為準 */
   payment_status?: string | null;
-  /** 客戶類型：general | flash_ip | pr_agency */
+  /** 客戶類型：general | flash_ip | pr_agent | company_self */
   customer_type?: string | null;
   /** 歷史／手動單可能寫入；後台「訂購人」顯示一律依 user_id 查 user_log_in.name */
   orderer_name?: string | null;
@@ -80,11 +80,13 @@ function buyerDisplayName(userInfo: User | undefined): string {
 const CUSTOMER_TYPE_OPTIONS = [
   { value: "general", label: "一般用戶" },
   { value: "flash_ip", label: "快閃店/IP" },
-  { value: "pr_agency", label: "公關公司/福委會" },
+  { value: "pr_agent", label: "公關代理" },
+  { value: "company_self", label: "公司自己" },
 ] as const;
 
 function customerTypeLabel(v: string | null | undefined): string | null {
   if (!v) return null;
+  if (v === "pr_agency") return "公關代理";
   return CUSTOMER_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v;
 }
 

@@ -541,7 +541,8 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
                   <SelectItem value="none">不設定</SelectItem>
                   <SelectItem value="general">一般用戶</SelectItem>
                   <SelectItem value="flash_ip">快閃店/IP</SelectItem>
-                  <SelectItem value="pr_agency">公關公司/福委會</SelectItem>
+                  <SelectItem value="pr_agent">公關代理</SelectItem>
+                  <SelectItem value="company_self">公司自己</SelectItem>
                 </SelectContent>
               </Select>
             </div>

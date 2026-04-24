@@ -46,7 +46,9 @@ const ANALYTICS_ORDER_STATUSES = [
 const CUSTOMER_TYPE_LABELS: Record<string, string> = {
   general: "一般用戶",
   flash_ip: "快閃店／IP",
-  pr_agency: "公關公司／福委會",
+  pr_agent: "公關代理",
+  company_self: "公司自己",
+  pr_agency: "公關代理",
 };
 
 function customerTypeDisplayLabel(raw: string | null | undefined): string {
