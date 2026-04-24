@@ -44,7 +44,7 @@ interface MonthlyOrderCount {
 }
 
 /**
- * 品牌玫瑰色系、刻意拉大深淺差距（同色相 ~354°，亮度由深到淺）
+ * 其他客戶類型（或未對照名稱）的備用色盤
  */
 const BRAND_SLICE_COLORS = [
   "hsl(354 42% 30%)",
@@ -67,17 +67,22 @@ const CUSTOMER_TYPE_PIE_STATUSES = [
   "delivered",
 ] as const;
 
-/** 已知類型對應品牌色階索引（深→淺；「未設定」用最淺） */
-const CUSTOMER_TYPE_BRAND_COLOR_INDEX: Record<string, number> = {
-  一般用戶: 0,
-  "快閃店／IP": 1,
-  "公關公司／福委會": 2,
-  未設定: 4,
+/** 圓餅扇形：一般用戶／公關代理／公司自己 三色明顯區隔；其餘類型另給可辨識色 */
+const CUSTOMER_TYPE_PIE_FILL: Record<string, string> = {
+  一般用戶: "hsl(220 58% 52%)",
+  公關代理: "hsl(354 55% 48%)",
+  公司自己: "hsl(158 42% 38%)",
+  "快閃店／IP": "hsl(275 48% 52%)",
+  /** 後台選單用半形斜線時與報表全形標籤並存 */
+  "快閃店/IP": "hsl(275 48% 52%)",
+  未設定: "hsl(220 12% 72%)",
+  /** 舊報表或快取仍可能出現 */
+  "公關公司／福委會": "hsl(354 55% 48%)",
 };
 
 function pieColorForName(name: string): string {
-  const mapped = CUSTOMER_TYPE_BRAND_COLOR_INDEX[name];
-  if (mapped != null) return BRAND_SLICE_COLORS[mapped % BRAND_SLICE_COLORS.length];
+  const fill = CUSTOMER_TYPE_PIE_FILL[name];
+  if (fill) return fill;
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i)) % BRAND_SLICE_COLORS.length;
   return BRAND_SLICE_COLORS[h];
@@ -359,8 +364,9 @@ const AdminDashboard = () => {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg">訂單營收（新台幣）- {selectedYear}年</CardTitle>
-            <p className="text-sm text-muted-foreground font-normal mt-1">
-              依據訂單建立日期，在訂單「處理中」的狀態併入計算
+            <p className="text-sm text-muted-foreground font-normal mt-1 leading-relaxed">
+              <span className="font-medium text-foreground/80">月營收邏輯：</span>
+              依訂單「建立日」落在哪一個月，把該筆訂單總金額加進該月；只計狀態為處理中、出貨中、已送達（每筆訂單只算一次）。不含待付款、已取消、退貨。
             </p>
           </CardHeader>
           <CardContent>
