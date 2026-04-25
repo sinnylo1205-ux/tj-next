@@ -1,7 +1,14 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   BarChart,
   Bar,
@@ -32,9 +39,26 @@ import {
 /** 營收長條圖：每月三柱 — 總額、已確認到帳、尚未確認（未匯款／待確認） */
 interface MonthlyRevenue {
   month: string;
+  /** yyyy-MM，供點擊明細與資料對齊 */
+  monthKey: string;
   totalRevenue: number;
   paidRevenue: number;
   unpaidRevenue: number;
+}
+
+interface RevenueOrderDetailRow {
+  id: string;
+  /** 收件人（orders.who_receive），不用會員帳號姓名 */
+  recipientName: string;
+  pickupDate: string | null;
+  amount: number;
+}
+
+function formatPickupDisplay(value: string | null | undefined): string {
+  if (value == null || String(value).trim() === "") return "—";
+  const dt = new Date(value);
+  if (Number.isNaN(dt.getTime())) return String(value).trim();
+  return format(dt, "yyyy/MM/dd", { locale: zhTW });
 }
 
 interface ProductPopularity {
@@ -110,6 +134,13 @@ const AdminDashboard = () => {
   const [monthlyReport, setMonthlyReport] = useState<MonthlyReportPayload | null>(null);
   const [yearlyReport, setYearlyReport] = useState<YearlyReportPayload | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const [revenueDetailOpen, setRevenueDetailOpen] = useState(false);
+  const [revenueDetailTitle, setRevenueDetailTitle] = useState("");
+  const [revenueDetailLoading, setRevenueDetailLoading] = useState(false);
+  const [revenueDetailPaid, setRevenueDetailPaid] = useState<RevenueOrderDetailRow[]>([]);
+  const [revenueDetailUnpaid, setRevenueDetailUnpaid] = useState<RevenueOrderDetailRow[]>([]);
+  const [revenueDetailError, setRevenueDetailError] = useState<string | null>(null);
 
   useEffect(() => {
     loadDashboardData();
@@ -246,6 +277,7 @@ const AdminDashboard = () => {
         const unpaid = unpaidMap.get(monthKey) || 0;
         return {
           month: format(new Date(monthKey + "-01"), "M月", { locale: zhTW }),
+          monthKey,
           totalRevenue: paid + unpaid,
           paidRevenue: paid,
           unpaidRevenue: unpaid,
@@ -362,6 +394,78 @@ const AdminDashboard = () => {
     [revenueData, revenueHalfYear],
   );
 
+  const openRevenueMonthDetail = useCallback(async (monthKey: string, titleLabel: string) => {
+    setRevenueDetailOpen(true);
+    setRevenueDetailTitle(titleLabel);
+    setRevenueDetailLoading(true);
+    setRevenueDetailError(null);
+    setRevenueDetailPaid([]);
+    setRevenueDetailUnpaid([]);
+    try {
+      const [yStr, mStr] = monthKey.split("-");
+      const y = Number(yStr);
+      const m = Number(mStr);
+      if (!y || !m) return;
+      const rangeStart = startOfMonth(new Date(y, m - 1, 1));
+      const rangeEnd = endOfMonth(new Date(y, m - 1, 1));
+
+      const { data: rows, error } = await supabase
+        .from("orders")
+        .select("id, who_receive, expected_pickup_date, total_amount, payment_step, created_at")
+        .in("order_status", ["processing", "shipped", "delivered"])
+        .gte("created_at", rangeStart.toISOString())
+        .lte("created_at", rangeEnd.toISOString())
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("營收明細載入失敗:", error);
+        setRevenueDetailError(error.message || "載入失敗");
+        return;
+      }
+
+      const list = rows ?? [];
+
+      const paid: RevenueOrderDetailRow[] = [];
+      const unpaid: RevenueOrderDetailRow[] = [];
+
+      for (const r of list) {
+        const recipient = (r.who_receive as string | null | undefined)?.trim();
+        const recipientName = recipient || "（無收件人）";
+        const row: RevenueOrderDetailRow = {
+          id: r.id as string,
+          recipientName,
+          pickupDate: (r.expected_pickup_date as string | null) ?? null,
+          amount: Number((r as { total_amount?: number }).total_amount ?? 0),
+        };
+        if (r.payment_step === REVENUE_PAYMENT_STEP) paid.push(row);
+        else unpaid.push(row);
+      }
+
+      setRevenueDetailPaid(paid);
+      setRevenueDetailUnpaid(unpaid);
+    } catch (e) {
+      setRevenueDetailError(e instanceof Error ? e.message : "載入失敗");
+    } finally {
+      setRevenueDetailLoading(false);
+    }
+  }, []);
+
+  const handleRevenueChartClick = useCallback(
+    (state: unknown) => {
+      const s = state as { activeLabel?: string | number; activePayload?: { payload: MonthlyRevenue }[] };
+      const fromPayload = s?.activePayload?.[0]?.payload;
+      if (fromPayload?.monthKey) {
+        void openRevenueMonthDetail(fromPayload.monthKey, `${selectedYear}年${fromPayload.month}`);
+        return;
+      }
+      const label = s?.activeLabel;
+      if (typeof label !== "string") return;
+      const row = revenueChartData.find((d) => d.month === label);
+      if (row?.monthKey) void openRevenueMonthDetail(row.monthKey, `${selectedYear}年${row.month}`);
+    },
+    [openRevenueMonthDetail, revenueChartData, selectedYear],
+  );
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -421,15 +525,19 @@ const AdminDashboard = () => {
             <p className="text-sm text-muted-foreground font-normal leading-relaxed">
               不論訂單狀態為何，只有匯款進度是確認收到匯款，才會進入已匯款金額。不論何時收到匯款，都是併入訂單創立該月。
             </p>
+            <p className="text-xs text-[hsl(var(--primary))] font-medium">
+              點擊圖表月份可檢視該月訂單明細（收件人／取件日／金額；未付款／已付款分列）
+            </p>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col">
-            <div className="mt-auto h-[300px] min-h-[300px] w-full shrink-0 md:h-[400px] md:min-h-[400px]">
+            <div className="mt-auto h-[300px] min-h-[300px] w-full shrink-0 cursor-pointer md:h-[400px] md:min-h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={revenueChartData}
                   margin={{ top: 12, right: 16, left: 8, bottom: 12 }}
                   barCategoryGap="24%"
                   barGap={6}
+                  onClick={handleRevenueChartClick}
                 >
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
                   <XAxis dataKey="month" tick={{ fontSize: 13 }} />
@@ -888,6 +996,59 @@ const AdminDashboard = () => {
           </Card>
         </div>
       </div>
+
+      <Dialog open={revenueDetailOpen} onOpenChange={setRevenueDetailOpen}>
+        <DialogContent className="flex max-h-[88vh] max-w-lg flex-col gap-0 overflow-hidden border-[hsl(var(--primary)/0.35)] p-0 sm:max-w-lg">
+          <DialogHeader className="space-y-1 border-b border-[hsl(var(--primary)/0.2)] bg-[hsl(var(--primary)/0.08)] px-5 py-4 text-left">
+            <DialogTitle className="text-lg font-semibold text-[hsl(var(--primary))]">營收明細 · {revenueDetailTitle}</DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              與長條圖相同範圍：處理中／出貨中／已送達，依訂單建立月；已付款＝匯款進度已確認到帳。清單第一欄為「收件人」（who_receive），非會員帳號姓名。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            {revenueDetailError ? (
+              <p className="text-sm text-destructive">{revenueDetailError}</p>
+            ) : revenueDetailLoading ? (
+              <p className="text-sm text-muted-foreground">載入中…</p>
+            ) : (
+              <div className="space-y-8">
+                <section>
+                  <h3 className="mb-3 border-b border-[hsl(var(--primary)/0.25)] pb-1.5 text-base font-semibold text-[hsl(var(--color-brand-600))]">
+                    未付款
+                  </h3>
+                  {revenueDetailUnpaid.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">無資料</p>
+                  ) : (
+                    <ol className="list-decimal space-y-2.5 pl-5 text-sm leading-relaxed marker:font-medium marker:text-[hsl(var(--primary))]">
+                      {revenueDetailUnpaid.map((row) => (
+                        <li key={row.id} className="pl-1 text-foreground">
+                          {row.recipientName}／{formatPickupDisplay(row.pickupDate)}／NT$ {row.amount.toLocaleString()}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
+                <section>
+                  <h3 className="mb-3 border-b border-[hsl(var(--primary)/0.25)] pb-1.5 text-base font-semibold text-[hsl(var(--primary))]">
+                    已付款
+                  </h3>
+                  {revenueDetailPaid.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">無資料</p>
+                  ) : (
+                    <ol className="list-decimal space-y-2.5 pl-5 text-sm leading-relaxed marker:font-medium marker:text-[hsl(var(--primary))]">
+                      {revenueDetailPaid.map((row) => (
+                        <li key={row.id} className="pl-1 text-foreground">
+                          {row.recipientName}／{formatPickupDisplay(row.pickupDate)}／NT$ {row.amount.toLocaleString()}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
