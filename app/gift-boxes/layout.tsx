@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SITE_CONFIG, getFullUrl, getJsonLdBusinessId, getJsonLdWebsiteId } from "@/lib/site";
+import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 
 const canonical = getFullUrl("/gift-boxes");
 
@@ -28,6 +29,11 @@ export const metadata: Metadata = {
   },
 };
 
+const giftBoxesBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
+  { name: "首頁", path: "/" },
+  { name: "企業與活動禮盒", path: "/gift-boxes" },
+]);
+
 const giftBoxesPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebPage",
@@ -43,6 +49,10 @@ const giftBoxesPageJsonLd = {
 export default function GiftBoxesLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(giftBoxesBreadcrumbJsonLd) }}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(giftBoxesPageJsonLd) }}

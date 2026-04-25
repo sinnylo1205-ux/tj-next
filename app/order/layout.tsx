@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { SITE_CONFIG, getFullUrl, getJsonLdBusinessId, getJsonLdWebsiteId } from "@/lib/site";
+import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 
 const canonical = getFullUrl("/order");
 
@@ -28,6 +29,11 @@ export const metadata: Metadata = {
   },
 };
 
+const orderBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
+  { name: "首頁", path: "/" },
+  { name: "客製甜點單品", path: "/order" },
+]);
+
 const orderPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebPage",
@@ -42,6 +48,10 @@ const orderPageJsonLd = {
 export default function OrderLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(orderBreadcrumbJsonLd) }}
+      />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(orderPageJsonLd) }}

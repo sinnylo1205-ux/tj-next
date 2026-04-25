@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { supabase } from "@/lib/supabase";
 import { getFullUrl } from "@/lib/site";
+import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 import { ProductNoticeClient, type ProductNoticeData } from "../ProductNoticeClient";
 
 interface PageProps {
@@ -89,15 +90,11 @@ export default async function ProductNoticePage({ params }: PageProps) {
   const meta = buildProductMetadata(slug, data);
   const description = typeof meta.description === "string" ? meta.description : "";
 
-  const breadcrumbJsonLd = {
-    "@context": "https://schema.org",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "首頁", item: getFullUrl("/") },
-      { "@type": "ListItem", position: 2, name: "客製甜點單品", item: getFullUrl("/order") },
-      { "@type": "ListItem", position: 3, name: `客製化${displayName}`, item: url },
-    ],
-  };
+  const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
+    { name: "首頁", path: "/" },
+    { name: "客製甜點單品", path: "/order" },
+    { name: `客製化${displayName}`, path: `/product/${slug}` },
+  ]);
 
   const productJsonLd = {
     "@context": "https://schema.org",

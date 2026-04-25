@@ -2,10 +2,10 @@ import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 
 const jsonLd = buildBreadcrumbListJsonLd([
   { name: "首頁", path: "/" },
-  { name: "常見問與答", path: "/faq" },
+  { name: "聯絡我們", path: "/contact" },
 ]);
 
-export default function FaqLayout({ children }: { children: React.ReactNode }) {
+export default function ContactLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { BookOpen } from "lucide-react";
+import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 import { createSupabasePublicUncached } from "@/lib/supabase-blog-public";
 import { SafeImage } from "@/components/SafeImage";
 import {
@@ -36,6 +37,11 @@ const defaultArticles = [
 /** 文章列表需即時反映後台發布狀態 */
 export const dynamic = "force-dynamic";
 
+const blogIndexBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
+  { name: "首頁", path: "/" },
+  { name: "甜點部落格", path: "/blog" },
+]);
+
 export default async function BlogIndexPage() {
   noStore();
   const supabase = createSupabasePublicUncached();
@@ -48,6 +54,11 @@ export default async function BlogIndexPage() {
   const list = (articles || []) as ArticlePreview[];
 
   return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogIndexBreadcrumbJsonLd) }}
+      />
     <div className="container py-8 md:py-12">
       <Breadcrumb className="mb-6">
         <BreadcrumbList>
@@ -125,5 +136,6 @@ export default async function BlogIndexPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

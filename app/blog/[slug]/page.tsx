@@ -5,6 +5,7 @@ import BlogArticleContent, { type ProductArticle } from "./BlogArticleContent";
 import { articleJsonToHtml } from "@/lib/tiptap/article-json-to-html";
 import { decodeBlogSlugParam } from "@/lib/blog-slug";
 import { rewriteSupabaseImgSrcInArticleHtml } from "@/lib/next-image-proxy-url";
+import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 
 export const dynamic = "force-dynamic";
 
@@ -43,5 +44,20 @@ export default async function BlogSlugPage({ params }: PageProps) {
       ? rewriteSupabaseImgSrcInArticleHtml(articleJsonToHtml(row.body_json))
       : null;
 
-  return <BlogArticleContent article={article} richBodyHtml={richBodyHtml} />;
+  const articlePath = `/blog/${encodeURIComponent(slug)}`;
+  const blogArticleBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
+    { name: "首頁", path: "/" },
+    { name: "甜點部落格", path: "/blog" },
+    { name: `客製化${article.item_name}`, path: articlePath },
+  ]);
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(blogArticleBreadcrumbJsonLd) }}
+      />
+      <BlogArticleContent article={article} richBodyHtml={richBodyHtml} />
+    </>
+  );
 }

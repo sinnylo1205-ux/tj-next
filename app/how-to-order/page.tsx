@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getFullUrl } from "@/lib/site";
+import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 import { Card } from "@/components/ui/card";
 
 export const metadata: Metadata = {
@@ -15,8 +16,13 @@ export const metadata: Metadata = {
   },
 };
 
+const howToOrderBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
+  { name: "首頁", path: "/" },
+  { name: "訂購須知與流程", path: "/how-to-order" },
+]);
+
 const steps = [
-  { number: "1", title: "選擇商品", description: "從五大類甜點中選擇您喜愛的品項", icon: "🎯" },
+  { number: "1", title: "選擇商品", description: "從十一個類別甜點中選擇您喜愛的品項", icon: "🎯" },
   { number: "2", title: "客製設計", description: "使用我們的設計工具自由配色與造型", icon: "🎨" },
   { number: "3", title: "提交需求", description: "填寫訂購表單，說明數量與交付日期", icon: "📝" },
   { number: "4", title: "確認報價", description: "我們將於 24 小時內回覆報價與製作時程", icon: "💰" },
@@ -25,6 +31,11 @@ const steps = [
 
 export default function HowToOrderPage() {
   return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(howToOrderBreadcrumbJsonLd) }}
+      />
     <div className="min-h-[calc(100vh-64px)] py-12 bg-background">
       <div className="container">
         <div className="text-center mb-12">
@@ -93,5 +104,6 @@ export default function HowToOrderPage() {
         </div>
       </div>
     </div>
+    </>
   );
 }
