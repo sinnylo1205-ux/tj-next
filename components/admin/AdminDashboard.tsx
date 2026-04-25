@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,9 +29,12 @@ import {
   type YearlyReportPayload,
 } from "@/lib/admin-reports";
 
+/** 營收長條圖：每月三柱 — 總額、已確認到帳、尚未確認（未匯款／待確認） */
 interface MonthlyRevenue {
   month: string;
-  revenue: number;
+  totalRevenue: number;
+  paidRevenue: number;
+  unpaidRevenue: number;
 }
 
 interface ProductPopularity {
@@ -44,18 +47,14 @@ interface MonthlyOrderCount {
   count: number;
 }
 
-/**
- * 其他客戶類型（或未對照名稱）的備用色盤
- */
-const BRAND_SLICE_COLORS = [
-  "hsl(354 42% 30%)",
-  "hsl(354 38% 44%)",
-  "hsl(355 40% 58%)",
-  "hsl(356 42% 74%)",
-  "hsl(0 48% 94%)",
+/** 未在表內的客戶類型名稱：仍用品牌色階輪替 */
+const BRAND_SLICE_FALLBACK_FILLS = [
+  "hsl(var(--primary))",
+  "hsl(var(--color-brand-600))",
+  "hsl(var(--color-brand-500))",
+  "hsl(var(--color-brand-300))",
+  "hsl(var(--ring))",
 ] as const;
-
-const PIE_LABEL_FILL = "hsl(var(--foreground))";
 
 /**
  * 客戶類型圓餅圖：須含「待付款」— 多數訂單打完標籤時尚未進入處理中，若僅統計 processing+ 會變成 0 筆。
@@ -68,25 +67,23 @@ const CUSTOMER_TYPE_PIE_STATUSES = [
   "delivered",
 ] as const;
 
-/** 圓餅扇形：一般用戶／公關代理／公司自己 三色明顯區隔；其餘類型另給可辨識色 */
+/** 圓餅扇形：皆為品牌玫瑰／粉階 */
 const CUSTOMER_TYPE_PIE_FILL: Record<string, string> = {
-  一般用戶: "hsl(220 58% 52%)",
-  公關代理: "hsl(354 55% 48%)",
-  公司自己: "hsl(158 42% 38%)",
-  "快閃店／IP": "hsl(275 48% 52%)",
-  /** 後台選單用半形斜線時與報表全形標籤並存 */
-  "快閃店/IP": "hsl(275 48% 52%)",
-  未設定: "hsl(220 12% 72%)",
-  /** 舊報表或快取仍可能出現 */
-  "公關公司／福委會": "hsl(354 55% 48%)",
+  一般用戶: "hsl(var(--primary))",
+  公關代理: "hsl(var(--color-brand-500))",
+  公司自己: "hsl(var(--color-brand-300))",
+  "快閃店／IP": "hsl(var(--color-brand-600))",
+  "快閃店/IP": "hsl(var(--color-brand-600))",
+  未設定: "hsl(var(--color-brand-100))",
+  "公關公司／福委會": "hsl(var(--color-brand-500))",
 };
 
 function pieColorForName(name: string): string {
   const fill = CUSTOMER_TYPE_PIE_FILL[name];
   if (fill) return fill;
   let h = 0;
-  for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i)) % BRAND_SLICE_COLORS.length;
-  return BRAND_SLICE_COLORS[h];
+  for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i)) % BRAND_SLICE_FALLBACK_FILLS.length;
+  return BRAND_SLICE_FALLBACK_FILLS[h];
 }
 
 /** 客戶類型圓餅：value = 該類型訂單筆數（扇形比例）；營收＝實收、客單價＝實收÷已確認筆數，供標籤與 Tooltip */
@@ -100,6 +97,8 @@ interface CustomerTypePieSlice {
 
 const AdminDashboard = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  /** 營收長條圖：1＝1–6 月、2＝7–12 月，避免 12 個月三柱過擠 */
+  const [revenueHalfYear, setRevenueHalfYear] = useState<1 | 2>(1);
   const [revenueData, setRevenueData] = useState<MonthlyRevenue[]>([]);
   const [popularProducts, setPopularProducts] = useState<ProductPopularity[]>([]);
   const [orderCountData, setOrderCountData] = useState<MonthlyOrderCount[]>([]);
@@ -115,6 +114,10 @@ const AdminDashboard = () => {
   useEffect(() => {
     loadDashboardData();
   }, [selectedYear, tagPeriod, tagMonth, popularPeriod, popularMonth]);
+
+  useEffect(() => {
+    setRevenueHalfYear(1);
+  }, [selectedYear]);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -200,16 +203,15 @@ const AdminDashboard = () => {
     setCustomerTypePieData(slices);
   };
 
-  // 月營收＝實收：處理中／出貨中／已送達 且 付款已確認（排除未匯款先標處理中的金額）
+  // 月營收長條：同 cohort（處理中／出貨中／已送達）拆成總額、已確認到帳、尚未確認金額
   const loadRevenueData = async () => {
     const yearStart = startOfYear(new Date(selectedYear, 0, 1));
     const yearEnd = endOfYear(new Date(selectedYear, 0, 1));
 
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("total_amount, created_at")
+      .select("total_amount, created_at, payment_step")
       .in("order_status", ["processing", "shipped", "delivered"])
-      .eq("payment_step", REVENUE_PAYMENT_STEP)
       .gte("created_at", yearStart.toISOString())
       .lte("created_at", yearEnd.toISOString());
 
@@ -218,24 +220,37 @@ const AdminDashboard = () => {
       return;
     }
 
-    // 初始化全年 12 個月
-    const monthlyMap = new Map<string, number>();
+    const paidMap = new Map<string, number>();
+    const unpaidMap = new Map<string, number>();
     for (let i = 0; i < 12; i++) {
       const monthKey = `${selectedYear}-${String(i + 1).padStart(2, "0")}`;
-      monthlyMap.set(monthKey, 0);
+      paidMap.set(monthKey, 0);
+      unpaidMap.set(monthKey, 0);
     }
 
     (orders || []).forEach((order) => {
       const monthKey = format(new Date(order.created_at), "yyyy-MM");
-      if (monthlyMap.has(monthKey)) {
-        monthlyMap.set(monthKey, (monthlyMap.get(monthKey) || 0) + order.total_amount);
+      if (!paidMap.has(monthKey)) return;
+      const amt = Number(order.total_amount ?? 0);
+      if (order.payment_step === REVENUE_PAYMENT_STEP) {
+        paidMap.set(monthKey, (paidMap.get(monthKey) || 0) + amt);
+      } else {
+        unpaidMap.set(monthKey, (unpaidMap.get(monthKey) || 0) + amt);
       }
     });
 
-    const data: MonthlyRevenue[] = Array.from(monthlyMap.entries()).map(([month, revenue]) => ({
-      month: format(new Date(month + "-01"), "M月", { locale: zhTW }),
-      revenue,
-    }));
+    const data: MonthlyRevenue[] = Array.from(paidMap.keys())
+      .sort()
+      .map((monthKey) => {
+        const paid = paidMap.get(monthKey) || 0;
+        const unpaid = unpaidMap.get(monthKey) || 0;
+        return {
+          month: format(new Date(monthKey + "-01"), "M月", { locale: zhTW }),
+          totalRevenue: paid + unpaid,
+          paidRevenue: paid,
+          unpaidRevenue: unpaid,
+        };
+      });
 
     setRevenueData(data);
   };
@@ -342,6 +357,11 @@ const AdminDashboard = () => {
   const goToPrevYear = () => setSelectedYear((y) => y - 1);
   const goToNextYear = () => setSelectedYear((y) => y + 1);
 
+  const revenueChartData = useMemo(
+    () => (revenueHalfYear === 1 ? revenueData.slice(0, 6) : revenueData.slice(6, 12)),
+    [revenueData, revenueHalfYear],
+  );
+
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center">
@@ -365,31 +385,88 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* 第一列：兩個圖表 */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* 第一列：兩個圖表（lg 等高，長條區域底對齊） */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 lg:items-stretch gap-6">
         {/* 訂單營收長條圖 */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">訂單營收（新台幣）- {selectedYear}年</CardTitle>
-            <p className="text-sm text-muted-foreground font-normal mt-1 leading-relaxed">
-              <span className="font-medium text-foreground/80">月營收（實收）邏輯：</span>
-              依訂單「建立日」落在哪一個月加總；僅計「處理中／出貨中／已送達」且付款為「已確認到帳」之訂單總金額（每筆只算一次）。未確認匯款者不計入，即使訂單已先標為處理中。不含待付款、已取消、退貨。
+        <Card className="flex min-h-0 flex-col">
+          <CardHeader className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <CardTitle className="text-lg leading-snug">
+                訂單營收（新台幣）- {selectedYear}年
+                <span className="block text-sm font-normal text-muted-foreground mt-0.5">
+                  {revenueHalfYear === 1 ? "1–6 月" : "7–12 月"}
+                </span>
+              </CardTitle>
+              <div className="flex shrink-0 rounded-md border border-border bg-muted/30 p-0.5">
+                <Button
+                  type="button"
+                  variant={revenueHalfYear === 1 ? "default" : "ghost"}
+                  size="sm"
+                  className="h-9 px-4"
+                  onClick={() => setRevenueHalfYear(1)}
+                >
+                  1–6 月
+                </Button>
+                <Button
+                  type="button"
+                  variant={revenueHalfYear === 2 ? "default" : "ghost"}
+                  size="sm"
+                  className="h-9 px-4"
+                  onClick={() => setRevenueHalfYear(2)}
+                >
+                  7–12 月
+                </Button>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground font-normal leading-relaxed">
+              不論訂單狀態為何，只有匯款進度是確認收到匯款，才會進入已匯款金額。不論何時收到匯款，都是併入訂單創立該月。
             </p>
           </CardHeader>
-          <CardContent>
-            <div className="h-[250px] md:h-[350px]">
+          <CardContent className="flex min-h-0 flex-1 flex-col">
+            <div className="mt-auto h-[300px] min-h-[300px] w-full shrink-0 md:h-[400px] md:min-h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={revenueData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} />
+                <BarChart
+                  data={revenueChartData}
+                  margin={{ top: 12, right: 16, left: 8, bottom: 12 }}
+                  barCategoryGap="24%"
+                  barGap={6}
+                >
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="month" tick={{ fontSize: 13 }} />
+                  <YAxis tickFormatter={(value) => `$${value.toLocaleString()}`} width={60} tick={{ fontSize: 12 }} />
                   <Tooltip
-                    formatter={(value) => {
+                    formatter={(value, name) => {
                       const num = Number(value ?? 0);
-                      return [`NT$ ${num.toLocaleString()}`, "營收"];
+                      return [`NT$ ${num.toLocaleString()}`, String(name)];
+                    }}
+                    contentStyle={{
+                      borderRadius: "8px",
+                      border: "1px solid hsl(var(--border))",
+                      background: "hsl(var(--card))",
                     }}
                   />
-                  <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Legend wrapperStyle={{ fontSize: 13, paddingTop: 10 }} iconType="square" />
+                  <Bar
+                    dataKey="totalRevenue"
+                    name="總營收（未付＋已付）"
+                    fill="hsl(var(--primary))"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
+                  />
+                  <Bar
+                    dataKey="paidRevenue"
+                    name="已匯款金額"
+                    fill="hsl(var(--color-brand-500))"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
+                  />
+                  <Bar
+                    dataKey="unpaidRevenue"
+                    name="未匯款金額"
+                    fill="hsl(var(--color-brand-300))"
+                    radius={[4, 4, 0, 0]}
+                    maxBarSize={56}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -397,24 +474,29 @@ const AdminDashboard = () => {
         </Card>
 
         {/* 訂單數量圖表 */}
-        <Card>
-          <CardHeader>
+        <Card className="flex min-h-0 flex-col">
+          <CardHeader className="flex-shrink-0">
             <CardTitle className="text-lg">訂單數量 - {selectedYear}年</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="h-[250px] md:h-[350px]">
+          <CardContent className="flex min-h-0 flex-1 flex-col">
+            <div className="mt-auto h-[300px] min-h-[300px] w-full shrink-0 md:h-[400px] md:min-h-[400px]">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={orderCountData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
+                <BarChart data={orderCountData} margin={{ top: 12, right: 16, left: 8, bottom: 12 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                  <XAxis dataKey="month" tick={{ fontSize: 13 }} />
+                  <YAxis width={48} tick={{ fontSize: 12 }} />
                   <Tooltip
                     formatter={(value) => {
                       const num = Number(value ?? 0);
                       return [`${num} 筆`, "訂單數"];
                     }}
+                    contentStyle={{
+                      borderRadius: "8px",
+                      border: "1px solid hsl(var(--border))",
+                      background: "hsl(var(--card))",
+                    }}
                   />
-                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="count" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} maxBarSize={56} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -590,23 +672,25 @@ const AdminDashboard = () => {
                         const line1 = `${p.name} ${pct}%`;
                         const line2 = `營收 NT$${p.revenue.toLocaleString()}`;
                         const line3 = `客單 NT$${p.aov.toLocaleString()}`;
+                        const cPrimary = "hsl(var(--primary))";
+                        const cDeep = "hsl(var(--color-brand-600))";
+                        const cMid = "hsl(var(--color-brand-500))";
                         return (
                           <text
                             x={x}
                             y={y}
                             textAnchor={anchor}
                             dominantBaseline="central"
-                            fill={PIE_LABEL_FILL}
                             fontSize={14}
                             fontWeight={500}
                           >
-                            <tspan x={x} dy="-1.05em">
+                            <tspan x={x} dy="-1.05em" fill={cPrimary}>
                               {line1}
                             </tspan>
-                            <tspan x={x} dy="1.15em">
+                            <tspan x={x} dy="1.15em" fill={cDeep}>
                               {line2}
                             </tspan>
-                            <tspan x={x} dy="1.15em">
+                            <tspan x={x} dy="1.15em" fill={cMid}>
                               {line3}
                             </tspan>
                           </text>
@@ -622,11 +706,13 @@ const AdminDashboard = () => {
                         if (!active || !payload?.length) return null;
                         const p = payload[0].payload as CustomerTypePieSlice;
                         return (
-                          <div className="rounded-md border border-border bg-background px-3 py-2 text-sm shadow-md text-foreground">
-                            <div className="font-medium mb-1">{p.name}</div>
-                            <div>訂單 {p.value} 筆</div>
-                            <div>營收 NT$ {p.revenue.toLocaleString()}</div>
-                            <div>客單價 NT$ {p.aov.toLocaleString()}（實收營收 ÷ 已確認到帳筆數）</div>
+                          <div className="rounded-md border border-border bg-card px-3 py-2 text-sm shadow-md">
+                            <div className="font-semibold mb-1 text-[hsl(var(--primary))]">{p.name}</div>
+                            <div className="text-[hsl(var(--color-brand-600))]">訂單 {p.value} 筆</div>
+                            <div className="text-[hsl(var(--color-brand-600))]">營收 NT$ {p.revenue.toLocaleString()}</div>
+                            <div className="text-[hsl(var(--color-brand-500))]">
+                              客單價 NT$ {p.aov.toLocaleString()}（實收營收 ÷ 已確認到帳筆數）
+                            </div>
                           </div>
                         );
                       }}
@@ -638,7 +724,8 @@ const AdminDashboard = () => {
                       wrapperStyle={{
                         fontSize: 13,
                         paddingTop: 12,
-                        color: "hsl(var(--foreground))",
+                        color: "hsl(var(--primary))",
+                        fontWeight: 500,
                       }}
                     />
                   </PieChart>
