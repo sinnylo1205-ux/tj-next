@@ -7,7 +7,7 @@ import { CartProvider } from "@/contexts/CartContext";
 import { Providers } from "./providers";
 import NavBar from "@/components/NavBar";
 import Footer from "@/components/Footer";
-import { SITE_CONFIG, getFullUrl } from "@/lib/site";
+import { SITE_CONFIG, getFullUrl, getJsonLdBusinessId, getJsonLdWebsiteId, getSameAsProfileUrls } from "@/lib/site";
 import { productNoticeUrl } from "@/lib/product-notice-url";
 import { DESKTOP_HERO_FALLBACK_URL } from "@/lib/home-lcp-urls";
 import { DeferredSpeedInsights } from "@/components/DeferredSpeedInsights";
@@ -54,11 +54,25 @@ export const metadata: Metadata = {
   alternates: { canonical: getFullUrl("/") },
 };
 
+const businessId = getJsonLdBusinessId();
+const sameAs = getSameAsProfileUrls();
+
+const websiteJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebSite",
+  "@id": getJsonLdWebsiteId(),
+  name: SITE_CONFIG.SITE_NAME,
+  url: getFullUrl("/"),
+  publisher: { "@id": businessId },
+};
+
 const localBusinessJsonLd = {
   "@context": "https://schema.org",
   "@type": "LocalBusiness",
+  "@id": businessId,
+  additionalType: "https://schema.org/Bakery",
   name: SITE_CONFIG.SITE_NAME,
-  image: SITE_CONFIG.LOGO_URL,
+  image: [SITE_CONFIG.LOGO_URL, SITE_CONFIG.OG_IMAGE],
   description:
     "專業客製化甜點服務，提供棉花糖、馬卡龍、杯子蛋糕、幸運籤餅、客製化甜點，適合派對、婚禮、企業活動送禮。",
   url: getFullUrl(),
@@ -75,6 +89,8 @@ const localBusinessJsonLd = {
   geo: { "@type": "GeoCoordinates", latitude: 24.9677, longitude: 121.5419 },
   openingHours: "Mo-Fr 09:00-18:00",
   priceRange: "$$",
+  servesCuisine: "甜點",
+  ...(sameAs.length ? { sameAs } : {}),
 };
 
 const itemListJsonLd = {
@@ -97,19 +113,6 @@ const itemListJsonLd = {
   ],
 };
 
-const bakeryJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "Bakery",
-  name: SITE_CONFIG.SITE_NAME,
-  description: "客製化手作甜點，提供杯子蛋糕、馬卡龍、手工餅乾等精緻甜點",
-  url: getFullUrl(),
-  image: SITE_CONFIG.OG_IMAGE,
-  priceRange: "$$",
-  servesCuisine: "甜點",
-  address: { "@type": "PostalAddress", addressCountry: "TW" },
-  sameAs: [],
-};
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -129,9 +132,9 @@ export default function RootLayout({
         />
       </head>
       <body className="antialiased custom-cursor">
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }} />
-        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(bakeryJsonLd) }} />
         {/* GA4 全站僅在此處載入，勿重複埋碼 */}
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`}

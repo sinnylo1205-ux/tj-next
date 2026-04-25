@@ -89,6 +89,16 @@ export default async function ProductNoticePage({ params }: PageProps) {
   const meta = buildProductMetadata(slug, data);
   const description = typeof meta.description === "string" ? meta.description : "";
 
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "首頁", item: getFullUrl("/") },
+      { "@type": "ListItem", position: 2, name: "客製甜點單品", item: getFullUrl("/order") },
+      { "@type": "ListItem", position: 3, name: `客製化${displayName}`, item: url },
+    ],
+  };
+
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -118,6 +128,7 @@ export default async function ProductNoticePage({ params }: PageProps) {
 
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productJsonLd) }} />
       <ProductNoticeClient
         productId={slug}

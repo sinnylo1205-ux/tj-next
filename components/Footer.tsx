@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Instagram, Facebook, Mail, MessageCircle, Settings } from "lucide-react";
+import { getSocialProfileUrls } from "@/lib/site";
 
-const LINE_URL = "https://lin.ee/Tp9U5bf";
+const { instagram: INSTAGRAM_URL, facebook: FACEBOOK_URL, line: LINE_URL } = getSocialProfileUrls();
 
 /** Lovable 後台網址，設於 .env.local 的 NEXT_PUBLIC_ADMIN_URL，僅供內部使用 */
 const ADMIN_URL = process.env.NEXT_PUBLIC_ADMIN_URL;
@@ -67,7 +68,7 @@ const Footer = () => {
 
             <div className="flex gap-4 mb-4">
               <a
-                href="https://www.instagram.com/tjcookies99/"
+                href={INSTAGRAM_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
@@ -76,7 +77,7 @@ const Footer = () => {
                 <Instagram size={20} />
               </a>
               <a
-                href="https://www.facebook.com/TjFortuneCookies/?locale=zh_TW"
+                href={FACEBOOK_URL}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"

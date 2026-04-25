@@ -28,3 +28,42 @@ export function getFullUrl(path = "") {
   const p = path.startsWith("/") ? path : `/${path}`;
   return `${base}${p}`;
 }
+
+/** JSON-LD `@id`：與根 layout LocalBusiness 一致 */
+export function getJsonLdBusinessId(): string {
+  return getFullUrl("/#local-business");
+}
+
+/** JSON-LD `@id`：與根 layout WebSite 一致 */
+export function getJsonLdWebsiteId(): string {
+  return getFullUrl("/#website");
+}
+
+const DEFAULT_INSTAGRAM = "https://www.instagram.com/tjcookies99/";
+const DEFAULT_FACEBOOK = "https://www.facebook.com/TjFortuneCookies/";
+const DEFAULT_LINE = "https://lin.ee/Tp9U5bf";
+
+/** IG／FB／LINE 官網連結（Footer、JSON-LD sameAs 共用） */
+export function getSocialProfileUrls(): { instagram: string; facebook: string; line: string } {
+  const raw = process.env.NEXT_PUBLIC_SAME_AS_URLS;
+  const fromEnv =
+    typeof raw === "string" && raw.trim()
+      ? raw.split(",").map((s) => s.trim()).filter(Boolean)
+      : [];
+  const pick = (test: (u: string) => boolean, fallback: string) =>
+    fromEnv.find(test) ?? fallback;
+  return {
+    instagram: pick((u) => /instagram\.com/i.test(u), DEFAULT_INSTAGRAM),
+    facebook: pick((u) => /facebook\.com/i.test(u), DEFAULT_FACEBOOK),
+    line: pick((u) => /lin\.ee|line\.me/i.test(u), DEFAULT_LINE),
+  };
+}
+
+/**
+ * 官網對外社群（schema.org sameAs，不重複、固定順序）。
+ * 可設 `NEXT_PUBLIC_SAME_AS_URLS` 為逗號分隔 URL；會依網域對應至 IG／FB／LINE，缺項用預設補齊。
+ */
+export function getSameAsProfileUrls(): string[] {
+  const { instagram, facebook, line } = getSocialProfileUrls();
+  return [...new Set([instagram, facebook, line])];
+}
