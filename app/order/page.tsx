@@ -122,19 +122,28 @@ export default function OrderPage() {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden overflow-y-auto bg-background">
-      {/* 標題 (z-50) - 固定在最上層 */}
-      <div className="absolute z-50 pt-20 mt-2 sm:mt-0 w-full sm:w-auto sm:ml-16 flex justify-center sm:justify-start sm:block">
-        <div className="sm:text-left text-center">
-          <h1 className="text-2xl sm:text-5xl font-bold text-ink-900 sm:text-transparent drop-shadow-sm tracking-wide">
-            可客製化甜點目錄
+      {/* 右側直排：桌機 z 須高於畫布 z-[11]，否則全幅畫布會整塊蓋住標題 */}
+      <div className="pointer-events-none absolute right-2.5 top-14 z-50 sm:right-5 sm:top-16 sm:z-[12] md:right-8">
+        <div className="flex flex-row-reverse items-start gap-2 sm:gap-1.5">
+          <h1
+            className="text-xs font-semibold tracking-[0.16em] text-ink-900 [text-shadow:0_1px_2px_rgba(255,255,255,0.9)] [writing-mode:vertical-rl] sm:text-[10px] sm:font-medium sm:tracking-[0.14em] sm:text-white/85 sm:[text-shadow:0_1px_8px_rgba(0,0,0,0.35)]"
+            style={{ textOrientation: "mixed" }}
+          >
+            客製甜點
           </h1>
+          <h2
+            className="text-[8px] font-light leading-relaxed tracking-wide text-zinc-600 [text-shadow:0_0_1px_rgba(255,255,255,0.8)] [writing-mode:vertical-rl] sm:text-[7px] sm:leading-snug sm:text-white/65 sm:[text-shadow:0_1px_5px_rgba(0,0,0,0.28)]"
+            style={{ textOrientation: "mixed" }}
+          >
+            十一項單品，皆可特製
+          </h2>
         </div>
       </div>
 
       {/* 桌機版：統一縮放容器（包含背景和物件） */}
       <div className="hidden sm:block">
         <div
-          className="absolute z-10"
+          className="absolute z-[11]"
           style={{
             width: DESIGN_WIDTH,
             height: DESIGN_HEIGHT,

@@ -237,6 +237,11 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
 
     return (
       <section key={section.id} className="relative w-full">
+        {section.sort_order === 1 && (
+          <h1 className="pointer-events-none absolute left-0 top-0 z-[15] max-w-[min(100%,18rem)] pl-2 pt-2 text-left text-lg font-bold leading-snug tracking-wide text-white/78 [text-shadow:0_1px_10px_rgba(0,0,0,0.28)] sm:max-w-[min(100%,22rem)] sm:pl-3 sm:pt-3 sm:text-xl sm:text-white/72 md:text-2xl md:text-white/70">
+            魔法屋的經典甜點
+          </h1>
+        )}
         <ProgressiveImage
           src={section.photo_url}
           alt={`Section ${section.sort_order}`}
@@ -400,7 +405,7 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
 
   return (
     <main className="w-full" id="classic-styles-page">
-      <h1 className="sr-only">T&J 客製化甜點經典款式</h1>
+      <p className="sr-only">T&J 客製化甜點經典款式選購與主題介紹。</p>
 
       {/* SEO：語意化商品列表，僅供爬蟲與原始碼，不影響版面 */}
       <section aria-label="經典款式商品列表" className="sr-only">

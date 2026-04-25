@@ -355,13 +355,16 @@ export function GiftBoxesClient({ navigate }: { navigate: NavigateFn }) {
                 height={bg.height ?? undefined}
                 priority
               />
-              <div className="absolute inset-0 z-10 grid grid-rows-[auto_1fr_auto] py-[5%] md:py-[8%]">
-                <header className="flex justify-center px-4">
-                  <h1 className="text-sm md:text-3xl font-bold text-transparent drop-shadow-lg text-center">
-                    選擇您的客製化禮盒
+              <div className="absolute inset-0 z-10 flex flex-col py-[5%] md:py-[8%]">
+                <header className="pointer-events-none absolute left-2.5 top-2.5 z-20 max-w-[11rem] select-none text-left md:left-4 md:top-4 md:max-w-[13rem]">
+                  <h1 className="text-[10px] font-medium leading-snug tracking-wide text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.32)] md:text-[11px]">
+                    T&J 客製化禮盒
                   </h1>
+                  <p className="mt-0.5 text-[9px] font-normal leading-snug text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.28)] md:text-[10px] md:leading-snug">
+                    企業與活動送禮｜線上設計多款禮盒
+                  </p>
                 </header>
-                <div className="flex items-center justify-center pb-[30%]">
+                <div className="flex min-h-0 flex-1 items-center justify-center pb-[30%]">
                   {products.length > 0 ? (
                     <>
                       <div className="hidden md:block" style={{ transform: "scale(1.5)", transformOrigin: "center center" }}>
