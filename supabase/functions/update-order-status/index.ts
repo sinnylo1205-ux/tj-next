@@ -1,7 +1,7 @@
 /**
  * 訂單狀態更新 — 混合使用（用戶 + 管理員）
  * - 用戶：user_payment_submitted（匯款末五碼）、auto_cancel_expired（24h 逾時取消）
- * - 管理員：verify_payment、confirm_shipment、mark_delivered、return
+ * - 管理員：verify_payment、force_processing、confirm_shipment、mark_delivered、return
  * 此 function 保持啟用，因會員中心依賴 user_payment_submitted / auto_cancel_expired。
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -51,7 +51,15 @@ const OrderStatusUpdateRequestSchema = z.object({
   order_id: z.string().uuid("訂單 ID 格式錯誤"),
   new_status: z.string().min(1, "狀態不能為空"),
   action_type: z.enum(
-    ["verify_payment", "confirm_shipment", "mark_delivered", "return", "auto_cancel_expired", "user_payment_submitted"],
+    [
+      "verify_payment",
+      "force_processing",
+      "confirm_shipment",
+      "mark_delivered",
+      "return",
+      "auto_cancel_expired",
+      "user_payment_submitted",
+    ],
     {
       errorMap: () => ({ message: "無效的操作類型" }),
     },
@@ -218,6 +226,12 @@ Deno.serve(async (req) => {
           admin_verified_at: new Date().toISOString(),
         };
         statusMessage = "付款已確認，訂單處理中";
+        break;
+      case "force_processing":
+        updateData = {
+          order_status: "processing",
+        };
+        statusMessage = "未匯款先出貨，訂單處理中";
         break;
       case "confirm_shipment":
         updateData = {
