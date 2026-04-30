@@ -1,7 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { remoteSrcShouldBeUnoptimized } from "@/lib/remote-image-policy";
 
 interface ProgressiveImageProps {
   src: string;
@@ -17,12 +15,12 @@ interface ProgressiveImageProps {
   priority?: boolean;
   onClick?: () => void;
   style?: React.CSSProperties;
-  /** 供 next/image fill 用，預設全寬 */
+  /** 給瀏覽器／SEO 的 sizes 提示（直連時無 Next 縮圖，仍可作為未來 srcset 預留） */
   sizes?: string;
 }
 
 /**
- * 漸進式圖片載入元件
+ * 漸進式圖片載入元件（直連 `src`，不經 `/_next/image`）
  * - 使用 aspect-ratio 預留空間，避免 Layout Shift
  * - 載入中顯示骨架動畫
  * - 載入完成後淡入顯示
@@ -38,20 +36,18 @@ const ProgressiveImage = ({
   priority = false,
   onClick,
   style,
-  sizes = "100vw",
+  sizes,
 }: ProgressiveImageProps) => {
   const [isLoaded, setIsLoaded] = useState(priority);
   const [isInView, setIsInView] = useState(priority);
   const imgRef = useRef<HTMLDivElement>(null);
 
-  // 優先使用傳入的 aspectRatio，否則由 width/height 推算，避免版面跳動
   const aspectRatio =
     aspectRatioProp ??
     (width != null && height != null && height > 0 ? width / height : undefined);
 
-  // Intersection Observer for lazy loading
   useEffect(() => {
-    if (priority) return; // 高優先級直接載入
+    if (priority) return;
 
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -60,7 +56,7 @@ const ProgressiveImage = ({
           observer.disconnect();
         }
       },
-      { rootMargin: "200px" }, // 提前 200px 開始載入
+      { rootMargin: "200px" },
     );
 
     if (imgRef.current) {
@@ -75,6 +71,9 @@ const ProgressiveImage = ({
     ...(aspectRatio ? { aspectRatio: String(aspectRatio) } : {}),
   };
 
+  const loading = priority ? "eager" : "lazy";
+  const fetchPriority = priority ? "high" : undefined;
+
   return (
     <div
       ref={imgRef}
@@ -82,24 +81,21 @@ const ProgressiveImage = ({
       style={containerStyle}
       onClick={onClick}
     >
-      {/* 骨架載入動畫 - 品牌粉 */}
       {!isLoaded && (
         <div className="absolute inset-0 animate-pulse bg-gradient-to-r from-brand-50 via-brand-100 to-brand-50" />
       )}
 
-      {/* 實際圖片 - 只有在視窗內才載入 */}
       {isInView && (
-        <Image
+        <img
           src={src}
           alt={alt}
-          fill
           sizes={sizes}
-          priority={priority}
-          loading={priority ? undefined : "lazy"}
-          unoptimized={remoteSrcShouldBeUnoptimized(src)}
+          loading={loading}
+          fetchPriority={fetchPriority}
+          decoding="async"
           onLoad={() => setIsLoaded(true)}
           className={cn(
-            "object-cover transition-opacity duration-300",
+            "absolute inset-0 h-full w-full object-cover transition-opacity duration-300",
             priority || isLoaded ? "opacity-100" : "opacity-0",
             className,
           )}

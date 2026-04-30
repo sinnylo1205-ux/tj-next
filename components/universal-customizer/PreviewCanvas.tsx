@@ -60,8 +60,8 @@ interface PreviewCanvasProps {
   /** 用於截圖的隱藏容器時為 true，包裝預覽改為 absolute 以出現在截圖內 */
   forScreenshot?: boolean;
   /**
-   * 桌機／iOS 可見預覽也會當 toBlob 目標：與 forScreenshot 同樣強制圖片 eager + 原網址（unoptimized），
-   * 避免 `/_next/image` 在 svg foreignObject 內光柵化失敗（常見：整片黑、中央黑塊、比例異常）。
+   * 桌機／iOS 可見預覽也會當 toBlob 目標：與 forScreenshot 同樣強制圖片 eager + 直連原網址，
+   * 避免經過任何 proxy 在 svg foreignObject 內光柵化失敗（常見：整片黑、中央黑塊、比例異常）。
    */
   exportCaptureReady?: boolean;
   /** `exportPackage`：僅渲染包裝小圖區（供獨立 toBlob），其餘為互動預覽 */
@@ -117,14 +117,13 @@ export function PreviewCanvas({
   // ✅ 包裝預覽放大狀態
   const [isPackagePreviewEnlarged, setIsPackagePreviewEnlarged] = useState(false);
 
-  /** 截圖／匯出用：強制 eager + 原 src（略過 next 遠端最佳化），利於 html-to-image */
+  /** 截圖／匯出用：強制 eager + 原 src，利於 html-to-image */
   const captureImgProps =
     forScreenshot || renderMode === "exportPackage" || exportCaptureReady
       ? ({
           priority: true,
           loading: "eager" as const,
           decoding: "sync" as const,
-          unoptimized: true,
         })
       : {};
 

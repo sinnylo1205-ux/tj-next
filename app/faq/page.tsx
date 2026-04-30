@@ -4,7 +4,6 @@ import { useState, useRef, useCallback, useMemo } from "react";
 import { Card } from "@/components/ui/card";
 import { ExternalLink, Search, X } from "lucide-react";
 import Link from "next/link";
-import Image from "next/image";
 import { SafeImage } from "@/components/SafeImage";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -656,7 +655,7 @@ export default function FAQPage() {
                 )}
               >
                 <div className="relative w-full aspect-[4/3] rounded-lg overflow-hidden bg-brand-50">
-                  <Image
+                  <SafeImage
                     src={tab.image}
                     alt={tab.label}
                     fill
