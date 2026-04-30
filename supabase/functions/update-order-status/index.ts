@@ -66,6 +66,21 @@ const OrderStatusUpdateRequestSchema = z.object({
   ),
 });
 
+type OrderUpdateData = {
+  payment_step?: "submitted" | "verified";
+  order_status?: "processing" | "shipped" | "delivered" | "returned" | "canceled";
+  admin_verified_at?: string;
+  shipped_at?: string;
+  delivered_at?: string;
+  is_hide?: boolean;
+};
+
+type OrderUserLogIn = {
+  name?: string | null;
+  email?: string | null;
+  line_user_id?: string | null;
+} | null;
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -215,7 +230,7 @@ Deno.serve(async (req) => {
     const previousPaymentStep = orderData.payment_step;
 
     // Prepare update based on action type
-    let updateData: Record<string, any> = {};
+    let updateData: OrderUpdateData = {};
     let statusMessage = "";
 
     switch (action_type) {
@@ -283,7 +298,7 @@ Deno.serve(async (req) => {
     console.log("[update-order-status] Order updated successfully");
 
     // Determine LINE User ID: 優先使用訂單層級的 line_user_id（手動訂單），否則用 user_log_in 的
-    const userLogIn = orderData.user_log_in as any;
+    const userLogIn = orderData.user_log_in as OrderUserLogIn;
     const orderLineUserId = orderData.line_user_id;
     const userLineUserId = userLogIn?.line_user_id;
     const effectiveLineUserId = orderLineUserId || userLineUserId || null;
