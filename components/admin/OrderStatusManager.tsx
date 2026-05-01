@@ -617,24 +617,7 @@ const OrderStatusManager = () => {
 
   /** 未匯款先出貨：僅更新 order_status → processing，payment_step 維持不變 */
   const handleForceProcessing = async (orderId: string) => {
-    if (loadingAction) return;
-    setLoadingAction({ orderId, action: "force_processing" });
-    try {
-      const { error } = await supabase
-        .from("orders")
-        .update({ order_status: "processing" })
-        .eq("id", orderId);
-      if (error) {
-        toast({ title: "操作失敗", description: error.message, variant: "destructive" });
-        return;
-      }
-      toast({ title: "✅ 已轉為處理中（付款狀態不變）" });
-      loadOrders();
-    } catch {
-      toast({ title: "操作失敗", description: "請稍後再試", variant: "destructive" });
-    } finally {
-      setLoadingAction(null);
-    }
+    await handleStatusUpdate(orderId, "processing", "force_processing");
   };
 
   // 隱藏訂單（軟刪除）
