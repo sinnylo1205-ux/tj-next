@@ -62,6 +62,11 @@ const DEFAULT_WORK_DAYS = [3, 4, 5]; // Wed, Thu, Fri
 const DEFAULT_START = 9;
 const DEFAULT_END = 18; // 9:00–18:00 → slots 9, 9.5, 10, … 17.5
 
+/** Excel 匯出：日薪（元／天）；月薪 = 日薪 × 工作天數（有上班日數，不含請假與無打卡日） */
+const HR_EXPORT_DAILY_WAGE_YUAN = 1262;
+/** 附於「日薪」儲存格之 Excel 備註 */
+const HR_EXPORT_DAILY_WAGE_COMMENT = "1262元=15144/12個工作天=1262元/天";
+
 function isWeekday(date: Date): boolean {
   const d = getDay(date);
   return d >= 1 && d <= 5;
@@ -365,6 +370,7 @@ const AdminHRPanel = () => {
       rows.push(["日期", "上班", "下班", "加班開始", "遲到分鐘", "加班時數", "加班費", "備註"]);
 
       let totalWorkHours = 0;
+      let workingDays = 0;
 
       for (let d = 1; d <= daysInMonth; d++) {
         const dateStr = format(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d), "yyyy-MM-dd");
@@ -393,14 +399,39 @@ const AdminHRPanel = () => {
           const lastSlot = slots[slots.length - 1];
           const clockOut = slotLabel(lastSlot + 0.5);
           totalWorkHours += slots.length * 0.5;
+          workingDays += 1;
           rows.push([dateStr, clockIn, clockOut, null, null, null, null, noteStr]);
         }
       }
 
       rows.push([null, null, null, null, null, null, null, null]);
       rows.push([`總工時: ${totalWorkHours} 小時`, null, null, null, null, null, null, null]);
+      rows.push(["工作天數", workingDays, null, null, null, null, null, null]);
+      rows.push(["日薪（元／天）", HR_EXPORT_DAILY_WAGE_YUAN, null, null, null, null, null, null]);
+      // 列索引：0 標題、1 表頭、2..1+daysInMonth 每日列、空白、總工時、工作天數、日薪、月薪
+      const workDaysRow0 = 4 + daysInMonth;
+      const dailyWageRow0 = workDaysRow0 + 1;
+      const refWorkDaysB = XLSX.utils.encode_cell({ r: workDaysRow0, c: 1 });
+      const refDailyB = XLSX.utils.encode_cell({ r: dailyWageRow0, c: 1 });
+      const monthlySalary = workingDays * HR_EXPORT_DAILY_WAGE_YUAN;
+      const monthlyFormula = `${refWorkDaysB}*${refDailyB}`;
+      rows.push([
+        "月薪（元）",
+        { t: "n", v: monthlySalary, f: monthlyFormula },
+        null,
+        null,
+        null,
+        null,
+        null,
+        null,
+      ]);
 
       const ws = XLSX.utils.aoa_to_sheet(rows);
+      const dailyCell = ws[refDailyB];
+      if (dailyCell) {
+        if (!dailyCell.c) dailyCell.c = [];
+        dailyCell.c.push({ a: "薪資說明", t: HR_EXPORT_DAILY_WAGE_COMMENT });
+      }
       ws["!cols"] = [
         { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 10 },
         { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 20 },
