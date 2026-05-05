@@ -21,6 +21,7 @@ import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
 import * as XLSX from "xlsx";
+import type { CellObject } from "xlsx";
 
 // ── 型別 ──
 
@@ -365,7 +366,7 @@ const AdminHRPanel = () => {
         dateSlots.set(b.date, arr);
       });
 
-      const rows: (string | number | null)[][] = [];
+      const rows: (string | number | null | CellObject)[][] = [];
       rows.push([`${emp.name}${monthNum}月薪資`, null, null, null, null, null, null, null]);
       rows.push(["日期", "上班", "下班", "加班開始", "遲到分鐘", "加班時數", "加班費", "備註"]);
 
