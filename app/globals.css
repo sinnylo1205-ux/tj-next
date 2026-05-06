@@ -226,28 +226,36 @@ h3 {
   display: block;
 }
 
-/* 文章內表格：第一列（表頭列）品牌淡粉半透明底；格線清楚 */
-.article-tiptap-editor table.article-editor-table,
-.article-rich-body table.article-editor-table {
+/* 文章內表格：凡在富文本區內的 table 皆套用（不依賴 article-editor-table class，避免舊文／序列化差異導致樣式消失） */
+.article-tiptap-editor table,
+.article-rich-body table {
   width: 100%;
   border-collapse: collapse;
   margin: 1rem 0;
   font-size: 0.95em;
+  table-layout: auto;
 }
-.article-tiptap-editor table.article-editor-table th,
-.article-tiptap-editor table.article-editor-table td,
-.article-rich-body table.article-editor-table th,
-.article-rich-body table.article-editor-table td {
+.article-tiptap-editor table th,
+.article-tiptap-editor table td,
+.article-rich-body table th,
+.article-rich-body table td {
   border: 1px solid hsl(var(--border));
   padding: 0.5rem 0.65rem;
   vertical-align: top;
   min-width: 2.5rem;
 }
-.article-tiptap-editor table.article-editor-table tr:first-child th,
-.article-tiptap-editor table.article-editor-table tr:first-child td,
-.article-rich-body table.article-editor-table tr:first-child th,
-.article-rich-body table.article-editor-table tr:first-child td {
-  background-color: rgba(251, 207, 232, 0.42);
+/* 第一欄常為短標題，給足最小寬避免擠成直排（多欄表仍可用） */
+.article-tiptap-editor table th:first-child,
+.article-tiptap-editor table td:first-child,
+.article-rich-body table th:first-child,
+.article-rich-body table td:first-child {
+  min-width: 11rem;
+}
+.article-tiptap-editor table tr:first-child th,
+.article-tiptap-editor table tr:first-child td,
+.article-rich-body table tr:first-child th,
+.article-rich-body table tr:first-child td {
+  background-color: hsl(var(--primary) / 0.22);
 }
 
 /* 手機：維持較小字級（筆電以上仍用上方放大版） */
