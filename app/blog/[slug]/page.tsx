@@ -6,6 +6,7 @@ import { articleJsonToHtml } from "@/lib/tiptap/article-json-to-html";
 import { decodeBlogSlugParam } from "@/lib/blog-slug";
 import { rewriteSupabaseImgSrcInArticleHtml } from "@/lib/next-image-proxy-url";
 import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
+import { normalizeArticleRelatedReadingJson } from "@/lib/article-related-reading";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,9 @@ export default async function BlogSlugPage({ params }: PageProps) {
     custom_options: (row.custom_options as ProductArticle["custom_options"]) || [],
     use_cases: (row.use_cases as ProductArticle["use_cases"]) || [],
     faq: (row.faq as ProductArticle["faq"]) || [],
+    related_reading: normalizeArticleRelatedReadingJson(
+      (row as { related_reading?: unknown }).related_reading,
+    ),
     content_mode: row.content_mode ?? "template",
   };
 

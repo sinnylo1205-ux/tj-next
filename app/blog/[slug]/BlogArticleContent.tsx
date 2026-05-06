@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { ArticleTocNav, ArticleTocSidebar, type TocItem } from "@/components/blog/ArticleTocSidebar";
 import { scrollToArticleHeading } from "@/lib/article-heading-scroll";
 import type { ArticleFaqItem } from "@/lib/article-faq";
+import type { ArticleRelatedLink } from "@/lib/article-related-reading";
 
 export interface CustomOption {
   title: string;
@@ -48,6 +49,8 @@ export interface ProductArticle {
   /** template | richtext（新排版） */
   content_mode?: string | null;
   body_json?: unknown;
+  /** 文末延伸閱讀連結（richtext） */
+  related_reading?: ArticleRelatedLink[];
 }
 
 const productPaths: Record<string, string> = {
@@ -199,6 +202,40 @@ export default function BlogArticleContent({
                         </AccordionItem>
                       ))}
                     </Accordion>
+                  </section>
+                )}
+                {article.related_reading && article.related_reading.filter((x) => x.href.trim()).length > 0 && (
+                  <section className="mb-8">
+                    <h2 className="text-xl font-semibold mb-4">延伸閱讀</h2>
+                    <ul className="space-y-2">
+                      {article.related_reading
+                        .filter((item) => item.href.trim())
+                        .map((item, i) => {
+                        const href = item.href.trim();
+                        const label = item.label.trim() || href;
+                        if (!href) return null;
+                        const external = /^https?:\/\//i.test(href);
+                        const path = href.startsWith("/") ? href : `/${href}`;
+                        return (
+                          <li key={i}>
+                            {external ? (
+                              <a
+                                href={href}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-primary underline underline-offset-2 hover:opacity-90"
+                              >
+                                {label}
+                              </a>
+                            ) : (
+                              <Link href={path} className="text-primary underline underline-offset-2 hover:opacity-90">
+                                {label}
+                              </Link>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </section>
                 )}
               </>

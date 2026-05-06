@@ -17,6 +17,7 @@ type ArticlePick = {
   content_mode: string | null;
   body_json: unknown;
   faq: unknown;
+  related_reading: unknown;
   is_published: boolean | null;
   seo_noindex: boolean | null;
   og_image_url: string | null;
@@ -38,7 +39,7 @@ export default function ArticleRichTab() {
     const { data, error } = await supabase
       .from("product_articles")
       .select(
-        "id, item_name, slug, content_mode, body_json, faq, is_published, seo_noindex, og_image_url, meta_title, meta_description, editor_path",
+        "id, item_name, slug, content_mode, body_json, faq, related_reading, is_published, seo_noindex, og_image_url, meta_title, meta_description, editor_path",
       )
       .order("updated_at", { ascending: false });
     if (error) {
@@ -70,6 +71,7 @@ export default function ArticleRichTab() {
         custom_options: [],
         use_cases: [],
         faq: [],
+        related_reading: [],
         editor_path: "richtext",
         meta_title: null,
         meta_description: null,
@@ -147,7 +149,7 @@ export default function ArticleRichTab() {
         <CardHeader className="shrink-0">
           <CardTitle className="text-lg">編輯文章</CardTitle>
           <p className="text-sm text-muted-foreground">
-            格式列可開啟文末 FAQ、新增組數；slug 與 SEO 在內文下方。支援 H1–H3、黑／紅、段落、圖片與外連。
+            格式列可插入表格、調整列欄，並可開啟文末 FAQ 與延伸閱讀；slug 與 SEO 在內文下方。
           </p>
         </CardHeader>
         <CardContent className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain p-6 pt-0">
@@ -161,6 +163,7 @@ export default function ArticleRichTab() {
               initialItemName={selected.item_name}
               initialBody={selected.body_json}
               initialFaq={selected.faq}
+              initialRelatedReading={selected.related_reading}
               initialMetaTitle={selected.meta_title}
               initialMetaDescription={selected.meta_description}
               initialEditorPath={selected.editor_path ?? "richtext"}

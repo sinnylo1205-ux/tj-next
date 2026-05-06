@@ -3,9 +3,11 @@ import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { Color } from "@tiptap/extension-color";
 import { TextStyle } from "@tiptap/extension-text-style";
+import { Gapcursor } from "@tiptap/extension-gapcursor";
+import { Table, TableRow, TableCell, TableHeader } from "@tiptap/extension-table";
 import { ArticleExternalLink } from "./article-external-link";
 
-/** 站內文章編輯器：僅 h1–h3、黑/紅字、段落、圖片（宋體由 CSS 套用） */
+/** 站內文章編輯器：h1–h3、黑/紅字、段落、圖片、表格、外連（宋體由 CSS 套用） */
 export function getArticleEditorExtensions(): Extensions {
   return [
     StarterKit.configure({
@@ -26,6 +28,18 @@ export function getArticleEditorExtensions(): Extensions {
     }),
     TextStyle,
     Color.configure({ types: ["textStyle"] }),
+    Gapcursor,
+    Table.configure({
+      resizable: false,
+      HTMLAttributes: { class: "article-editor-table" },
+    }),
+    TableRow,
+    TableHeader.configure({
+      HTMLAttributes: { class: "article-editor-table-header-cell" },
+    }),
+    TableCell.configure({
+      HTMLAttributes: { class: "article-editor-table-cell" },
+    }),
     Image.configure({
       inline: false,
       allowBase64: false,

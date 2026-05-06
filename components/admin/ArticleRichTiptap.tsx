@@ -25,13 +25,15 @@ import {
   applyArticleFontZoomFromStorage,
   type ArticleFontZoom,
 } from "@/lib/article-font-zoom";
-import { Loader2, Save, ImagePlus, Upload, Link2, ListPlus } from "lucide-react";
+import { Loader2, Save, ImagePlus, Upload, Link2, ListPlus, Table2, Rows2, Columns2, Trash2 } from "lucide-react";
 import type { JSONContent } from "@tiptap/core";
 import { convertToWebP } from "@/lib/convert-to-webp";
 import { SafeImage } from "@/components/SafeImage";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { ArticleFaqItem } from "@/lib/article-faq";
 import { normalizeArticleFaqJson } from "@/lib/article-faq";
+import type { ArticleRelatedLink } from "@/lib/article-related-reading";
+import { normalizeArticleRelatedReadingJson } from "@/lib/article-related-reading";
 
 /** custom_asset bucket 內路徑（文章新排版自訂上傳） */
 export const ARTICLE_SELF_UPLOAD_STORAGE_PREFIX = "website_img/article/self_upload";
@@ -57,6 +59,8 @@ interface ArticleRichTiptapProps {
   initialBody: unknown;
   /** product_articles.faq（JSON 陣列） */
   initialFaq: unknown;
+  /** product_articles.related_reading（JSON：href + label） */
+  initialRelatedReading: unknown;
   initialMetaTitle: string | null;
   initialMetaDescription: string | null;
   /** 資料表 editor_path，新文建議 richtext */
@@ -90,6 +94,7 @@ export default function ArticleRichTiptap({
   initialItemName,
   initialBody,
   initialFaq,
+  initialRelatedReading,
   initialMetaTitle,
   initialMetaDescription,
   initialEditorPath,
@@ -121,6 +126,11 @@ export default function ArticleRichTiptap({
   const [linkLabel, setLinkLabel] = useState("");
   const [faqEnabled, setFaqEnabled] = useState(false);
   const [faqItems, setFaqItems] = useState<ArticleFaqItem[]>([]);
+  const [relatedEnabled, setRelatedEnabled] = useState(false);
+  const [relatedItems, setRelatedItems] = useState<ArticleRelatedLink[]>([]);
+  const [tableDialogOpen, setTableDialogOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableCols, setTableCols] = useState(3);
   /** 與前台文章頁同一組 zoom（同一 localStorage），內文編輯區比例一致 */
   const [editorBodyZoom, setEditorBodyZoom] = useState<ArticleFontZoom>(
     () => ARTICLE_FONT_ZOOM_LEVELS[ARTICLE_FONT_ZOOM_DEFAULT_INDEX].zoom,
@@ -157,6 +167,12 @@ export default function ArticleRichTiptap({
     setFaqItems(normalized.length > 0 ? normalized : []);
     setFaqEnabled(normalized.length > 0);
   }, [articleId, initialFaq]);
+
+  useEffect(() => {
+    const normalized = normalizeArticleRelatedReadingJson(initialRelatedReading);
+    setRelatedItems(normalized.length > 0 ? normalized : []);
+    setRelatedEnabled(normalized.length > 0);
+  }, [articleId, initialRelatedReading]);
 
   useEffect(() => {
     setSlug(initialSlug);
@@ -286,6 +302,11 @@ export default function ArticleRichTiptap({
           .map((row) => ({ question: row.question.trim(), answer: row.answer.trim() }))
           .filter((row) => row.question.length > 0 || row.answer.length > 0)
       : [];
+    const relatedPayload: ArticleRelatedLink[] = relatedEnabled
+      ? relatedItems
+          .map((row) => ({ href: row.href.trim(), label: row.label.trim() }))
+          .filter((row) => row.href.length > 0)
+      : [];
     const { error } = await supabase
       .from("product_articles")
       .update({
@@ -296,6 +317,7 @@ export default function ArticleRichTiptap({
         editor_path: editorPath.trim() || "richtext",
         body_json,
         faq: faqPayload,
+        related_reading: relatedPayload,
         content_mode: "richtext",
         is_published: isPublished,
         seo_noindex: seoNoindex,
@@ -390,6 +412,57 @@ export default function ArticleRichTiptap({
             <Link2 className="h-4 w-4 mr-1" />
             加入連結
           </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            className="h-8"
+            onClick={() => {
+              setTableRows(3);
+              setTableCols(3);
+              setTableDialogOpen(true);
+            }}
+          >
+            <Table2 className="h-4 w-4 mr-1" />
+            新增表格
+          </Button>
+          {editor.isActive("table") && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => editor.chain().focus().addRowAfter().run()}
+                disabled={!editor.can().addRowAfter()}
+              >
+                <Rows2 className="h-4 w-4 mr-1" />
+                下方加列
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => editor.chain().focus().addColumnAfter().run()}
+                disabled={!editor.can().addColumnAfter()}
+              >
+                <Columns2 className="h-4 w-4 mr-1" />
+                右方加欄
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8 text-destructive border-destructive/40 hover:bg-destructive/10"
+                onClick={() => editor.chain().focus().deleteTable().run()}
+                disabled={!editor.can().deleteTable()}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                刪除表格
+              </Button>
+            </>
+          )}
           <span className="hidden sm:block w-px h-6 bg-border shrink-0" aria-hidden />
           <span className="text-xs text-muted-foreground">文末</span>
           <div className="flex items-center gap-1.5">
@@ -420,6 +493,36 @@ export default function ArticleRichTiptap({
                 新增一組
               </Button>
               <span className="text-xs text-muted-foreground tabular-nums">{faqItems.length} 組</span>
+            </>
+          )}
+          <div className="flex items-center gap-1.5">
+            <Switch
+              id="article-related-enabled"
+              checked={relatedEnabled}
+              onCheckedChange={(on) => {
+                setRelatedEnabled(on);
+                if (on) {
+                  setRelatedItems((prev) => (prev.length > 0 ? prev : [{ href: "", label: "" }]));
+                }
+              }}
+            />
+            <Label htmlFor="article-related-enabled" className="text-xs cursor-pointer whitespace-nowrap">
+              延伸閱讀
+            </Label>
+          </div>
+          {relatedEnabled && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => setRelatedItems((prev) => [...prev, { href: "", label: "" }])}
+              >
+                <ListPlus className="h-4 w-4 mr-1" />
+                新增連結
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums">{relatedItems.length} 筆</span>
             </>
           )}
         </div>
@@ -472,6 +575,56 @@ export default function ArticleRichTiptap({
                         setFaqItems((prev) => prev.map((row, i) => (i === idx ? { ...row, answer: v } : row)));
                       }}
                       placeholder="簡短回答…"
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
+        {relatedEnabled ? (
+          <div className="space-y-3 border-t border-border bg-muted/10 px-6 py-4">
+            <p className="text-xs text-muted-foreground">
+              顯示於文章底部「延伸閱讀」區（在常見問題之後）。請貼完整網址（https:// 或站內路徑如 /blog/xxx）；顯示文字可空白則以前台網址為主。
+            </p>
+            {relatedItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">請點「新增連結」。</p>
+            ) : (
+              relatedItems.map((item, idx) => (
+                <div key={idx} className="rounded-md border border-border bg-background p-3 space-y-2 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">連結 {idx + 1}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 text-destructive hover:text-destructive"
+                      onClick={() => setRelatedItems((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      移除
+                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">文章連結（URL 或路徑）</Label>
+                    <Input
+                      value={item.href}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setRelatedItems((prev) => prev.map((row, i) => (i === idx ? { ...row, href: v } : row)));
+                      }}
+                      placeholder="https://… 或 /blog/your-slug"
+                      className="font-mono text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">連結顯示文字</Label>
+                    <Input
+                      value={item.label}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setRelatedItems((prev) => prev.map((row, i) => (i === idx ? { ...row, label: v } : row)));
+                      }}
+                      placeholder="例：馬卡龍訂購須知"
                     />
                   </div>
                 </div>
@@ -763,6 +916,64 @@ export default function ArticleRichTiptap({
             </Button>
             <Button type="button" onClick={() => void applyImage()} disabled={imgUploading}>
               {imgUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : "插入圖片"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={tableDialogOpen} onOpenChange={setTableDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>插入表格</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              第一列為表頭列（前台與編輯區皆為品牌淡粉半透明底）。插入後游標在表格內時，可用格式列「下方加列／右方加欄／刪除表格」。
+            </p>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="tbl-rows">列數（含表頭）</Label>
+              <Input
+                id="tbl-rows"
+                type="number"
+                min={1}
+                max={20}
+                value={tableRows}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  setTableRows(Number.isFinite(n) ? Math.min(20, Math.max(1, n)) : 1);
+                }}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="tbl-cols">欄數</Label>
+              <Input
+                id="tbl-cols"
+                type="number"
+                min={1}
+                max={12}
+                value={tableCols}
+                onChange={(e) => {
+                  const n = parseInt(e.target.value, 10);
+                  setTableCols(Number.isFinite(n) ? Math.min(12, Math.max(1, n)) : 1);
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setTableDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              type="button"
+              onClick={() => {
+                const r = Math.min(20, Math.max(1, Math.floor(tableRows) || 1));
+                const c = Math.min(12, Math.max(1, Math.floor(tableCols) || 1));
+                editor.chain().focus().insertTable({ rows: r, cols: c, withHeaderRow: true }).run();
+                setTableDialogOpen(false);
+                toast({ title: "已插入表格", description: `${r} 列 × ${c} 欄` });
+              }}
+            >
+              插入
             </Button>
           </DialogFooter>
         </DialogContent>

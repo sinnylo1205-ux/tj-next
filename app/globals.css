@@ -226,6 +226,30 @@ h3 {
   display: block;
 }
 
+/* 文章內表格：第一列（表頭列）品牌淡粉半透明底；格線清楚 */
+.article-tiptap-editor table.article-editor-table,
+.article-rich-body table.article-editor-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.95em;
+}
+.article-tiptap-editor table.article-editor-table th,
+.article-tiptap-editor table.article-editor-table td,
+.article-rich-body table.article-editor-table th,
+.article-rich-body table.article-editor-table td {
+  border: 1px solid hsl(var(--border));
+  padding: 0.5rem 0.65rem;
+  vertical-align: top;
+  min-width: 2.5rem;
+}
+.article-tiptap-editor table.article-editor-table tr:first-child th,
+.article-tiptap-editor table.article-editor-table tr:first-child td,
+.article-rich-body table.article-editor-table tr:first-child th,
+.article-rich-body table.article-editor-table tr:first-child td {
+  background-color: rgba(251, 207, 232, 0.42);
+}
+
 /* 手機：維持較小字級（筆電以上仍用上方放大版） */
 @media (max-width: 767px) {
   .article-tiptap-editor,
