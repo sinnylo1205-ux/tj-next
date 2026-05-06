@@ -9,6 +9,17 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+/**
+ * DB 品名常為「客製馬卡龍」等；若 title 再拼「客製化」會變成「客製化客製馬卡龍」。
+ * 已含「客製化」則沿用；僅「客製…」則改為「客製化」+ 去掉開頭「客製」後的字；其餘則前綴「客製化」。
+ */
+function seoProductTitleLabel(productName: string | null, slug: string): string {
+  const raw = (productName?.trim() || slug).trim();
+  if (raw.startsWith("客製化")) return raw;
+  if (raw.startsWith("客製")) return `客製化${raw.slice(2)}`;
+  return `客製化${raw}`;
+}
+
 /** 依品項微調 SERP 文案（CTR：具體利益 + 行動暗示，避免僅「訂購須知」） */
 const PRODUCT_SERP_HINTS: Record<string, { hook: string }> = {
   cupcake_cream: {
@@ -37,7 +48,7 @@ async function getProductNotice(slug: string) {
 type ProductPageData = NonNullable<Awaited<ReturnType<typeof getProductNotice>>>;
 
 function buildProductMetadata(slug: string, data: ProductPageData): Metadata {
-  const displayName = data.productName ?? slug;
+  const titleLabel = seoProductTitleLabel(data.productName, slug);
   const hint =
     PRODUCT_SERP_HINTS[slug]?.hook ?? "線上客製設計、預約取件與配送說明，新北工作室製作。";
   const minQty = data.productNotice.min_order_qty;
@@ -45,12 +56,12 @@ function buildProductMetadata(slug: string, data: ProductPageData): Metadata {
     typeof minQty === "number" && minQty > 0
       ? `最低 ${minQty} 個起訂；`
       : "";
-  const title = `客製化${displayName}｜線上設計・預約取件｜T&J`;
-    const description = `${hint}${moq}此頁可選取件日、看運費與過敏原，完成後一鍵進入線上編輯器。`.slice(0, 158);
+  const title = `${titleLabel}｜線上設計・預約取件｜T&J`;
+  const description = `${hint}${moq}此頁可選取件日、看運費與過敏原，完成後一鍵進入線上編輯器。`.slice(0, 158);
   const url = getFullUrl(`/product/${slug}`);
   const ogImages =
     data.productImageUrl && data.productImageUrl.startsWith("http")
-      ? [{ url: data.productImageUrl, alt: `客製化${displayName}` }]
+      ? [{ url: data.productImageUrl, alt: titleLabel }]
       : undefined;
   return {
     title,
@@ -85,7 +96,7 @@ export default async function ProductNoticePage({ params }: PageProps) {
   const data = await getProductNotice(slug);
   if (!data) notFound();
 
-  const displayName = data.productName ?? slug;
+  const titleLabel = seoProductTitleLabel(data.productName, slug);
   const url = getFullUrl(`/product/${slug}`);
   const meta = buildProductMetadata(slug, data);
   const description = typeof meta.description === "string" ? meta.description : "";
@@ -93,13 +104,13 @@ export default async function ProductNoticePage({ params }: PageProps) {
   const breadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: "首頁", path: "/" },
     { name: "客製甜點單品", path: "/order" },
-    { name: `客製化${displayName}`, path: `/product/${slug}` },
+    { name: titleLabel, path: `/product/${slug}` },
   ]);
 
   const productJsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
-    name: `客製化${displayName}`,
+    name: titleLabel,
     description,
     url,
     image: data.productImageUrl ?? undefined,

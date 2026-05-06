@@ -17,6 +17,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { cn } from "@/lib/utils";
 import { ArticleTocNav, ArticleTocSidebar, type TocItem } from "@/components/blog/ArticleTocSidebar";
 import { scrollToArticleHeading } from "@/lib/article-heading-scroll";
+import type { ArticleFaqItem } from "@/lib/article-faq";
 
 export interface CustomOption {
   title: string;
@@ -28,10 +29,7 @@ export interface UseCase {
   description: string;
 }
 
-export interface FaqItem {
-  question: string;
-  answer: string;
-}
+export type FaqItem = ArticleFaqItem;
 
 export interface ProductArticle {
   id: string;
@@ -188,6 +186,21 @@ export default function BlogArticleContent({
                   className="article-rich-body text-foreground mb-8"
                   dangerouslySetInnerHTML={{ __html: richBodyHtml! }}
                 />
+                {article.faq && article.faq.length > 0 && (
+                  <section className="mb-8">
+                    <h2 className="text-xl font-semibold mb-4">常見問題</h2>
+                    <Accordion type="single" collapsible className="space-y-2">
+                      {article.faq.map((item, i) => (
+                        <AccordionItem key={i} value={`faq-rt-${i}`} className="border rounded-lg px-4">
+                          <AccordionTrigger className="text-left">{item.question}</AccordionTrigger>
+                          <AccordionContent className="text-muted-foreground whitespace-pre-line">
+                            {item.answer}
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
+                  </section>
+                )}
               </>
             ) : (
               <>
@@ -250,7 +263,7 @@ export default function BlogArticleContent({
                       {article.faq.map((item, i) => (
                         <AccordionItem key={i} value={`faq-${i}`} className="border rounded-lg px-4">
                           <AccordionTrigger className="text-left">{item.question}</AccordionTrigger>
-                          <AccordionContent className="text-muted-foreground">{item.answer}</AccordionContent>
+                          <AccordionContent className="text-muted-foreground whitespace-pre-line">{item.answer}</AccordionContent>
                         </AccordionItem>
                       ))}
                     </Accordion>

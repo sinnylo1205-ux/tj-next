@@ -25,11 +25,13 @@ import {
   applyArticleFontZoomFromStorage,
   type ArticleFontZoom,
 } from "@/lib/article-font-zoom";
-import { Loader2, Save, ImagePlus, Upload, Link2 } from "lucide-react";
+import { Loader2, Save, ImagePlus, Upload, Link2, ListPlus } from "lucide-react";
 import type { JSONContent } from "@tiptap/core";
 import { convertToWebP } from "@/lib/convert-to-webp";
 import { SafeImage } from "@/components/SafeImage";
 import { useIsMobile } from "@/hooks/use-mobile";
+import type { ArticleFaqItem } from "@/lib/article-faq";
+import { normalizeArticleFaqJson } from "@/lib/article-faq";
 
 /** custom_asset bucket 內路徑（文章新排版自訂上傳） */
 export const ARTICLE_SELF_UPLOAD_STORAGE_PREFIX = "website_img/article/self_upload";
@@ -53,6 +55,8 @@ interface ArticleRichTiptapProps {
   /** 列表與麵包屑顯示名（前台「客製化{item_name}」） */
   initialItemName: string;
   initialBody: unknown;
+  /** product_articles.faq（JSON 陣列） */
+  initialFaq: unknown;
   initialMetaTitle: string | null;
   initialMetaDescription: string | null;
   /** 資料表 editor_path，新文建議 richtext */
@@ -85,6 +89,7 @@ export default function ArticleRichTiptap({
   initialSlug,
   initialItemName,
   initialBody,
+  initialFaq,
   initialMetaTitle,
   initialMetaDescription,
   initialEditorPath,
@@ -114,6 +119,8 @@ export default function ArticleRichTiptap({
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkHref, setLinkHref] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
+  const [faqEnabled, setFaqEnabled] = useState(false);
+  const [faqItems, setFaqItems] = useState<ArticleFaqItem[]>([]);
   /** 與前台文章頁同一組 zoom（同一 localStorage），內文編輯區比例一致 */
   const [editorBodyZoom, setEditorBodyZoom] = useState<ArticleFontZoom>(
     () => ARTICLE_FONT_ZOOM_LEVELS[ARTICLE_FONT_ZOOM_DEFAULT_INDEX].zoom,
@@ -144,6 +151,12 @@ export default function ArticleRichTiptap({
       window.removeEventListener("storage", sync);
     };
   }, []);
+
+  useEffect(() => {
+    const normalized = normalizeArticleFaqJson(initialFaq);
+    setFaqItems(normalized.length > 0 ? normalized : []);
+    setFaqEnabled(normalized.length > 0);
+  }, [articleId, initialFaq]);
 
   useEffect(() => {
     setSlug(initialSlug);
@@ -268,6 +281,11 @@ export default function ArticleRichTiptap({
     }
     setSaving(true);
     const body_json = editor.getJSON();
+    const faqPayload: ArticleFaqItem[] = faqEnabled
+      ? faqItems
+          .map((row) => ({ question: row.question.trim(), answer: row.answer.trim() }))
+          .filter((row) => row.question.length > 0 || row.answer.length > 0)
+      : [];
     const { error } = await supabase
       .from("product_articles")
       .update({
@@ -277,6 +295,7 @@ export default function ArticleRichTiptap({
         meta_description: metaDescription.trim() || null,
         editor_path: editorPath.trim() || "richtext",
         body_json,
+        faq: faqPayload,
         content_mode: "richtext",
         is_published: isPublished,
         seo_noindex: seoNoindex,
@@ -312,8 +331,8 @@ export default function ArticleRichTiptap({
     <div className="space-y-3">
       {isLegacyTemplate && (
         <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-950">
-          此筆資料仍為<strong>套版模式</strong>。在此按「儲存」後會改為<strong>新排版（richtext）</strong>，前台將以下方編輯器內容為準；若內文仍空，請先撰寫再發布。舊套版欄位（intro、FAQ、product_id
-          等）不會在此畫面顯示，請至資料庫維護。
+          此筆資料仍為<strong>套版模式</strong>。在此按「儲存」後會改為<strong>新排版（richtext）</strong>，前台將以下方編輯器內容為準；若內文仍空，請先撰寫再發布。舊套版欄位（intro、product_id
+          等）不會在此畫面顯示，請至資料庫維護；文末 FAQ 可於下方格式列開啟並編輯。
         </div>
       )}
 
@@ -371,6 +390,38 @@ export default function ArticleRichTiptap({
             <Link2 className="h-4 w-4 mr-1" />
             加入連結
           </Button>
+          <span className="hidden sm:block w-px h-6 bg-border shrink-0" aria-hidden />
+          <span className="text-xs text-muted-foreground">文末</span>
+          <div className="flex items-center gap-1.5">
+            <Switch
+              id="article-faq-enabled"
+              checked={faqEnabled}
+              onCheckedChange={(on) => {
+                setFaqEnabled(on);
+                if (on) {
+                  setFaqItems((prev) => (prev.length > 0 ? prev : [{ question: "", answer: "" }]));
+                }
+              }}
+            />
+            <Label htmlFor="article-faq-enabled" className="text-xs cursor-pointer whitespace-nowrap">
+              FAQ
+            </Label>
+          </div>
+          {faqEnabled && (
+            <>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-8"
+                onClick={() => setFaqItems((prev) => [...prev, { question: "", answer: "" }])}
+              >
+                <ListPlus className="h-4 w-4 mr-1" />
+                新增一組
+              </Button>
+              <span className="text-xs text-muted-foreground tabular-nums">{faqItems.length} 組</span>
+            </>
+          )}
         </div>
         <div
           className="article-readable-zone origin-top px-6 pt-3 pb-1 min-h-[min(380px,45vh)]"
@@ -378,6 +429,56 @@ export default function ArticleRichTiptap({
         >
           <EditorContent editor={editor} />
         </div>
+        {faqEnabled ? (
+          <div className="space-y-3 border-t border-border bg-muted/15 px-6 py-4">
+            <p className="text-xs text-muted-foreground">
+              以下內文會顯示在文章底部「常見問題」區塊（與前台 Accordion 相同）。儲存時會略過完全空白的組。
+            </p>
+            {faqItems.length === 0 ? (
+              <p className="text-sm text-muted-foreground">請點「新增一組」開始填寫。</p>
+            ) : (
+              faqItems.map((item, idx) => (
+                <div key={idx} className="rounded-md border border-border bg-background p-3 space-y-2 shadow-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-medium text-muted-foreground">第 {idx + 1} 組</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 shrink-0 text-destructive hover:text-destructive"
+                      onClick={() => setFaqItems((prev) => prev.filter((_, i) => i !== idx))}
+                    >
+                      移除
+                    </Button>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">問題</Label>
+                    <Input
+                      value={item.question}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFaqItems((prev) => prev.map((row, i) => (i === idx ? { ...row, question: v } : row)));
+                      }}
+                      placeholder="例如：可以提前幾天訂購？"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs">回答</Label>
+                    <Textarea
+                      rows={3}
+                      value={item.answer}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setFaqItems((prev) => prev.map((row, i) => (i === idx ? { ...row, answer: v } : row)));
+                      }}
+                      placeholder="簡短回答…"
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">

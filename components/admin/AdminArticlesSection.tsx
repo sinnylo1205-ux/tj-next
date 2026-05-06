@@ -7,7 +7,7 @@ export default function AdminArticlesSection() {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
-        在此新增／編輯部落格文章：內文為 Tiptap（儲存為 body_json），並可設定網址 slug、SEO 與 OG 圖。若仍需維護舊「套版」欄位（intro、FAQ、product_id
+        在此新增／編輯部落格文章：內文為 Tiptap（儲存為 body_json），並可設定網址 slug、SEO、OG 圖與文末 FAQ。若仍需維護舊「套版」欄位（intro、product_id
         等），請直接操作資料庫。
       </p>
       <ArticleRichTab />
