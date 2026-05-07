@@ -91,7 +91,7 @@ export default async function BlogIndexPage() {
                 <div className="relative h-48 w-full overflow-hidden">
                   <SafeImage
                     src={article.og_image_url}
-                    alt={`客製化${article.item_name}`}
+                    alt={article.item_name}
                     fill
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
@@ -104,7 +104,7 @@ export default async function BlogIndexPage() {
               )}
               <div className="p-5">
                 <h2 className="text-xl font-semibold text-foreground mb-2 group-hover:text-primary transition-colors">
-                  客製化{article.item_name}
+                  {article.item_name}
                 </h2>
                 <p className="text-muted-foreground text-sm line-clamp-3">{article.intro}</p>
               </div>
@@ -127,7 +127,7 @@ export default async function BlogIndexPage() {
                   <BookOpen className="w-12 h-12 text-muted-foreground" />
                 </div>
                 <div className="p-5">
-                  <h2 className="text-xl font-semibold text-foreground mb-2">客製化{article.item_name}</h2>
+                  <h2 className="text-xl font-semibold text-foreground mb-2">{article.item_name}</h2>
                   <p className="text-muted-foreground text-sm">即將推出...</p>
                 </div>
               </div>

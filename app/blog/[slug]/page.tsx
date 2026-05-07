@@ -52,7 +52,7 @@ export default async function BlogSlugPage({ params }: PageProps) {
   const blogArticleBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: "首頁", path: "/" },
     { name: "甜點部落格", path: "/blog" },
-    { name: `客製化${article.item_name}`, path: articlePath },
+    { name: article.item_name, path: articlePath },
   ]);
 
   return (

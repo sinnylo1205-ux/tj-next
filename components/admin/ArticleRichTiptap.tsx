@@ -54,7 +54,7 @@ interface ArticleRichTiptapProps {
   articleId: string;
   /** 網址片段 /blog/{slug} */
   initialSlug: string;
-  /** 列表與麵包屑顯示名（前台「客製化{item_name}」） */
+  /** 列表與麵包屑／套版 H1 顯示名（前台直接使用，可自行含「客製化」等字） */
   initialItemName: string;
   initialBody: unknown;
   /** product_articles.faq（JSON 陣列） */

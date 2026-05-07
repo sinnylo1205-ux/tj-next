@@ -131,7 +131,7 @@ export default function BlogArticleContent({
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
-            <BreadcrumbPage>客製化{article.item_name}</BreadcrumbPage>
+            <BreadcrumbPage>{article.item_name}</BreadcrumbPage>
           </BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
@@ -254,7 +254,7 @@ export default function BlogArticleContent({
                       />
                     </div>
                   )}
-                  <h1 className="text-3xl font-bold text-foreground md:text-4xl mb-4">客製化{article.item_name}</h1>
+                  <h1 className="text-3xl font-bold text-foreground md:text-4xl mb-4">{article.item_name}</h1>
                   <p className="text-muted-foreground text-lg whitespace-pre-line">{article.intro}</p>
                 </header>
 
