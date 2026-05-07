@@ -3,6 +3,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { BookOpen } from "lucide-react";
 import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 import { createSupabasePublicUncached } from "@/lib/supabase-blog-public";
+import { optimizeImage } from "@/lib/supabase-image-url";
 import { SafeImage } from "@/components/SafeImage";
 import {
   Breadcrumb,
@@ -90,7 +91,7 @@ export default async function BlogIndexPage() {
               {article.og_image_url ? (
                 <div className="relative h-48 w-full overflow-hidden">
                   <SafeImage
-                    src={article.og_image_url}
+                    src={optimizeImage(article.og_image_url, 720, 78)}
                     alt={article.item_name}
                     fill
                     className="object-cover transition-transform duration-300 group-hover:scale-105"

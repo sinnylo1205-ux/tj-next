@@ -27,7 +27,7 @@ import {
 } from "@/lib/article-font-zoom";
 import { Loader2, Save, ImagePlus, Upload, Link2, ListPlus, Table2, Rows2, Columns2, Trash2 } from "lucide-react";
 import type { JSONContent } from "@tiptap/core";
-import { convertToWebP } from "@/lib/convert-to-webp";
+import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
 import { SafeImage } from "@/components/SafeImage";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { ArticleFaqItem } from "@/lib/article-faq";
@@ -186,7 +186,7 @@ export default function ArticleRichTiptap({
     async (file: File) => {
       setOgUploading(true);
       try {
-        const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+        const webpFile = file.type.startsWith("image/") ? await prepareImageForUpload(file) : file;
         const fileName = `blog_og/${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
         const { error } = await supabase.storage.from("custom_asset").upload(fileName, webpFile, { upsert: true, contentType: "image/webp" });
         if (error) {
@@ -224,7 +224,7 @@ export default function ArticleRichTiptap({
 
   const uploadFile = useCallback(
     async (file: File): Promise<string | null> => {
-      const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+      const webpFile = file.type.startsWith("image/") ? await prepareImageForUpload(file) : file;
       const fileName = `${ARTICLE_SELF_UPLOAD_STORAGE_PREFIX}/${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
       const { error } = await supabase.storage.from("custom_asset").upload(fileName, webpFile, { upsert: true, contentType: "image/webp" });
       if (error) {

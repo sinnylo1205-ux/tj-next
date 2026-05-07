@@ -8,7 +8,7 @@
  * 本檔預設**不會**改寫網址（避免免費專案誤用 `render/image` 得到錯誤或額外計費預期）。
  * 若日後升級 Pro 並啟用轉圖：在 `.env.local` 設 `NEXT_PUBLIC_SUPABASE_IMAGE_TRANSFORM=true` 後，`optimizeImage` 才會改寫成 `render/image`。
  *
- * 免費專案建議：上傳前壓縮（專案內已有 `convertToWebP` 等）、控制長邊解析度、列表用較小檔。
+ * 免費專案建議：上傳經 `/api/process-upload-image`（Sharp）壓縮、控制長邊解析度、列表用較小檔。
  * @see https://supabase.com/docs/guides/storage/serving/image-transformations
  */
 

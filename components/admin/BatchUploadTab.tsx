@@ -14,7 +14,7 @@ interface UploadRecord {
   uploadedAt: string;
 }
 
-import { convertToWebP } from "@/lib/convert-to-webp";
+import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
 import { SafeImage } from "@/components/SafeImage";
 
 const HISTORY_KEY = "admin_ig_upload_history";
@@ -68,7 +68,7 @@ const BatchUploadTab = () => {
     for (let i = 0; i < selectedFiles.length; i++) {
       const file = selectedFiles[i];
       try {
-        const webpFile = await convertToWebP(file);
+        const webpFile = await prepareImageForUpload(file);
         const baseName = file.name.replace(/\.\w+$/, "").replace(/[^a-zA-Z0-9_-]/g, "_");
         const fileName = `IG/${Date.now()}_${baseName}.webp`;
         const { error } = await supabase.storage

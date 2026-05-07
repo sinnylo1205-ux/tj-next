@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { convertToWebP } from "@/lib/convert-to-webp";
+import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
+import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ChevronDown, ChevronUp, Upload, ExternalLink, Loader2, RefreshCw } from "lucide-react";
 import { SafeImage } from "@/components/SafeImage";
 
@@ -35,6 +37,7 @@ interface QuotationOrder {
   transfer_last5: string | null;
   discount_amount: number | null;
   recipient_name: string | null;
+  is_hide?: boolean | null;
 }
 
 interface QuotationOrderItem {
@@ -298,9 +301,10 @@ const renderServiceAndProductRequirement = (allReq: any) => {
 // ========== Image Upload ==========
 const handleQuotationImageUpload = async (file: File): Promise<string> => {
   if (!file.type.startsWith("image/")) throw new Error("只能上傳圖片");
-  if (file.size > 2 * 1024 * 1024) throw new Error("圖片不超過 2MB");
+  if (file.size > 20 * 1024 * 1024) throw new Error("圖片原檔不超過 20MB");
 
-  const webpFile = await convertToWebP(file);
+  const webpFile = await prepareImageForUpload(file);
+  if (webpFile.size > 2 * 1024 * 1024) throw new Error("壓縮後圖片仍超過 2MB");
   const fileName = `quotation/quote_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
 
   const { error } = await supabase.storage
@@ -477,6 +481,8 @@ const AdminQuotationsPanel = () => {
   // Action loading state
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [customShippingFee, setCustomShippingFee] = useState<Set<string>>(new Set());
+  /** 勾選後列表一併顯示已隱藏報價單 */
+  const [showHiddenQuotations, setShowHiddenQuotations] = useState(false);
 
   // Editable quotation fields for price_reply / order_created
   const [quotationEdits, setQuotationEdits] = useState<Record<string, Partial<QuotationOrder> & { tax_title?: string; tax_id?: string }>>({});
@@ -665,6 +671,7 @@ const AdminQuotationsPanel = () => {
 
       toast({ title: "✅ 報價單已發送" });
       loadQuotations();
+      window.dispatchEvent(new Event("admin-refresh-badges"));
       // Clear expanded so it reloads items on next expand
       setItems((prev) => {
         const next = { ...prev };
@@ -711,6 +718,7 @@ const AdminQuotationsPanel = () => {
 
       toast({ title: `✅ 訂單已建立：${data?.order_id?.slice(0, 6).toUpperCase()}` });
       loadQuotations();
+      window.dispatchEvent(new Event("admin-refresh-badges"));
     } catch (err: any) {
       toast({ title: "轉換訂單失敗", description: err.message, variant: "destructive" });
     } finally {
@@ -719,10 +727,35 @@ const AdminQuotationsPanel = () => {
   };
 
   const getFilteredQuotations = () => {
-    return quotations.filter((q) => q.status === activeTab);
+    return quotations.filter((q) => {
+      if (q.status !== activeTab) return false;
+      if (!showHiddenQuotations && q.is_hide) return false;
+      return true;
+    });
+  };
+
+  const isQuotationHidden = (q: QuotationOrder) => !!q.is_hide;
+
+  const handleToggleQuotationHide = async (q: QuotationOrder, nextHide: boolean) => {
+    setActionLoading(q.id);
+    try {
+      const { error } = await supabase.from("quotation_orders").update({ is_hide: nextHide }).eq("id", q.id);
+      if (error) throw error;
+      toast({ title: nextHide ? "已隱藏報價單" : "已取消隱藏" });
+      await loadQuotations();
+      window.dispatchEvent(new Event("admin-refresh-badges"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "操作失敗";
+      toast({ title: "更新失敗", description: msg, variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
   };
 
   const filtered = getFilteredQuotations();
+
+  const countQuotationsVisible = (status: string) =>
+    quotations.filter((q) => q.status === status && !q.is_hide).length;
 
   return (
     <div className="p-4 md:p-6">
@@ -747,18 +780,28 @@ const AdminQuotationsPanel = () => {
               <RefreshCw className="h-4 w-4 mr-1" /> 重新整理
             </Button>
           </div>
+          <div className="flex items-center gap-2 pt-3">
+            <Checkbox
+              id="admin-quotations-show-hidden"
+              checked={showHiddenQuotations}
+              onCheckedChange={(c) => setShowHiddenQuotations(c === true)}
+            />
+            <Label htmlFor="admin-quotations-show-hidden" className="text-sm font-normal cursor-pointer">
+              顯示已隱藏報價單
+            </Label>
+          </div>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="price_asked">
-                詢價中 ({quotations.filter((q) => q.status === "price_asked").length})
+                詢價中 ({countQuotationsVisible("price_asked")})
               </TabsTrigger>
               <TabsTrigger value="price_reply">
-                已報價 ({quotations.filter((q) => q.status === "price_reply").length})
+                已報價 ({countQuotationsVisible("price_reply")})
               </TabsTrigger>
               <TabsTrigger value="order_created">
-                已建立訂單 ({quotations.filter((q) => q.status === "order_created").length})
+                已建立訂單 ({countQuotationsVisible("order_created")})
               </TabsTrigger>
             </TabsList>
 
@@ -775,20 +818,28 @@ const AdminQuotationsPanel = () => {
                     const ed = editData[q.id];
 
                     return (
-                      <Card key={q.id} className="border">
+                      <Card
+                        key={q.id}
+                        className={cn("border", isQuotationHidden(q) && "opacity-80 border-dashed")}
+                      >
                         {/* Header */}
                         <div
-                          className="flex items-center justify-between p-4 cursor-pointer hover:bg-muted/30 transition-colors"
+                          className="flex items-center justify-between gap-2 p-4 cursor-pointer hover:bg-muted/30 transition-colors"
                           onClick={() => toggleExpand(q.id)}
                         >
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2">
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className="font-medium">#{q.id.slice(0, 6).toUpperCase()}</span>
                               <Badge variant={q.status === "price_asked" ? "outline" : q.status === "price_reply" ? "secondary" : "default"}>
                                 {q.status === "price_asked" && "詢價中"}
                                 {q.status === "price_reply" && "已報價"}
                                 {q.status === "order_created" && "已建立訂單"}
                               </Badge>
+                              {isQuotationHidden(q) ? (
+                                <Badge variant="destructive" className="text-xs">
+                                  已隱藏
+                                </Badge>
+                              ) : null}
                             </div>
                             <p className="text-sm text-muted-foreground">
                               {q.all_requirement?.customer_profile?.name || "未知客戶"} ·{" "}
@@ -796,7 +847,25 @@ const AdminQuotationsPanel = () => {
                               {q.total_amount ? ` · NT$ ${q.total_amount.toLocaleString()}` : ""}
                             </p>
                           </div>
-                          {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                          <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              disabled={actionLoading === q.id}
+                              onClick={() => handleToggleQuotationHide(q, !isQuotationHidden(q))}
+                            >
+                              {actionLoading === q.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : isQuotationHidden(q) ? (
+                                "取消隱藏"
+                              ) : (
+                                "隱藏"
+                              )}
+                            </Button>
+                            {isExpanded ? <ChevronUp className="h-5 w-5" /> : <ChevronDown className="h-5 w-5" />}
+                          </div>
                         </div>
 
                         {/* Expanded Content */}

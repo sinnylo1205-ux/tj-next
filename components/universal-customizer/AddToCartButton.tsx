@@ -7,7 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useRouter } from "next/navigation";
 import { toBlob } from "html-to-image";
 import { supabase } from "@/integrations/supabase/client";
-import { convertToWebP } from "@/lib/convert-to-webp";
+import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
 import { useState } from "react";
 import { LoadingOverlay } from "@/components/LoadingOverlay";
 
@@ -261,7 +261,7 @@ export function useAddToCart() {
               logCaptureDebug("main", captureRef, blob);
             }
 
-            const webpBlob = await convertToWebP(new File([blob], "screenshot.png", { type: "image/png" }));
+            const webpBlob = await prepareImageForUpload(new File([blob], "screenshot.png", { type: "image/png" }));
             const fileName = `preview-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.webp`;
 
             const { data: uploadData, error: uploadError } = await supabase.storage
@@ -330,7 +330,7 @@ export function useAddToCart() {
             if (isCaptureDebugEnabled()) {
               logCaptureDebug("package", packageCaptureRef, pkgBlob);
             }
-            const webpPkg = await convertToWebP(new File([pkgBlob], "package-screenshot.png", { type: "image/png" }));
+            const webpPkg = await prepareImageForUpload(new File([pkgBlob], "package-screenshot.png", { type: "image/png" }));
             const pkgFileName = `package-preview-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.webp`;
             const { data: pkgUpload, error: pkgErr } = await supabase.storage
               .from("customizer_uploads")

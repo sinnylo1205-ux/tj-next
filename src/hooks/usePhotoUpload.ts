@@ -4,7 +4,7 @@
 
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { convertToWebP } from "@/lib/convert-to-webp";
+import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
 import type { DecorationOption } from "./useHierarchicalOptions";
 
 interface PhotoFrame {
@@ -90,12 +90,15 @@ export function usePhotoUpload(
         throw new Error("只能上傳圖片檔案");
       }
 
-      // 2. 驗證檔案大小（最大 2MB，符合 bucket 限制）
-      if (file.size > 2 * 1024 * 1024) {
-        throw new Error("圖片大小不能超過 2MB");
+      // 原檔可較大；經 Sharp 壓縮後應符合 Storage 限制
+      if (file.size > 20 * 1024 * 1024) {
+        throw new Error("圖片原檔不能超過 20MB");
       }
 
-      const webpFile = await convertToWebP(file);
+      const webpFile = await prepareImageForUpload(file);
+      if (webpFile.size > 2 * 1024 * 1024) {
+        throw new Error("壓縮後圖片仍超過 2MB，請換一張較小的圖");
+      }
       const cleanFileName = `photo_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
 
       const { data, error } = await supabase.storage.from("customizer_uploads").upload(cleanFileName, webpFile, {

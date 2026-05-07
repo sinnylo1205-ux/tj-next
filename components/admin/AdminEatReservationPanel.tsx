@@ -72,6 +72,7 @@ const AdminEatReservationPanel = () => {
 
       toast({ title: "✅ 已排入製作/試吃" });
       fetchReservations();
+      window.dispatchEvent(new Event("admin-refresh-badges"));
     } catch (err: any) {
       console.error("Approve error:", err);
       toast({ title: "操作失敗", description: err.message, variant: "destructive" });

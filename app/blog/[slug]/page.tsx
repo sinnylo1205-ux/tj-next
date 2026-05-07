@@ -7,6 +7,7 @@ import { decodeBlogSlugParam } from "@/lib/blog-slug";
 import { rewriteSupabaseImgSrcInArticleHtml } from "@/lib/next-image-proxy-url";
 import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 import { normalizeArticleRelatedReadingJson } from "@/lib/article-related-reading";
+import { optimizeImage } from "@/lib/supabase-image-url";
 
 export const dynamic = "force-dynamic";
 
@@ -41,6 +42,7 @@ export default async function BlogSlugPage({ params }: PageProps) {
       (row as { related_reading?: unknown }).related_reading,
     ),
     content_mode: row.content_mode ?? "template",
+    og_image_url: row.og_image_url ? optimizeImage(row.og_image_url, 1200, 78) : null,
   };
 
   const richBodyHtml =

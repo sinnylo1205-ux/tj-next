@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
@@ -60,10 +60,28 @@ export default function AdminPage() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeModule, setActiveModule] = useState<AdminModule>("dashboard");
+  const [quotationBadgeCount, setQuotationBadgeCount] = useState(0);
+  const [eatBadgeCount, setEatBadgeCount] = useState(0);
 
   const router = useRouter();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+
+  const refreshAdminBadges = useCallback(async () => {
+    const [qRes, eRes] = await Promise.all([
+      supabase
+        .from("quotation_orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "price_asked")
+        .or("is_hide.is.null,is_hide.eq.false"),
+      supabase
+        .from("eat_reservation")
+        .select("id", { count: "exact", head: true })
+        .or("status.is.null,status.eq.asked"),
+    ]);
+    setQuotationBadgeCount(qRes.count ?? 0);
+    setEatBadgeCount(eRes.count ?? 0);
+  }, []);
 
   // 依據 URL 的 module 參數初始化 / 同步目前的 active module
   useEffect(() => {
@@ -109,10 +127,30 @@ export default function AdminPage() {
 
       setUser(user);
       setLoading(false);
+      void refreshAdminBadges();
     };
 
     void checkAuthAndRole();
-  }, [router, toast]);
+  }, [router, toast, refreshAdminBadges]);
+
+  useEffect(() => {
+    if (!user) return;
+    void refreshAdminBadges();
+  }, [activeModule, user, refreshAdminBadges]);
+
+  useEffect(() => {
+    const onRefreshBadges = () => {
+      void refreshAdminBadges();
+    };
+    window.addEventListener("admin-refresh-badges", onRefreshBadges);
+    return () => window.removeEventListener("admin-refresh-badges", onRefreshBadges);
+  }, [refreshAdminBadges]);
+
+  const navBadgeCount = (id: AdminModule) => {
+    if (id === "quotations") return quotationBadgeCount;
+    if (id === "eat_reservation") return eatBadgeCount;
+    return 0;
+  };
 
   if (loading) {
     return (
@@ -160,22 +198,37 @@ export default function AdminPage() {
           </div>
 
           <nav className="flex-1 p-4 space-y-2">
-            {ADMIN_MODULES.map((module) => (
+            {ADMIN_MODULES.map((module) => {
+              const n = navBadgeCount(module.id);
+              return (
               <button
                 key={module.id}
                 type="button"
                 onClick={() => setActiveModule(module.id)}
                 className={cn(
-                  "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors",
+                  "w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors relative",
                   activeModule === module.id
                     ? "bg-primary text-primary-foreground"
                     : "text-muted-foreground hover:bg-muted hover:text-foreground",
                 )}
               >
-                <module.icon className="h-5 w-5" />
-                <span className="font-medium">{module.title}</span>
+                <module.icon className="h-5 w-5 shrink-0" />
+                <span className="font-medium flex-1 min-w-0">{module.title}</span>
+                {n > 0 ? (
+                  <span
+                    className={cn(
+                      "shrink-0 min-w-[1.25rem] h-5 px-1 rounded-full text-[11px] font-bold flex items-center justify-center",
+                      activeModule === module.id
+                        ? "bg-primary-foreground text-primary"
+                        : "bg-red-600 text-white",
+                    )}
+                  >
+                    {n > 99 ? "99+" : n}
+                  </span>
+                ) : null}
               </button>
-            ))}
+            );
+            })}
             <div className="pt-2 mt-2 border-t border-border">
               <Link
                 href="/admin-text"
@@ -196,20 +249,28 @@ export default function AdminPage() {
       {isMobile && (
         <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-border z-50">
           <div className="grid grid-cols-8">
-            {ADMIN_MODULES.map((module) => (
+            {ADMIN_MODULES.map((module) => {
+              const n = navBadgeCount(module.id);
+              return (
               <button
                 key={module.id}
                 type="button"
                 onClick={() => setActiveModule(module.id)}
                 className={cn(
-                  "flex flex-col items-center justify-center py-2 gap-0.5 transition-colors",
+                  "relative flex flex-col items-center justify-center py-2 gap-0.5 transition-colors",
                   activeModule === module.id ? "text-primary" : "text-muted-foreground",
                 )}
               >
                 <module.icon className="h-5 w-5" />
+                {n > 0 ? (
+                  <span className="absolute top-1 right-1/2 translate-x-3 min-w-[0.875rem] h-3.5 px-0.5 rounded-full bg-red-600 text-white text-[9px] font-bold leading-none flex items-center justify-center">
+                    {n > 9 ? "9+" : n}
+                  </span>
+                ) : null}
                 <span className="text-[10px] leading-tight">{module.shortTitle}</span>
               </button>
-            ))}
+            );
+            })}
           </div>
           <Link
             href="/admin-text"

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, Fragment } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { convertToWebP } from "@/lib/convert-to-webp";
+import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,6 +16,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
+import { buildReceiptHtml, ntdIntegerToChineseCapital, triggerDownloadHtmlFile } from "@/lib/receipt-html";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import ManualOrderForm from "./ManualOrderForm";
 import { SafeImage } from "@/components/SafeImage";
@@ -316,7 +317,7 @@ const OrderStatusManager = () => {
       const itemKey = `${orderId}-${orderItemId}`;
       setUploadingItemKey(itemKey);
 
-      const webpFile = file.type.startsWith("image/") ? await convertToWebP(file) : file;
+      const webpFile = file.type.startsWith("image/") ? await prepareImageForUpload(file) : file;
       const path = `${ORDER_ADMIN_MEDIA_PREFIX}/${orderId}/item_${orderItemId}_${Date.now()}_${Math.random().toString(36).slice(2)}.webp`;
       console.log("[admin-media] uploading to storage:", path);
 
@@ -603,6 +604,55 @@ const OrderStatusManager = () => {
     await handleStatusUpdate(orderId, "processing", "verify_payment");
   };
 
+  /** 未匯款（payment_step=pending）時預覽收據（本機下載 HTML）；不變更訂單狀態、不觸發寄信 edge */
+  const handleAssembleReceiptDownload = async (order: Order) => {
+    if (loadingAction) return;
+    setLoadingAction({ orderId: order.id, action: "assemble_receipt" });
+    try {
+      const { data, error } = await supabase.from("order_items").select("*").eq("order_id", order.id);
+      if (error) throw error;
+      const rows = (data ?? []) as OrderItem[];
+      const lineItems = rows.map((it) => {
+        const qty = Number(it.quantity) || 0;
+        const up = Number(it.unit_price) || 0;
+        return {
+          product_name: String(it.product_name ?? ""),
+          quantity: qty,
+          unit_price: up,
+          subtotal: qty * up,
+        };
+      });
+      const total = Math.round(Number(order.total_amount) || 0);
+      const chinese = ntdIntegerToChineseCapital(total);
+      const receiptDate = `（預覽）${new Date().toLocaleDateString("zh-TW", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      })}`;
+      const taxIdRaw = order.TAX_id;
+      const taxIdStr =
+        taxIdRaw !== null && taxIdRaw !== undefined && String(taxIdRaw).trim() !== ""
+          ? String(taxIdRaw).trim()
+          : "";
+      const html = buildReceiptHtml({
+        receiptDate,
+        tax_title: String(order.TAX_title ?? "").trim(),
+        tax_id: taxIdStr,
+        items: lineItems,
+        shipping_fee: Number(order.shipping_fee) || 0,
+        total_amount: total,
+        total_amount_chinese: chinese,
+      });
+      triggerDownloadHtmlFile(html, `收據預覽_${order.id.slice(0, 8)}.html`);
+      toast({ title: "已下載收據 HTML", description: "日期為預覽用；確認匯款轉處理中後寄送邏輯不變。" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "組裝失敗";
+      toast({ title: "預先組裝收據失敗", description: msg, variant: "destructive" });
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   const handleConfirmShipment = async (orderId: string) => {
     await handleStatusUpdate(orderId, "shipped", "confirm_shipment");
   };
@@ -813,20 +863,20 @@ const OrderStatusManager = () => {
             ) : filteredOrders.length === 0 ? (
               <p className="text-center text-muted-foreground py-12">目前沒有訂單</p>
             ) : (
-              <Table>
+              <Table className="table-fixed">
                 <TableHeader>
                   <TableRow>
-                    <TableHead>訂單號</TableHead>
-                    <TableHead>預計取件日期</TableHead>
-                    <TableHead className="min-w-[11rem] md:min-w-[16rem] max-w-[min(42vw,18rem)] md:max-w-none align-top">
+                    <TableHead className="w-[5.5rem] min-w-0">訂單號</TableHead>
+                    <TableHead className="w-[6.5rem] min-w-0">預計取件日期</TableHead>
+                    <TableHead className="w-[7.5rem] max-w-[7.5rem] min-w-0 md:w-[9.5rem] md:max-w-[9.5rem] align-top px-2 md:px-3">
                       用戶
                     </TableHead>
-                    <TableHead>金額</TableHead>
-                    <TableHead>配送方式</TableHead>
-                    <TableHead>付款狀態</TableHead>
-                    <TableHead>訂單狀態</TableHead>
-                    <TableHead>操作</TableHead>
-                    <TableHead>管理員備注</TableHead>
+                    <TableHead className="w-[5rem] min-w-0 whitespace-nowrap px-2 md:px-4">金額</TableHead>
+                    <TableHead className="w-[4.5rem] min-w-0 px-2 md:px-3">配送方式</TableHead>
+                    <TableHead className="w-[4.25rem] min-w-0 px-2 md:px-3">付款狀態</TableHead>
+                    <TableHead className="w-[4.25rem] min-w-0 px-2 md:px-3">訂單狀態</TableHead>
+                    <TableHead className="w-[11rem] min-w-[10rem] max-w-[13rem] px-2 md:px-3">操作</TableHead>
+                    <TableHead className="min-w-0 w-[12%] px-2 md:px-3">管理員備注</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -843,15 +893,15 @@ const OrderStatusManager = () => {
                           className="cursor-pointer hover:bg-muted/40"
                           onClick={() => toggleOrderExpand(order.id)}
                         >
-                          <TableCell className="font-medium">#{order.id.slice(0, 6).toUpperCase()}</TableCell>
-                          <TableCell>{order.expected_pickup_date || "未指定"}</TableCell>
-                          <TableCell className="align-top">
+                          <TableCell className="font-medium min-w-0 py-3 px-2 md:px-4">#{order.id.slice(0, 6).toUpperCase()}</TableCell>
+                          <TableCell className="min-w-0 py-3 px-2 md:px-4">{order.expected_pickup_date || "未指定"}</TableCell>
+                          <TableCell className="align-top min-w-0 w-[7.5rem] max-w-[7.5rem] md:w-[9.5rem] md:max-w-[9.5rem] py-3 px-2 md:px-3">
                             <div className="md:hidden">
                               <Popover>
                                 <PopoverTrigger asChild>
                                   <button
                                     type="button"
-                                    className="w-full max-w-[min(40vw,16rem)] text-left text-sm leading-snug truncate hover:underline underline-offset-2"
+                                    className="w-full max-w-full text-left text-xs leading-snug truncate hover:underline underline-offset-2"
                                     onClick={(e) => e.stopPropagation()}
                                     onMouseDown={(e) => e.stopPropagation()}
                                   >
@@ -869,7 +919,7 @@ const OrderStatusManager = () => {
                                 </PopoverContent>
                               </Popover>
                             </div>
-                            <div className="hidden md:block">
+                            <div className="hidden md:block max-w-full break-words text-xs leading-snug text-foreground">
                               {order.is_from_quotation ? (
                                 <>
                                   {(order.who_receive || "未填寫") + "（報價單）"}
@@ -897,9 +947,9 @@ const OrderStatusManager = () => {
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>NT$ {order.total_amount}</TableCell>
-                          <TableCell>{order.shipping_way}</TableCell>
-                          <TableCell>
+                          <TableCell className="min-w-0 whitespace-nowrap py-3 px-2 md:px-4">NT$ {order.total_amount}</TableCell>
+                          <TableCell className="min-w-0 break-words py-3 px-2 md:px-3 text-xs md:text-sm">{order.shipping_way}</TableCell>
+                          <TableCell className="min-w-0 py-3 px-2 md:px-3">
                             <Badge
                               variant={
                                 order.payment_step === "verified"
@@ -914,7 +964,7 @@ const OrderStatusManager = () => {
                               {order.payment_step === "verified" && "已確認"}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="min-w-0 py-3 px-2 md:px-3">
                             <Badge
                               variant={
                                 order.order_status === "delivered"
@@ -933,8 +983,20 @@ const OrderStatusManager = () => {
                               {order.order_status === "returned" && "已退貨"}
                             </Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="min-w-0 align-top py-3 px-2 md:px-3">
                             <div className="flex gap-2 items-center flex-wrap" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
+                              {order.payment_step === "pending" && (
+                                <Button
+                                  size="sm"
+                                  variant="secondary"
+                                  onClick={() => void handleAssembleReceiptDownload(order)}
+                                  disabled={loadingAction !== null}
+                                >
+                                  {loadingAction?.orderId === order.id && loadingAction?.action === "assemble_receipt"
+                                    ? "產生中..."
+                                    : "預先組裝收據"}
+                                </Button>
+                              )}
                               {order.payment_step === "submitted" && (
                                 <Button
                                   size="sm"
@@ -1021,7 +1083,7 @@ const OrderStatusManager = () => {
                             </div>
                           </TableCell>
                           <TableCell
-                            className="min-w-[140px]"
+                            className="min-w-0 py-3 px-2 md:px-3"
                             onMouseDown={(e) => e.stopPropagation()}
                             onClick={(e) => e.stopPropagation()}
                           >
