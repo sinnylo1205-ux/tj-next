@@ -1,29 +1,15 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useCallback } from "react";
+import {
+  fetchGiftBoxesBackground,
+  fetchGiftBoxesForeground,
+  fetchGiftBoxesProducts,
+  fetchGiftBoxesNotices,
+} from "@/lib/gift-boxes-queries";
+import { QUERY_KEYS } from "@/lib/react-query-keys";
 
-// Query Keys - 用於快取識別
-export const QUERY_KEYS = {
-  giftBoxes: ["giftBoxes"],
-  giftBoxesBackground: ["giftBoxes", "background"],
-  giftBoxesForeground: ["giftBoxes", "foreground"],
-  giftBoxesProducts: ["giftBoxes", "products"],
-  giftBoxesNotices: ["giftBoxes", "notices"],
-  classicStyles: ["classicStyles"],
-  classicBackground: ["classicStyles", "background"],
-  classicForeground: ["classicStyles", "foreground"],
-  classicSection4Text: ["classicStyles", "section4Text"],
-  classicProducts: ["classicStyles", "products"],
-  gallery: ["gallery"],
-  order: ["order"],
-  orderBackground: ["order", "background"],
-  orderProducts: ["order", "products"],
-  home: ["home"],
-  homeBackground: ["home", "background"],
-  homeForeground: ["home", "foreground"],
-  about: ["about"],
-  aboutBackground: ["about", "background"],
-};
+export { QUERY_KEYS } from "@/lib/react-query-keys";
 
 /**
  * 預載 GiftBoxes 頁面資料（僅資料，不等圖片）
@@ -32,24 +18,7 @@ export const preloadGiftBoxesData = async (queryClient: ReturnType<typeof useQue
   // Background sections
   await queryClient.fetchQuery({
     queryKey: QUERY_KEYS.giftBoxesBackground,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("Website_photo_material")
-        .select("id, photo_url, photo_url_mobile, sort_order, ui_width, ui_height, ui_width_mobile, ui_height_mobile")
-        .eq("category", "gift_box")
-        .not("sort_order", "is", null)
-        .order("sort_order", { ascending: true });
-      return (data || []).map((item: any) => ({
-        id: item.id,
-        photo_url: item.photo_url || "",
-        photo_url_mobile: item.photo_url_mobile ?? null,
-        sort_order: item.sort_order ?? 0,
-        ui_width: item.ui_width ?? null,
-        ui_height: item.ui_height ?? null,
-        ui_width_mobile: item.ui_width_mobile ?? null,
-        ui_height_mobile: item.ui_height_mobile ?? null,
-      }));
-    },
+    queryFn: () => fetchGiftBoxesBackground(supabase),
   });
 
   await queryClient.fetchQuery({
@@ -77,35 +46,17 @@ export const preloadGiftBoxesData = async (queryClient: ReturnType<typeof useQue
   // Foreground items
   await queryClient.fetchQuery({
     queryKey: QUERY_KEYS.giftBoxesForeground,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("Website_photo_material")
-        .select("*")
-        .eq("category", "gift_box")
-        .is("sort_order", null);
-      return (data || []).filter((item: any) => item.put_where != null);
-    },
+    queryFn: () => fetchGiftBoxesForeground(supabase),
   });
 
-  // Products
   await queryClient.fetchQuery({
     queryKey: QUERY_KEYS.giftBoxesProducts,
-    queryFn: async () => {
-      const { data } = await supabase.from("products").select("*").in("category", ["GiftBox", "meal_box"]);
-      return data || [];
-    },
+    queryFn: () => fetchGiftBoxesProducts(supabase),
   });
 
-  // Product notices
   await queryClient.fetchQuery({
     queryKey: QUERY_KEYS.giftBoxesNotices,
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("product_notice")
-        .select("product_id, label, size")
-        .in("product_id", ["giftbox_big", "giftbox_midium", "giftbox_small", "box_6", "box_3"]);
-      return data || [];
-    },
+    queryFn: () => fetchGiftBoxesNotices(supabase),
   });
 };
 

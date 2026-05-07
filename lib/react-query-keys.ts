@@ -1,0 +1,22 @@
+/** React Query 快取 key（純常數，供 RSC / client 共用，不可放 React hook） */
+export const QUERY_KEYS = {
+  giftBoxes: ["giftBoxes"],
+  giftBoxesBackground: ["giftBoxes", "background"],
+  giftBoxesForeground: ["giftBoxes", "foreground"],
+  giftBoxesProducts: ["giftBoxes", "products"],
+  giftBoxesNotices: ["giftBoxes", "notices"],
+  classicStyles: ["classicStyles"],
+  classicBackground: ["classicStyles", "background"],
+  classicForeground: ["classicStyles", "foreground"],
+  classicSection4Text: ["classicStyles", "section4Text"],
+  classicProducts: ["classicStyles", "products"],
+  gallery: ["gallery"],
+  order: ["order"],
+  orderBackground: ["order", "background"],
+  orderProducts: ["order", "products"],
+  home: ["home"],
+  homeBackground: ["home", "background"],
+  homeForeground: ["home", "foreground"],
+  about: ["about"],
+  aboutBackground: ["about", "background"],
+} as const;

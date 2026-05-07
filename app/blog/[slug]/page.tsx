@@ -8,6 +8,7 @@ import { rewriteSupabaseImgSrcInArticleHtml } from "@/lib/next-image-proxy-url";
 import { buildBreadcrumbListJsonLd } from "@/lib/jsonld/breadcrumb-list";
 import { normalizeArticleRelatedReadingJson } from "@/lib/article-related-reading";
 import { optimizeImage } from "@/lib/supabase-image-url";
+import { expectsArticleToc } from "@/lib/article-expects-toc";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,8 @@ export default async function BlogSlugPage({ params }: PageProps) {
       ? rewriteSupabaseImgSrcInArticleHtml(articleJsonToHtml(row.body_json))
       : null;
 
+  const expectsTocAside = expectsArticleToc(row, richBodyHtml);
+
   const articlePath = `/blog/${encodeURIComponent(slug)}`;
   const blogArticleBreadcrumbJsonLd = buildBreadcrumbListJsonLd([
     { name: "首頁", path: "/" },
@@ -57,13 +60,22 @@ export default async function BlogSlugPage({ params }: PageProps) {
     { name: article.item_name, path: articlePath },
   ]);
 
+  const lcpImageUrl = article.og_image_url;
+
   return (
     <>
+      {lcpImageUrl ? (
+        <link rel="preload" as="image" href={lcpImageUrl} fetchPriority="high" />
+      ) : null}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(blogArticleBreadcrumbJsonLd) }}
       />
-      <BlogArticleContent article={article} richBodyHtml={richBodyHtml} />
+      <BlogArticleContent
+        article={article}
+        richBodyHtml={richBodyHtml}
+        expectsTocAside={expectsTocAside}
+      />
     </>
   );
 }

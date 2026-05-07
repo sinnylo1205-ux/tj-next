@@ -35,6 +35,8 @@ interface OrbitalSelectorProps {
   onRotateLeftRef?: React.MutableRefObject<(() => void) | null>;
   /** 外部控制 - 向右旋轉回調 */
   onRotateRightRef?: React.MutableRefObject<(() => void) | null>;
+  /** 為目前視覺最前方（active）商品圖加上 fetchPriority=high，改善 LCP */
+  priorityActiveImage?: boolean;
 }
 
 export function OrbitalSelector({
@@ -49,6 +51,7 @@ export function OrbitalSelector({
   hideControls = false,
   onRotateLeftRef,
   onRotateRightRef,
+  priorityActiveImage = false,
 }: OrbitalSelectorProps) {
   // 角度偏移（弧度），控制軌道旋轉
   const [angleOffset, setAngleOffset] = useState(0);
@@ -166,6 +169,7 @@ export function OrbitalSelector({
                     src={item.imageUrl}
                     alt={item.name}
                     fill
+                    priority={priorityActiveImage && isActive}
                     className={`
                       object-contain p-2
                       transition-opacity duration-200

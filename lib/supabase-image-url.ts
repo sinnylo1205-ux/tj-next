@@ -1,6 +1,8 @@
 /**
  * Supabase Storage 公開圖網址 → 圖片轉換 API（render/image）
  *
+ * **運行時：** 若已在 Supabase 控制台啟用 Image Transform，仍須設定 `NEXT_PUBLIC_SUPABASE_IMAGE_TRANSFORM=true`（或 `1`）並重新建置，前端才會將 `object/public` 改寫為 `render/image`（避免誤用或未開 env 仍打原圖）。
+ *
  * 原始：`…/storage/v1/object/public/{bucket}/{path}`
  * 轉換：`…/storage/v1/render/image/public/{bucket}/{path}?width=…&quality=…`
  *

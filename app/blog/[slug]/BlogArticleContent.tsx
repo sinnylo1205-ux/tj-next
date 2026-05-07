@@ -80,10 +80,13 @@ function resolveBlogShopCtaHref(article: ProductArticle): string {
 export default function BlogArticleContent({
   article,
   richBodyHtml,
+  expectsTocAside = false,
 }: {
   article: ProductArticle;
   /** 由伺服端自 body_json 產生，避免把 Tiptap 整包進 client */
   richBodyHtml?: string | null;
+  /** 伺服端預測是否有 h2 目錄：首屏即雙欄，避免 hydration 後才插入側欄造成 CLS */
+  expectsTocAside?: boolean;
 }) {
   const shopCtaHref = resolveBlogShopCtaHref(article);
   const isRichtext = article.content_mode === "richtext" && richBodyHtml;
@@ -114,7 +117,7 @@ export default function BlogArticleContent({
 
   /** 左欄目錄頂端與本文第一行大致對齊（有頂圖時略過圖片區；僅富文本無圖時預留 header 下緣） */
   const tocAsidePtClass =
-    tocItems.length === 0
+    !expectsTocAside
       ? ""
       : article.og_image_url
         ? "lg:pt-[calc(16rem+1rem+2rem)]"
@@ -148,12 +151,12 @@ export default function BlogArticleContent({
       <div
         className={cn(
           "mx-auto w-full",
-          tocItems.length > 0
+          expectsTocAside
             ? "max-w-[1200px] lg:w-fit lg:grid lg:grid-cols-[minmax(11rem,240px)_minmax(0,680px)] lg:gap-x-12 xl:gap-x-16 lg:items-stretch"
             : "max-w-[680px]",
         )}
       >
-        {tocItems.length > 0 ? (
+        {expectsTocAside ? (
           <aside className="hidden min-w-0 lg:col-start-1 lg:row-start-1 lg:block">
             <div
               className={cn(
@@ -169,8 +172,8 @@ export default function BlogArticleContent({
         <article
           className={cn(
             "min-w-0",
-            tocItems.length === 0 && "mx-auto",
-            tocItems.length > 0 && "lg:col-start-2",
+            !expectsTocAside && "mx-auto",
+            expectsTocAside && "lg:col-start-2",
           )}
         >
           <div

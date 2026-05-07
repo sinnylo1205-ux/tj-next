@@ -135,7 +135,7 @@ export default function RootLayout({
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteJsonLd) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(localBusinessJsonLd) }} />
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(itemListJsonLd) }} />
-        {/* GA4 全站僅在此處載入，勿重複埋碼 */}
+        {/* GA4 全站僅在此處載入，勿重複埋碼；lazyOnload 降低 render-blocking */}
         <Script
           src={`https://www.googletagmanager.com/gtag/js?id=${GA4_ID}`}
           strategy="lazyOnload"

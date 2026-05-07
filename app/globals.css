@@ -216,10 +216,11 @@ h3 {
 }
 .article-tiptap-editor img.article-rich-body-img,
 .article-rich-body img {
-  max-width: min(100%, 36rem);
+  width: min(100%, 36rem);
   max-height: 18rem;
-  width: auto;
   height: auto;
+  /* 載入前預留版面，降低 CLS（與 object-fit: contain 並用；比例僅為保守預設） */
+  aspect-ratio: 4 / 3;
   object-fit: contain;
   margin-left: auto;
   margin-right: auto;

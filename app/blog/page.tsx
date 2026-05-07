@@ -53,9 +53,14 @@ export default async function BlogIndexPage() {
     .order("created_at", { ascending: false });
 
   const list = (articles || []) as ArticlePreview[];
+  const firstCoverUrl =
+    list.length > 0 && list[0].og_image_url ? optimizeImage(list[0].og_image_url, 680, 78) : null;
 
   return (
     <>
+      {firstCoverUrl ? (
+        <link rel="preload" as="image" href={firstCoverUrl} fetchPriority="high" />
+      ) : null}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(blogIndexBreadcrumbJsonLd) }}
@@ -82,24 +87,25 @@ export default async function BlogIndexPage() {
       </header>
       {list.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {list.map((article) => (
+          {list.map((article, index) => (
             <Link
               key={article.slug}
               href={`/blog/${encodeURIComponent(article.slug)}`}
               className="group block bg-card rounded-xl border border-border overflow-hidden hover:shadow-lg transition-shadow"
             >
               {article.og_image_url ? (
-                <div className="relative h-48 w-full overflow-hidden">
+                <div className="relative aspect-[16/9] w-full overflow-hidden bg-muted">
                   <SafeImage
-                    src={optimizeImage(article.og_image_url, 720, 78)}
+                    src={optimizeImage(article.og_image_url, 680, 78)}
                     alt={article.item_name}
                     fill
+                    priority={index === 0}
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                   />
                 </div>
               ) : (
-                <div className="w-full h-48 bg-muted flex items-center justify-center">
+                <div className="relative aspect-[16/9] w-full bg-muted flex items-center justify-center">
                   <BookOpen className="w-12 h-12 text-muted-foreground" />
                 </div>
               )}
@@ -124,7 +130,7 @@ export default async function BlogIndexPage() {
                 key={article.slug}
                 className="block bg-card rounded-xl border border-border overflow-hidden opacity-60"
               >
-                <div className="w-full h-48 bg-muted flex items-center justify-center">
+                <div className="relative aspect-[16/9] w-full bg-muted flex items-center justify-center">
                   <BookOpen className="w-12 h-12 text-muted-foreground" />
                 </div>
                 <div className="p-5">

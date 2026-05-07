@@ -309,7 +309,7 @@ const handleQuotationImageUpload = async (file: File): Promise<string> => {
 
   const { error } = await supabase.storage
     .from("custom_asset")
-    .upload(fileName, webpFile, { cacheControl: "3600", upsert: false, contentType: "image/webp" });
+    .upload(fileName, webpFile, { cacheControl: "604800", upsert: false, contentType: "image/webp" });
 
   if (error) throw error;
 

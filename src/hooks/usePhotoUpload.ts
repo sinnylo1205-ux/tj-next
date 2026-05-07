@@ -102,7 +102,7 @@ export function usePhotoUpload(
       const cleanFileName = `photo_${Date.now()}_${Math.random().toString(36).substring(7)}.webp`;
 
       const { data, error } = await supabase.storage.from("customizer_uploads").upload(cleanFileName, webpFile, {
-        cacheControl: "3600",
+        cacheControl: "604800",
         upsert: false,
         contentType: "image/webp",
       });
