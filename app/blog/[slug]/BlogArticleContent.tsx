@@ -42,7 +42,7 @@ export interface ProductArticle {
   custom_options: CustomOption[];
   use_cases: UseCase[];
   faq: FaqItem[];
-  editor_path: string;
+  editor_path: string | null;
   meta_title: string | null;
   meta_description: string | null;
   og_image_url: string | null;
@@ -54,7 +54,7 @@ export interface ProductArticle {
 }
 
 const productPaths: Record<string, string> = {
-  /** 後台新增文章預設 product_id，無對應商品時導向首頁 */
+  /** 後台預設 product_id；未在 editor_path 填路徑時會用此對照（blog → 首頁） */
   blog: "/",
   marshmallow: "/product/cotton",
   fortune_cookie: "/product/luck",
@@ -69,6 +69,14 @@ const productPaths: Record<string, string> = {
   donut: "/product/donut",
 };
 
+/** 「進入選購與設計」：若 editor_path 為網址則優先使用，否則依 product_id 對照 */
+function resolveBlogShopCtaHref(article: ProductArticle): string {
+  const ep = (article.editor_path || "").trim();
+  if (ep.startsWith("https://") || ep.startsWith("http://")) return ep;
+  if (ep.startsWith("/")) return ep;
+  return productPaths[article.product_id] || `/product/${article.product_id}`;
+}
+
 export default function BlogArticleContent({
   article,
   richBodyHtml,
@@ -77,7 +85,7 @@ export default function BlogArticleContent({
   /** 由伺服端自 body_json 產生，避免把 Tiptap 整包進 client */
   richBodyHtml?: string | null;
 }) {
-  const noticePath = productPaths[article.product_id] || `/product/${article.product_id}`;
+  const shopCtaHref = resolveBlogShopCtaHref(article);
   const isRichtext = article.content_mode === "richtext" && richBodyHtml;
 
   const readableRef = useRef<HTMLDivElement>(null);
@@ -312,7 +320,7 @@ export default function BlogArticleContent({
 
           <div className="flex flex-wrap gap-4 pt-6">
             <Button asChild>
-              <Link href={noticePath}>
+              <Link href={shopCtaHref}>
                 進入選購與設計 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>

@@ -63,7 +63,7 @@ interface ArticleRichTiptapProps {
   initialRelatedReading: unknown;
   initialMetaTitle: string | null;
   initialMetaDescription: string | null;
-  /** 資料表 editor_path，新文建議 richtext */
+  /** 資料表 editor_path：一般為 richtext；若以 / 或 http 開頭則作為文章頁「進入選購與設計」連結 */
   initialEditorPath: string;
   /** 若仍為 template：提醒首次儲存將改為新排版 */
   initialContentMode: string | null;
@@ -672,15 +672,18 @@ export default function ArticleRichTiptap({
             />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="article-editor-path">editor_path</Label>
+            <Label htmlFor="article-editor-path">editor_path（內容模式或按鈕連結）</Label>
             <Input
               id="article-editor-path"
               value={editorPath}
               onChange={(e) => setEditorPath(e.target.value)}
               className="font-mono text-sm"
-              placeholder="richtext"
+              placeholder="richtext 或 /product/macaron"
             />
-            <p className="text-xs text-muted-foreground">資料表欄位，新文章請維持 richtext；除非你知道其他用途否則勿改。</p>
+            <p className="text-xs text-muted-foreground">
+              一般填 richtext。若「進入選購與設計」要導到指定頁，請改填以 / 開頭的站內路徑（例如 /product/macaron、/customizer/donut）或完整
+              https:// 外連；否則依 product_id 對照，blog 預設為首頁。
+            </p>
           </div>
         </div>
       </div>
