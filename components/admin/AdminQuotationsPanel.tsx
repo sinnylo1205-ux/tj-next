@@ -11,7 +11,17 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronDown, ChevronUp, Upload, ExternalLink, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronUp, Upload, ExternalLink, Loader2, RefreshCw, Plus } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { buildQuotationPdfHtml, type QuotationPdfWebhookPayload } from "@/lib/quotation-pdf-html";
 import { SafeImage } from "@/components/SafeImage";
 
 // ========== Types ==========
@@ -488,6 +498,26 @@ const AdminQuotationsPanel = () => {
   const [quotationEdits, setQuotationEdits] = useState<Record<string, Partial<QuotationOrder> & { tax_title?: string; tax_id?: string }>>({});
   const [savingQuotation, setSavingQuotation] = useState<string | null>(null);
 
+  const defaultNewQuotationForm = () => ({
+    customerName: "",
+    email: "",
+    phone: "",
+    whoReceive: "",
+    lineUserId: "",
+    userId: "",
+    shippingWay: "",
+    shippingAddress: "",
+    expectedPickupDate: "",
+    serviceType: "custom_design" as "custom_design" | "giftbox" | "candy_bar",
+    inquiryNotes: "",
+    itemTitle: "詢價品項",
+  });
+
+  const [newQuotationOpen, setNewQuotationOpen] = useState(false);
+  const [newQuotationStep, setNewQuotationStep] = useState(1);
+  const [newQuotationSubmitting, setNewQuotationSubmitting] = useState(false);
+  const [newQForm, setNewQForm] = useState(() => defaultNewQuotationForm());
+
   const initQuotationEdits = (q: QuotationOrder) => {
     if (!quotationEdits[q.id]) {
       const ar = q.all_requirement || {};
@@ -685,6 +715,170 @@ const AdminQuotationsPanel = () => {
     }
   };
 
+  /** 寫入已報價、不經 n8n；另開報價單 HTML，由管理員以瀏覽器列印／外掛轉 PDF */
+  const handleStandaloneQuote = async (quotation: QuotationOrder) => {
+    const ed = editData[quotation.id];
+    if (!ed) return;
+
+    const qItems = items[quotation.id] || [];
+    const missingPrice = qItems.some((item) => !ed.itemPrices[item.id] && ed.itemPrices[item.id] !== 0);
+    if (missingPrice) {
+      toast({ title: "請填寫所有品項單價", variant: "destructive" });
+      return;
+    }
+
+    setActionLoading(quotation.id);
+    try {
+      const itemsPayload = qItems.map((item) => ({
+        id: item.id,
+        unit_price: ed.itemPrices[item.id] || 0,
+        preview_url: ed.itemPreviewUrls[item.id] || "",
+        why_price: ed.itemWhyPrices?.[item.id] || "",
+      }));
+
+      const lineUserId = quotationEdits[quotation.id]?.line_user_id ?? ed.lineUserId ?? null;
+      const { data, error } = await supabase.functions.invoke("process-quotation", {
+        body: {
+          action: "send_quote_standalone",
+          quotation_order_id: quotation.id,
+          items: itemsPayload,
+          shipping_fee: ed.shippingFee || 0,
+          line_user_id: lineUserId || null,
+        },
+      });
+
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+
+      const pdfInput = data?.pdf_input as QuotationPdfWebhookPayload | undefined;
+      if (pdfInput) {
+        const html = buildQuotationPdfHtml(pdfInput);
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, "_blank", "noopener,noreferrer");
+        if (!w) {
+          toast({
+            title: "無法開啟新視窗",
+            description: "請允許此網站開啟彈出視窗，或暫停阻擋後再試一次「單獨開立報價單」。",
+            variant: "destructive",
+          });
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        } else {
+          toast({
+            title: "✅ 已單獨開立並標記為已報價",
+            description:
+              "已在新分頁開啟報價單。請用 ⌘P／Ctrl+P → 目的地選「另存為 PDF」；若底色不見，請展開「顯示更多設定」並勾選「背景圖形」。",
+          });
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 600_000);
+      } else {
+        toast({
+          title: "✅ 已單獨開立並標記為已報價",
+          description: "未收到報價單內容資料，請至「已報價」分頁確認。",
+        });
+      }
+      loadQuotations();
+      window.dispatchEvent(new Event("admin-refresh-badges"));
+      setItems((prev) => {
+        const next = { ...prev };
+        delete next[quotation.id];
+        return next;
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "操作失敗";
+      toast({ title: "單獨開立失敗", description: msg, variant: "destructive" });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const submitNewQuotation = async () => {
+    const f = newQForm;
+    if (!f.customerName.trim() || !f.email.trim() || !f.phone.trim() || !f.whoReceive.trim()) {
+      toast({ title: "請完成必填欄位", description: "姓名、Email、電話、收件人為必填。", variant: "destructive" });
+      return;
+    }
+    if (!f.inquiryNotes.trim()) {
+      toast({ title: "請填寫詢價說明", variant: "destructive" });
+      return;
+    }
+
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const userIdClean = f.userId.trim();
+    const user_id = uuidRe.test(userIdClean) ? userIdClean : null;
+
+    const notesLines = [`聯絡電話：${f.phone.trim()}`];
+    if (f.inquiryNotes.trim()) notesLines.push(`詢價備註：${f.inquiryNotes.trim()}`);
+    const notes = notesLines.join("\n");
+
+    const all_requirement = {
+      customer_profile: {
+        name: f.customerName.trim(),
+        email: f.email.trim(),
+      },
+      delivery: {
+        method: f.shippingWay.trim(),
+        address: f.shippingAddress.trim(),
+        receiver: f.whoReceive.trim(),
+        phone: f.phone.trim(),
+      },
+      service_order: {
+        service_type: f.serviceType,
+        selections: [f.inquiryNotes.trim()],
+      },
+    };
+
+    setNewQuotationSubmitting(true);
+    try {
+      const { data: row, error: qErr } = await supabase
+        .from("quotation_orders")
+        .insert({
+          status: "price_asked",
+          email: f.email.trim(),
+          who_receive: f.whoReceive.trim(),
+          shipping_way: f.shippingWay.trim() || null,
+          shipping_address_text: f.shippingAddress.trim() || null,
+          expected_pickup_date: f.expectedPickupDate.trim() || null,
+          notes,
+          line_user_id: f.lineUserId.trim() || null,
+          user_id,
+          all_requirement,
+        })
+        .select("id")
+        .single();
+
+      if (qErr) throw qErr;
+      if (!row?.id) throw new Error("建立失敗");
+
+      const { error: itemErr } = await supabase.from("quotation_order_items").insert({
+        quotation_order_id: row.id,
+        product_name: (f.itemTitle.trim() || "詢價品項").slice(0, 500),
+        quantity: 1,
+        unit_price: null,
+        preview_url: null,
+        category: f.serviceType,
+        all_requirement: { customization: f.inquiryNotes.trim() },
+        customizations_json: null,
+        quantity_description: null,
+      });
+
+      if (itemErr) throw itemErr;
+
+      toast({ title: "✅ 已建立詢價報價單", description: "請至「詢價中」分頁展開單據並填寫報價。" });
+      setNewQuotationOpen(false);
+      setNewQuotationStep(1);
+      setNewQForm(defaultNewQuotationForm());
+      setActiveTab("price_asked");
+      await loadQuotations();
+      window.dispatchEvent(new Event("admin-refresh-badges"));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "建立失敗";
+      toast({ title: "新增報價單失敗", description: msg, variant: "destructive" });
+    } finally {
+      setNewQuotationSubmitting(false);
+    }
+  };
+
   // Convert to order action
   const handleConvertToOrder = async (quotation: QuotationOrder) => {
     const pd = paymentData[quotation.id];
@@ -766,19 +960,24 @@ const AdminQuotationsPanel = () => {
               <CardTitle>報價單管理</CardTitle>
               <CardDescription>管理客戶詢價、報價與訂單轉換</CardDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                loadQuotations();
-                setItems({});
-                setExpandedOrders(new Set());
-                setEditData({});
-                setCustomShippingFee(new Set());
-              }}
-            >
-              <RefreshCw className="h-4 w-4 mr-1" /> 重新整理
-            </Button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  loadQuotations();
+                  setItems({});
+                  setExpandedOrders(new Set());
+                  setEditData({});
+                  setCustomShippingFee(new Set());
+                }}
+              >
+                <RefreshCw className="h-4 w-4 mr-1" /> 重新整理
+              </Button>
+              <Button size="sm" onClick={() => setNewQuotationOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> 新增報價單
+              </Button>
+            </div>
           </div>
           <div className="flex items-center gap-2 pt-3">
             <Checkbox
@@ -1103,7 +1302,26 @@ const AdminQuotationsPanel = () => {
                                   </div>
                                 </div>
 
-                                <div className="flex gap-2">
+                                <div className="flex flex-col sm:flex-row gap-2">
+                                  <Button
+                                    variant="secondary"
+                                    className="sm:shrink-0"
+                                    onClick={async () => {
+                                      const saved = await handleSaveQuotationEdits(q.id);
+                                      if (!saved) return;
+                                      handleStandaloneQuote(q);
+                                    }}
+                                    disabled={actionLoading === q.id || savingQuotation === q.id}
+                                  >
+                                    {actionLoading === q.id || savingQuotation === q.id ? (
+                                      <>
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        處理中...
+                                      </>
+                                    ) : (
+                                      "單獨開立報價單"
+                                    )}
+                                  </Button>
                                   <Button
                                     className="flex-1"
                                     onClick={async () => {
@@ -1124,6 +1342,7 @@ const AdminQuotationsPanel = () => {
                                   </Button>
                                   <Button
                                     variant="outline"
+                                    className="sm:shrink-0"
                                     onClick={async () => {
                                       setActionLoading(q.id);
                                       try {
@@ -1387,6 +1606,200 @@ const AdminQuotationsPanel = () => {
           </Tabs>
         </CardContent>
       </Card>
+
+      <Dialog
+        open={newQuotationOpen}
+        onOpenChange={(open) => {
+          setNewQuotationOpen(open);
+          if (!open) {
+            setNewQuotationStep(1);
+            setNewQForm(defaultNewQuotationForm());
+          }
+        }}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>新增報價單（詢價中）</DialogTitle>
+            <DialogDescription>
+              依序完成三步驟。建立後請至「詢價中」展開該筆、填寫各品項單價與運費；若要經 LINE／n8n 自動發送請按「儲存資料並發送報價單」，若只要書面 PDF 給客戶請按「單獨開立報價單」。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="flex flex-wrap gap-x-2 gap-y-1 text-xs text-muted-foreground pb-2 border-b">
+            <span className={newQuotationStep === 1 ? "font-semibold text-foreground" : ""}>① 客戶與聯絡</span>
+            <span aria-hidden>·</span>
+            <span className={newQuotationStep === 2 ? "font-semibold text-foreground" : ""}>② 配送與日程</span>
+            <span aria-hidden>·</span>
+            <span className={newQuotationStep === 3 ? "font-semibold text-foreground" : ""}>③ 詢價內容</span>
+          </div>
+
+          {newQuotationStep === 1 && (
+            <div className="space-y-3 py-2">
+              <div className="space-y-1">
+                <Label>客戶姓名（必填）</Label>
+                <Input
+                  value={newQForm.customerName}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, customerName: e.target.value }))}
+                  placeholder="與客戶聯絡時使用的稱呼"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>Email（必填）</Label>
+                <Input
+                  type="email"
+                  value={newQForm.email}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, email: e.target.value }))}
+                  placeholder="name@example.com"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>聯絡電話（必填，會寫入備註供報價單 PDF 使用）</Label>
+                <Input
+                  value={newQForm.phone}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, phone: e.target.value }))}
+                  placeholder="09xxxxxxxx"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>收件人（必填）</Label>
+                <Input
+                  value={newQForm.whoReceive}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, whoReceive: e.target.value }))}
+                  placeholder="與黑貓／收件資訊一致"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>LINE User ID（選填）</Label>
+                <Input
+                  value={newQForm.lineUserId}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, lineUserId: e.target.value }))}
+                  placeholder="Uxxxx…"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>網站會員 UUID（選填）</Label>
+                <Input
+                  value={newQForm.userId}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, userId: e.target.value }))}
+                  placeholder="auth.users 的 UUID"
+                />
+              </div>
+            </div>
+          )}
+
+          {newQuotationStep === 2 && (
+            <div className="space-y-3 py-2">
+              <div className="space-y-1">
+                <Label>配送方式</Label>
+                <Input
+                  value={newQForm.shippingWay}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, shippingWay: e.target.value }))}
+                  placeholder="例：黑貓、自取、面交…"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>配送地址</Label>
+                <Textarea
+                  value={newQForm.shippingAddress}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, shippingAddress: e.target.value }))}
+                  placeholder="完整地址或取貨地點說明"
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>希望到貨／取貨日</Label>
+                <Input
+                  type="date"
+                  value={newQForm.expectedPickupDate}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, expectedPickupDate: e.target.value }))}
+                />
+              </div>
+            </div>
+          )}
+
+          {newQuotationStep === 3 && (
+            <div className="space-y-3 py-2">
+              <div className="space-y-1">
+                <Label>服務類型</Label>
+                <select
+                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                  value={newQForm.serviceType}
+                  onChange={(e) =>
+                    setNewQForm((p) => ({
+                      ...p,
+                      serviceType: e.target.value as "custom_design" | "giftbox" | "candy_bar",
+                    }))
+                  }
+                >
+                  <option value="custom_design">客製化設計</option>
+                  <option value="giftbox">禮盒</option>
+                  <option value="candy_bar">甜點佈置</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label>詢價說明（必填）</Label>
+                <Textarea
+                  value={newQForm.inquiryNotes}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, inquiryNotes: e.target.value }))}
+                  placeholder="需求、數量、參考風格、預算等，將顯示於後台「服務內容」與報價單訂購內容區塊。"
+                  rows={6}
+                />
+              </div>
+              <div className="space-y-1">
+                <Label>品項標題（顯示於報價品項列）</Label>
+                <Input
+                  value={newQForm.itemTitle}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, itemTitle: e.target.value }))}
+                  placeholder="預設：詢價品項"
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex-col sm:flex-row gap-2 sm:justify-between">
+            <div className="flex gap-2 w-full sm:w-auto">
+              {newQuotationStep > 1 ? (
+                <Button type="button" variant="outline" onClick={() => setNewQuotationStep((s) => Math.max(1, s - 1))}>
+                  上一步
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex gap-2 w-full sm:w-auto sm:justify-end">
+              {newQuotationStep < 3 ? (
+                <Button
+                  type="button"
+                  className="flex-1 sm:flex-none"
+                  onClick={() => {
+                    if (newQuotationStep === 1) {
+                      if (
+                        !newQForm.customerName.trim() ||
+                        !newQForm.email.trim() ||
+                        !newQForm.phone.trim() ||
+                        !newQForm.whoReceive.trim()
+                      ) {
+                        toast({
+                          title: "請完成本步驟",
+                          description: "姓名、Email、電話、收件人為必填。",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+                    }
+                    setNewQuotationStep((s) => Math.min(3, s + 1));
+                  }}
+                >
+                  下一步
+                </Button>
+              ) : (
+                <Button type="button" className="flex-1 sm:flex-none" onClick={() => void submitNewQuotation()} disabled={newQuotationSubmitting}>
+                  {newQuotationSubmitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+                  建立詢價單
+                </Button>
+              )}
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

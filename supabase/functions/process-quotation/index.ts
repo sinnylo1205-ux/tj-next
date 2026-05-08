@@ -77,6 +77,8 @@ Deno.serve(async (req) => {
 
     if (action === "send_quote") {
       return await handleSendQuote(supabase, body);
+    } else if (action === "send_quote_standalone") {
+      return await handleSendQuoteStandalone(supabase, body);
     } else if (action === "convert_to_order") {
       return await handleConvertToOrder(supabase, body);
     } else {
@@ -94,20 +96,30 @@ Deno.serve(async (req) => {
   }
 });
 
-// ========== Action: Send Quote ==========
-async function handleSendQuote(supabase: any, body: any) {
+type SendQuoteApplyOk = {
+  quotation_order_id: string;
+  subtotal: number;
+  shipping_fee: number;
+  total_amount: number;
+  webhookPayload: Record<string, unknown>;
+};
+
+/** 更新品項與報價單金額、狀態為已報價，並組出與 n8n 相同之 payload */
+async function applySendQuoteDb(supabase: any, body: any): Promise<{ ok: true; data: SendQuoteApplyOk } | { ok: false; response: Response }> {
   const { quotation_order_id, items, shipping_fee, line_user_id } = body;
 
   if (!quotation_order_id || !items || !Array.isArray(items)) {
-    return new Response(JSON.stringify({ error: "缺少必要參數" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "缺少必要參數" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
   }
 
-  console.log("[process-quotation/send_quote] Processing quotation:", quotation_order_id);
+  console.log("[process-quotation/applySendQuoteDb] Processing quotation:", quotation_order_id);
 
-  // 1. Fetch quotation order
   const { data: quotation, error: qError } = await supabase
     .from("quotation_orders")
     .select("*")
@@ -115,21 +127,22 @@ async function handleSendQuote(supabase: any, body: any) {
     .single();
 
   if (qError || !quotation) {
-    console.error("[process-quotation/send_quote] Quotation not found:", qError);
-    return new Response(JSON.stringify({ error: "報價單不存在" }), {
-      status: 404,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("[process-quotation/applySendQuoteDb] Quotation not found:", qError);
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "報價單不存在" }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
   }
 
-  // 2. Update each item's unit_price, preview_url
   let subtotal = 0;
   const updatedItems: any[] = [];
 
   for (const itemData of items) {
     const { id: itemId, unit_price, preview_url, why_price } = itemData;
 
-    // Fetch the item to get quantity
     const { data: existingItem, error: itemFetchError } = await supabase
       .from("quotation_order_items")
       .select("*")
@@ -137,14 +150,13 @@ async function handleSendQuote(supabase: any, body: any) {
       .single();
 
     if (itemFetchError || !existingItem) {
-      console.error("[process-quotation/send_quote] Item not found:", itemId);
+      console.error("[process-quotation/applySendQuoteDb] Item not found:", itemId);
       continue;
     }
 
     const lineTotal = (unit_price || 0) * (existingItem.quantity || 0);
     subtotal += lineTotal;
 
-    // Build customizations_json for this item
     const customizationsJson = {
       product_name: existingItem.product_name,
       unit_price: unit_price,
@@ -163,7 +175,7 @@ async function handleSendQuote(supabase: any, body: any) {
       .eq("id", itemId);
 
     if (updateError) {
-      console.error("[process-quotation/send_quote] Failed to update item:", updateError);
+      console.error("[process-quotation/applySendQuoteDb] Failed to update item:", updateError);
     }
 
     updatedItems.push({
@@ -176,7 +188,6 @@ async function handleSendQuote(supabase: any, body: any) {
 
   const totalAmount = subtotal + (shipping_fee || 0);
 
-  // 3. Update quotation order（保留 user_id，不覆蓋）
   const { error: orderUpdateError } = await supabase
     .from("quotation_orders")
     .update({
@@ -191,19 +202,20 @@ async function handleSendQuote(supabase: any, body: any) {
     .eq("id", quotation_order_id);
 
   if (orderUpdateError) {
-    console.error("[process-quotation/send_quote] Failed to update quotation:", orderUpdateError);
-    return new Response(JSON.stringify({ error: "更新報價單失敗" }), {
-      status: 500,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error("[process-quotation/applySendQuoteDb] Failed to update quotation:", orderUpdateError);
+    return {
+      ok: false,
+      response: new Response(JSON.stringify({ error: "更新報價單失敗" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      }),
+    };
   }
 
-  // 4. Build webhook payload
   const allReq = quotation.all_requirement || {};
   const customerProfile = allReq.customer_profile || {};
   const delivery = allReq.delivery || {};
 
-  // Key translation for readable webhook output
   const KEY_ZH_MAP: Record<string, string> = {
     customization: "客製化需求",
     note: "備註",
@@ -217,11 +229,10 @@ async function handleSendQuote(supabase: any, body: any) {
     customization_options: "客製化選項",
   };
 
-  // Format items string with all_requirement (iterate all non-empty keys)
   const formatItemWithRequirement = (item: any) => {
     const req = item.all_requirement || {};
     const parts: string[] = [];
-    
+
     for (const [key, value] of Object.entries(req)) {
       if (!value || key === "reference_images") continue;
       const label = KEY_ZH_MAP[key] || key;
@@ -231,7 +242,7 @@ async function handleSendQuote(supabase: any, body: any) {
         parts.push(`${label}: ${value}`);
       }
     }
-    
+
     const reqText = parts.length > 0 ? `（${parts.join(", ")}）` : "";
     return `${item.product_name} x${item.quantity}${reqText}`;
   };
@@ -268,9 +279,27 @@ async function handleSendQuote(supabase: any, body: any) {
     })),
   };
 
+  return {
+    ok: true,
+    data: {
+      quotation_order_id,
+      subtotal,
+      shipping_fee: shipping_fee || 0,
+      total_amount: totalAmount,
+      webhookPayload,
+    },
+  };
+}
+
+// ========== Action: Send Quote ==========
+async function handleSendQuote(supabase: any, body: any) {
+  const applied = await applySendQuoteDb(supabase, body);
+  if (!applied.ok) return applied.response;
+
+  const { quotation_order_id, subtotal, shipping_fee, total_amount, webhookPayload } = applied.data;
+
   console.log("[process-quotation/send_quote] Webhook payload:", JSON.stringify(webhookPayload, null, 2));
 
-  // 5. Send n8n webhook
   try {
     const webhookResponse = await fetch(N8N_QUOTATION_WEBHOOK_URL, {
       method: "POST",
@@ -282,7 +311,6 @@ async function handleSendQuote(supabase: any, body: any) {
     console.error("[process-quotation/send_quote] Webhook error:", webhookError);
   }
 
-  // 6. Insert system_event
   try {
     await supabase.from("system_events").insert({
       source: "admin",
@@ -296,7 +324,38 @@ async function handleSendQuote(supabase: any, body: any) {
   }
 
   return new Response(
-    JSON.stringify({ success: true, subtotal, shipping_fee: shipping_fee || 0, total_amount: totalAmount }),
+    JSON.stringify({ success: true, subtotal, shipping_fee, total_amount }),
+    { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+  );
+}
+
+/** 僅寫入資料庫並回傳 pdf 用 payload，不呼叫 n8n（單獨開立報價單／自行寄送） */
+async function handleSendQuoteStandalone(supabase: any, body: any) {
+  const applied = await applySendQuoteDb(supabase, body);
+  if (!applied.ok) return applied.response;
+
+  const { quotation_order_id, subtotal, shipping_fee, total_amount, webhookPayload } = applied.data;
+
+  try {
+    await supabase.from("system_events").insert({
+      source: "admin",
+      event_type: "quotation_standalone_saved",
+      ref_id: quotation_order_id,
+      payload: webhookPayload,
+      sent_to_n8n: false,
+    });
+  } catch (eventError) {
+    console.error("[process-quotation/send_quote_standalone] System event error:", eventError);
+  }
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      subtotal,
+      shipping_fee,
+      total_amount,
+      pdf_input: webhookPayload,
+    }),
     { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
   );
 }
