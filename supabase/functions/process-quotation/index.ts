@@ -104,6 +104,26 @@ type SendQuoteApplyOk = {
   webhookPayload: Record<string, unknown>;
 };
 
+/** 合併更新報價品項 JSON，保留特殊報價的 combo_id／role／product_id 等欄位（send_quote 不可覆寫洗掉拆單依據） */
+function mergeQuotationItemCustomizations(existing: unknown, patch: Record<string, unknown>): Record<string, unknown> {
+  let base: Record<string, unknown> = {};
+  if (existing != null) {
+    if (typeof existing === "string") {
+      try {
+        const parsed: unknown = JSON.parse(existing);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          base = { ...(parsed as Record<string, unknown>) };
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (typeof existing === "object" && !Array.isArray(existing)) {
+      base = { ...(existing as Record<string, unknown>) };
+    }
+  }
+  return { ...base, ...patch };
+}
+
 /** 更新品項與報價單金額、狀態為已報價，並組出與 n8n 相同之 payload */
 async function applySendQuoteDb(supabase: any, body: any): Promise<{ ok: true; data: SendQuoteApplyOk } | { ok: false; response: Response }> {
   const { quotation_order_id, items, shipping_fee, line_user_id } = body;
@@ -157,13 +177,13 @@ async function applySendQuoteDb(supabase: any, body: any): Promise<{ ok: true; d
     const lineTotal = (unit_price || 0) * (existingItem.quantity || 0);
     subtotal += lineTotal;
 
-    const customizationsJson = {
+    const customizationsJson = mergeQuotationItemCustomizations(existingItem.customizations_json, {
       product_name: existingItem.product_name,
       unit_price: unit_price,
       quantity: existingItem.quantity,
       preview_url: preview_url || "",
       why_price: why_price || "",
-    };
+    });
 
     const { error: updateError } = await supabase
       .from("quotation_order_items")
@@ -360,6 +380,286 @@ async function handleSendQuoteStandalone(supabase: any, body: any) {
   );
 }
 
+const QUOTATION_KIND_SPECIAL = "special";
+
+function parseComboIdFromQuotationItemEdge(customizations_json: unknown): string | null {
+  if (customizations_json == null) return null;
+  let o: unknown = customizations_json;
+  if (typeof customizations_json === "string") {
+    try {
+      o = JSON.parse(customizations_json);
+    } catch {
+      return null;
+    }
+  }
+  if (!o || typeof o !== "object") return null;
+  const id = (o as Record<string, unknown>).combo_id;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+/** 特殊報價單：依 combo_id 拆成多筆 orders，各自通知 */
+async function handleConvertSpecialQuotationToOrders(
+  supabase: any,
+  body: any,
+  quotation: any,
+  qItems: any[],
+  allReq: any,
+) {
+  const {
+    quotation_order_id,
+    payment_method,
+    payment_step,
+    order_status,
+    auto_cancel_exempt,
+    transfer_last5,
+    user_id: bodyUserId,
+    line_user_id: bodyLineUserId,
+  } = body;
+
+  const special = allReq.special_quotation;
+  if (!special || typeof special !== "object") {
+    return new Response(JSON.stringify({ error: "特殊報價資料不完整" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const existingConverted = special.converted_order_ids;
+  if (Array.isArray(existingConverted) && existingConverted.length > 0) {
+    return new Response(JSON.stringify({ error: "此特殊報價單已轉過訂單，請勿重複操作" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  if (!qItems?.length) {
+    return new Response(JSON.stringify({ error: "無品項可轉單" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+
+  const byCombo = new Map<string, any[]>();
+  for (const item of qItems) {
+    const cid = parseComboIdFromQuotationItemEdge(item.customizations_json);
+    if (!cid) {
+      return new Response(JSON.stringify({ error: "特殊報價品項缺少 combo_id，無法拆單" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!byCombo.has(cid)) byCombo.set(cid, []);
+    byCombo.get(cid)!.push(item);
+  }
+
+  const combosMeta: any[] = Array.isArray(special.combos) ? special.combos : [];
+  const comboMetaById = new Map<string, any>();
+  for (const c of combosMeta) {
+    if (c && typeof c.id === "string") comboMetaById.set(c.id, c);
+  }
+
+  const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1";
+  const lineUserId = bodyLineUserId || quotation.line_user_id || special.contact?.line_user_id || null;
+  const ordererName = String(special.orderer_name || "").trim() || "客戶";
+  const contactEmail = quotation.email || special.contact?.email || null;
+
+  const createdOrderIds: string[] = [];
+
+  try {
+    for (const [comboId, comboItems] of byCombo.entries()) {
+      const meta = comboMetaById.get(comboId) || {};
+      const lineSubtotal = comboItems.reduce((sum: number, it: any) => {
+        const up = Number(it.unit_price) || 0;
+        const q = Number(it.quantity) || 0;
+        return sum + up * q;
+      }, 0);
+      const shipFee = Number(meta.shipping_fee) || 0;
+      const lineTotal = lineSubtotal + shipFee;
+
+      const orderInsert = {
+        user_id: userId,
+        Email: contactEmail,
+        who_receive: String(meta.pickup_contact_name || "").trim() || ordererName,
+        phone: String(meta.pickup_contact_phone || "").trim() || null,
+        shipping_way: quotation.shipping_way || "特殊報價",
+        shipping_address_text: String(meta.pickup_location || "").trim() || null,
+        expected_pickup_date: meta.expected_pickup_date || null,
+        subtotal: lineSubtotal,
+        shipping_fee: shipFee,
+        total_amount: lineTotal,
+        notes: quotation.notes || null,
+        line_user_id: lineUserId,
+        is_manual_order: true,
+        is_from_quotation: true,
+        is_from_special_quotation: true,
+        orderer_name: ordererName,
+        auto_cancel_exempt: !!auto_cancel_exempt,
+        payment_method: payment_method,
+        payment_step: payment_step || "verified",
+        order_status: order_status || "processing",
+        transfer_last5: transfer_last5 || null,
+      };
+
+      let orderData: any = null;
+      let orderError: any = null;
+      {
+        const first = await supabase.from("orders").insert(orderInsert).select().single();
+        orderData = first.data;
+        orderError = first.error;
+        const msg = String(orderError?.message || "");
+        if (orderError && (msg.includes("is_from_special_quotation") || msg.includes("schema cache"))) {
+          const { is_from_special_quotation: _omit, ...fallbackInsert } = orderInsert as Record<string, unknown>;
+          const second = await supabase.from("orders").insert(fallbackInsert).select().single();
+          orderData = second.data;
+          orderError = second.error;
+          if (!orderError) {
+            console.warn(
+              "[process-quotation/special_convert] orders 缺少 is_from_special_quotation 欄位，已略過該欄建立訂單；請執行 migration 20260508140000_orders_is_from_special_quotation.sql",
+            );
+          }
+        }
+      }
+
+      if (orderError || !orderData) {
+        console.error("[process-quotation/special_convert] order insert failed:", orderError);
+        throw new Error(orderError?.message || "建立訂單失敗");
+      }
+
+      createdOrderIds.push(orderData.id);
+
+      for (const item of comboItems) {
+        const { error: itemError } = await supabase.from("order_items").insert({
+          order_id: orderData.id,
+          product_name: item.product_name || "未命名商品",
+          quantity: item.quantity || 1,
+          unit_price: item.unit_price || 0,
+          preview_url: item.preview_url || null,
+          customizations_json: item.customizations_json || null,
+          category: item.category || "custom_design",
+        });
+        if (itemError) {
+          console.error("[process-quotation/special_convert] order_item insert failed:", itemError);
+          throw new Error(itemError.message || "建立訂單品項失敗");
+        }
+      }
+
+      const productSummary = comboItems
+        .map((it: any) => `${it.product_name} x${it.quantity}`)
+        .join("、");
+
+      try {
+        const linePayload: Record<string, any> = {
+          source: "system",
+          event_type: "manual_order_created",
+          ref_id: orderData.id,
+          payload: {
+            order_id: orderData.id,
+            order_status: "processing",
+            payment_step: payment_step || "verified",
+            user_name: ordererName,
+            user_email: contactEmail,
+            product_summary: productSummary,
+            expected_pickup_date: meta.expected_pickup_date || null,
+            notes: quotation.notes || null,
+            subtotal: lineSubtotal,
+            total_amount: lineTotal,
+            shipping_fee: shipFee,
+            shipping_way: orderInsert.shipping_way,
+            who_receive: orderInsert.who_receive,
+            phone: orderInsert.phone,
+            shipping_address_text: orderInsert.shipping_address_text,
+            action_type: "new_order",
+            is_manual_order: true,
+            notification_channel: lineUserId ? "line" : "email",
+            line_user_id: lineUserId || null,
+            status_message: "特殊報價單已轉為正式訂單",
+          },
+        };
+
+        const lineResponse = await fetch(N8N_LINE_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(linePayload),
+        });
+        console.log("[process-quotation/special_convert] LINE status:", lineResponse.status);
+
+        await supabase.from("system_events").insert({
+          source: "admin",
+          event_type: "quotation_converted",
+          ref_id: orderData.id,
+          payload: linePayload.payload,
+          sent_to_n8n: true,
+        });
+      } catch (notifyError) {
+        console.error("[process-quotation/special_convert] Notification error:", notifyError);
+      }
+
+      try {
+        const calendarPayload = {
+          order_id: orderData.id,
+          order_status: "processing",
+          member_name: ordererName,
+          recipient_name: orderInsert.who_receive,
+          pickup_date: meta.expected_pickup_date || null,
+          order_items_text: productSummary,
+          pickup_method: orderInsert.shipping_way,
+        };
+        const calendarResponse = await fetch(N8N_CALENDAR_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(calendarPayload),
+        });
+        console.log("[process-quotation/special_convert] Calendar status:", calendarResponse.status);
+      } catch (calendarError) {
+        console.error("[process-quotation/special_convert] Calendar error:", calendarError);
+      }
+    }
+
+    const nextAllReq = {
+      ...allReq,
+      special_quotation: {
+        ...special,
+        converted_order_ids: createdOrderIds,
+      },
+    };
+
+    const { error: statusError } = await supabase
+      .from("quotation_orders")
+      .update({
+        status: "order_created",
+        payment_method,
+        payment_step: payment_step || "verified",
+        transfer_last5: transfer_last5 || null,
+        user_id: bodyUserId || quotation.user_id || null,
+        line_user_id: bodyLineUserId || quotation.line_user_id || null,
+        all_requirement: nextAllReq,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", quotation_order_id);
+
+    if (statusError) {
+      console.error("[process-quotation/special_convert] quotation update failed:", statusError);
+    }
+
+    return new Response(
+      JSON.stringify({ success: true, order_id: createdOrderIds[0], order_ids: createdOrderIds }),
+      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+    );
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "轉單失敗";
+    console.error("[process-quotation/special_convert] rollback:", msg);
+    for (let i = createdOrderIds.length - 1; i >= 0; i--) {
+      const oid = createdOrderIds[i];
+      await supabase.from("order_items").delete().eq("order_id", oid);
+      await supabase.from("orders").delete().eq("id", oid);
+    }
+    return new Response(JSON.stringify({ error: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+}
+
 // ========== Action: Convert to Order ==========
 async function handleConvertToOrder(supabase: any, body: any) {
   const {
@@ -411,6 +711,10 @@ async function handleConvertToOrder(supabase: any, body: any) {
   }
 
   const allReq = quotation.all_requirement || {};
+  if (allReq.quotation_kind === QUOTATION_KIND_SPECIAL && allReq.special_quotation) {
+    return await handleConvertSpecialQuotationToOrders(supabase, body, quotation, qItems || [], allReq);
+  }
+
   const delivery = allReq.delivery || {};
   const customerProfile = allReq.customer_profile || {};
 

@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
-import { ChevronDown, ChevronUp, Upload, ExternalLink, Loader2, RefreshCw, Plus } from "lucide-react";
+import { ChevronDown, ChevronUp, Upload, ExternalLink, Loader2, RefreshCw, Plus, ChevronsUpDown, Check } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -21,8 +21,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
 import { buildQuotationPdfHtml, type QuotationPdfWebhookPayload } from "@/lib/quotation-pdf-html";
+import {
+  getSpecialConvertedOrderCount,
+  getSpecialQuotationRoot,
+  isSpecialQuotation,
+  parseComboIdFromQuotationItem,
+} from "@/lib/special-quotation";
 import { SafeImage } from "@/components/SafeImage";
+import { SpecialQuotationDialog } from "@/components/admin/SpecialQuotationDialog";
 
 // ========== Types ==========
 interface QuotationOrder {
@@ -61,6 +78,20 @@ interface QuotationOrderItem {
   all_requirement: any;
   customizations_json: any;
   quantity_description: string | null;
+}
+
+/** 與手動建立訂單相同來源：products 表 */
+interface NewQuotationProductRow {
+  id: string;
+  name: string;
+  category: string;
+  price: number;
+}
+
+interface ProductNoticeRow {
+  product_id: string;
+  min_order_qty: number | null;
+  price_min: number | null;
 }
 
 // ========== Key Translation Map ==========
@@ -108,6 +139,19 @@ const SERVICE_TYPE_ZH: Record<string, string> = {
   giftbox: "禮盒",
   candy_bar: "甜點佈置",
 };
+
+/** 轉訂單時寫入 orders.payment_step（與訂單後台一致） */
+const QUOTATION_PAYMENT_STEP_OPTIONS: { value: string; label: string }[] = [
+  { value: "pending", label: "未匯款" },
+  { value: "submitted", label: "待核對（客戶已填匯款）" },
+  { value: "verified", label: "已確認入帳" },
+];
+
+function paymentStepLabel(step: string | null | undefined): string {
+  if (step == null || String(step).trim() === "") return "—";
+  const o = QUOTATION_PAYMENT_STEP_OPTIONS.find((x) => x.value === step);
+  return o?.label ?? String(step);
+}
 
 // ========== Helpers ==========
 const translateKey = (key: string) => KEY_ZH_MAP[key] || key;
@@ -510,13 +554,20 @@ const AdminQuotationsPanel = () => {
     expectedPickupDate: "",
     serviceType: "custom_design" as "custom_design" | "giftbox" | "candy_bar",
     inquiryNotes: "",
-    itemTitle: "詢價品項",
+    productId: "",
   });
 
   const [newQuotationOpen, setNewQuotationOpen] = useState(false);
   const [newQuotationStep, setNewQuotationStep] = useState(1);
   const [newQuotationSubmitting, setNewQuotationSubmitting] = useState(false);
   const [newQForm, setNewQForm] = useState(() => defaultNewQuotationForm());
+
+  const [newQuoteProducts, setNewQuoteProducts] = useState<NewQuotationProductRow[]>([]);
+  const [newQuoteProductsByCategory, setNewQuoteProductsByCategory] = useState<Record<string, NewQuotationProductRow[]>>({});
+  const [newQuoteProductNotices, setNewQuoteProductNotices] = useState<Record<string, ProductNoticeRow>>({});
+  const [newQuoteProductSearch, setNewQuoteProductSearch] = useState("");
+  const [newQuoteProductPopoverOpen, setNewQuoteProductPopoverOpen] = useState(false);
+  const [specialQuotationOpen, setSpecialQuotationOpen] = useState(false);
 
   const initQuotationEdits = (q: QuotationOrder) => {
     if (!quotationEdits[q.id]) {
@@ -599,6 +650,44 @@ const AdminQuotationsPanel = () => {
   useEffect(() => {
     loadQuotations();
   }, [loadQuotations]);
+
+  /** 新增報價單對話框開啟時，載入與手動訂單相同的商品清單 */
+  useEffect(() => {
+    if (!newQuotationOpen) return;
+    let cancelled = false;
+    (async () => {
+      const { data: productsData, error: productsError } = await supabase
+        .from("products")
+        .select("id, name, category, price")
+        .or("is_hide.is.null,is_hide.eq.false")
+        .order("category");
+      if (cancelled) return;
+      if (!productsError && productsData) {
+        setNewQuoteProducts(productsData as NewQuotationProductRow[]);
+        const grouped: Record<string, NewQuotationProductRow[]> = {};
+        (productsData as NewQuotationProductRow[]).forEach((p) => {
+          const cat = p.category || "未分類";
+          if (!grouped[cat]) grouped[cat] = [];
+          grouped[cat].push(p);
+        });
+        setNewQuoteProductsByCategory(grouped);
+      }
+      const { data: noticesData, error: noticesError } = await supabase
+        .from("product_notice")
+        .select("product_id, min_order_qty, price_min");
+      if (cancelled) return;
+      if (!noticesError && noticesData) {
+        const noticesMap: Record<string, ProductNoticeRow> = {};
+        (noticesData as ProductNoticeRow[]).forEach((n) => {
+          if (n.product_id) noticesMap[n.product_id] = n;
+        });
+        setNewQuoteProductNotices(noticesMap);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [newQuotationOpen]);
 
   const loadItems = async (quotationOrderId: string) => {
     if (items[quotationOrderId]) return;
@@ -802,6 +891,10 @@ const AdminQuotationsPanel = () => {
       toast({ title: "請填寫詢價說明", variant: "destructive" });
       return;
     }
+    if (!f.productId.trim()) {
+      toast({ title: "請選擇詢價商品", variant: "destructive" });
+      return;
+    }
 
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
     const userIdClean = f.userId.trim();
@@ -850,13 +943,16 @@ const AdminQuotationsPanel = () => {
       if (qErr) throw qErr;
       if (!row?.id) throw new Error("建立失敗");
 
+      const product = newQuoteProducts.find((p) => p.id === f.productId);
+      const itemCategory = (product?.category || f.serviceType || "custom_design").toString().slice(0, 200);
+
       const { error: itemErr } = await supabase.from("quotation_order_items").insert({
         quotation_order_id: row.id,
-        product_name: (f.itemTitle.trim() || "詢價品項").slice(0, 500),
+        product_name: (product?.name || "詢價品項").slice(0, 500),
         quantity: 1,
         unit_price: null,
         preview_url: null,
-        category: f.serviceType,
+        category: itemCategory,
         all_requirement: { customization: f.inquiryNotes.trim() },
         customizations_json: null,
         quantity_description: null,
@@ -898,7 +994,7 @@ const AdminQuotationsPanel = () => {
           action: "convert_to_order",
           quotation_order_id: quotation.id,
           payment_method: pd.paymentMethod,
-          payment_step: pd.paymentStep || "verified",
+          payment_step: pd.paymentStep ?? quotation.payment_step ?? "pending",
           order_status: pd.orderStatus || "processing",
           auto_cancel_exempt: pd.autoCancelExempt ?? false,
           transfer_last5: pd.transferLast5 || null,
@@ -910,11 +1006,17 @@ const AdminQuotationsPanel = () => {
       if (error) throw error;
       if (data?.error) throw new Error(data.error);
 
-      toast({ title: `✅ 訂單已建立：${data?.order_id?.slice(0, 6).toUpperCase()}` });
+      const ids: string[] = Array.isArray(data?.order_ids) ? data.order_ids : data?.order_id ? [data.order_id] : [];
+      const n = ids.length;
+      toast({
+        title: n > 1 ? `✅ 已建立 ${n} 筆訂單` : `✅ 訂單已建立：${(ids[0] || data?.order_id || "").slice(0, 6).toUpperCase()}`,
+        description: n > 1 ? ids.map((id) => `#${id.slice(0, 6).toUpperCase()}`).join("、") : undefined,
+      });
       loadQuotations();
       window.dispatchEvent(new Event("admin-refresh-badges"));
-    } catch (err: any) {
-      toast({ title: "轉換訂單失敗", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      const description = await getEdgeFunctionErrorDetail(err);
+      toast({ title: "轉換訂單失敗", description, variant: "destructive" });
     } finally {
       setActionLoading(null);
     }
@@ -946,6 +1048,20 @@ const AdminQuotationsPanel = () => {
     }
   };
 
+  const getFilteredProductsForNewQuotation = () => {
+    if (!newQuoteProductSearch.trim()) return newQuoteProductsByCategory;
+    const query = newQuoteProductSearch.toLowerCase();
+    const filtered: Record<string, NewQuotationProductRow[]> = {};
+    Object.entries(newQuoteProductsByCategory).forEach(([category, prods]) => {
+      const matchedProds = prods.filter((p) => p.name.toLowerCase().includes(query));
+      if (matchedProds.length > 0) filtered[category] = matchedProds;
+    });
+    return filtered;
+  };
+
+  const selectedNewQuoteProduct = newQuoteProducts.find((p) => p.id === newQForm.productId);
+  const filteredProductsForNewQuote = getFilteredProductsForNewQuotation();
+
   const filtered = getFilteredQuotations();
 
   const countQuotationsVisible = (status: string) =>
@@ -973,6 +1089,9 @@ const AdminQuotationsPanel = () => {
                 }}
               >
                 <RefreshCw className="h-4 w-4 mr-1" /> 重新整理
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => setSpecialQuotationOpen(true)}>
+                <Plus className="h-4 w-4 mr-1" /> 建立特殊報價單
               </Button>
               <Button size="sm" onClick={() => setNewQuotationOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" /> 新增報價單
@@ -1034,6 +1153,11 @@ const AdminQuotationsPanel = () => {
                                 {q.status === "price_reply" && "已報價"}
                                 {q.status === "order_created" && "已建立訂單"}
                               </Badge>
+                              {isSpecialQuotation(q.all_requirement) ? (
+                                <Badge variant="outline" className="text-xs border-violet-300 bg-violet-50 text-violet-900">
+                                  特殊報價
+                                </Badge>
+                              ) : null}
                               {isQuotationHidden(q) ? (
                                 <Badge variant="destructive" className="text-xs">
                                   已隱藏
@@ -1041,9 +1165,15 @@ const AdminQuotationsPanel = () => {
                               ) : null}
                             </div>
                             <p className="text-sm text-muted-foreground">
-                              {q.all_requirement?.customer_profile?.name || "未知客戶"} ·{" "}
+                              {(getSpecialQuotationRoot(q.all_requirement)?.orderer_name ||
+                                q.all_requirement?.customer_profile?.name ||
+                                "未知客戶") +
+                                " · "}
                               {new Date(q.created_at).toLocaleDateString("zh-TW")}
                               {q.total_amount ? ` · NT$ ${q.total_amount.toLocaleString()}` : ""}
+                              {q.status === "order_created" && getSpecialConvertedOrderCount(q.all_requirement) > 0
+                                ? ` · 已轉 ${getSpecialConvertedOrderCount(q.all_requirement)} 筆訂單`
+                                : ""}
                             </p>
                           </div>
                           <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -1373,24 +1503,58 @@ const AdminQuotationsPanel = () => {
                               <div className="space-y-4">
                                 <p className="font-semibold">💳 付款確認 & 報價欄位修改</p>
 
-                                {/* Show quoted items */}
-                                {qItems.map((item) => (
-                                  <div key={item.id} className="p-3 border rounded-lg bg-background space-y-2">
-                                    <div className="flex justify-between items-center gap-3">
-                                      <div>
-                                        <p className="font-medium">{item.product_name}</p>
-                                        <p className="text-sm text-muted-foreground">
-                                          單價 NT$ {item.unit_price?.toLocaleString() ?? 0}
-                                        </p>
-                                        <p className="text-sm text-muted-foreground">數量 × {item.quantity}</p>
-                                      </div>
-                                      <div className="text-sm font-medium shrink-0">
-                                        NT$ {((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
-                                      </div>
-                                    </div>
-                                    <StyleReferenceLinksBlock label="🎨 用戶風格參考圖連結" urls={getItemStyleReferenceUrls(item)} />
+                                {isSpecialQuotation(q.all_requirement) ? (
+                                  <div className="space-y-3">
+                                    <p className="text-sm rounded-md border border-amber-200 bg-amber-50 text-amber-950 px-3 py-2">
+                                      特殊報價單：轉訂單時將依「訂單組合」拆成多筆訂單；表頭小計／運費／總額為全單摘要。
+                                    </p>
+                                    {(getSpecialQuotationRoot(q.all_requirement)?.combos || []).map((combo) => {
+                                      const comboItems = qItems.filter(
+                                        (it) => parseComboIdFromQuotationItem(it.customizations_json) === combo.id,
+                                      );
+                                      return (
+                                        <div key={combo.id} className="p-3 border rounded-lg bg-background space-y-2">
+                                          <p className="text-sm font-medium">
+                                            訂單組合 · 取件 {combo.expected_pickup_date || "—"} · {combo.pickup_location || "—"}
+                                          </p>
+                                          <p className="text-xs text-muted-foreground">
+                                            取件人：{combo.pickup_contact_name || "—"}（{combo.pickup_contact_phone || "—"}）· 運費 NT${" "}
+                                            {(combo.shipping_fee ?? 0).toLocaleString()}
+                                          </p>
+                                          {comboItems.map((item) => (
+                                            <div key={item.id} className="flex justify-between gap-2 text-sm border-t pt-2 first:border-t-0 first:pt-0">
+                                              <span>{item.product_name}</span>
+                                              <span className="text-muted-foreground shrink-0">
+                                                NT$ {(item.unit_price || 0).toLocaleString()} × {item.quantity}
+                                              </span>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      );
+                                    })}
                                   </div>
-                                ))}
+                                ) : (
+                                  <>
+                                    {/* Show quoted items */}
+                                    {qItems.map((item) => (
+                                      <div key={item.id} className="p-3 border rounded-lg bg-background space-y-2">
+                                        <div className="flex justify-between items-center gap-3">
+                                          <div>
+                                            <p className="font-medium">{item.product_name}</p>
+                                            <p className="text-sm text-muted-foreground">
+                                              單價 NT$ {item.unit_price?.toLocaleString() ?? 0}
+                                            </p>
+                                            <p className="text-sm text-muted-foreground">數量 × {item.quantity}</p>
+                                          </div>
+                                          <div className="text-sm font-medium shrink-0">
+                                            NT$ {((item.unit_price || 0) * (item.quantity || 0)).toLocaleString()}
+                                          </div>
+                                        </div>
+                                        <StyleReferenceLinksBlock label="🎨 用戶風格參考圖連結" urls={getItemStyleReferenceUrls(item)} />
+                                      </div>
+                                    ))}
+                                  </>
+                                )}
 
                                 {/* Editable 報價欄位（小計／運費／折扣／總金額／發票） */}
                                 <div className="grid grid-cols-2 gap-4">
@@ -1452,6 +1616,29 @@ const AdminQuotationsPanel = () => {
                                     </select>
                                   </div>
                                   <div className="space-y-2">
+                                    <Label>付款狀態（轉訂單）</Label>
+                                    <select
+                                      className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                                      value={
+                                        paymentData[q.id]?.paymentStep ??
+                                        q.payment_step ??
+                                        "pending"
+                                      }
+                                      onChange={(e) =>
+                                        setPaymentData((prev) => ({
+                                          ...prev,
+                                          [q.id]: { ...prev[q.id], paymentStep: e.target.value },
+                                        }))
+                                      }
+                                    >
+                                      {QUOTATION_PAYMENT_STEP_OPTIONS.map((opt) => (
+                                        <option key={opt.value} value={opt.value}>
+                                          {opt.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="space-y-2 col-span-2 sm:col-span-1">
                                     <Label>匯款末五碼</Label>
                                     <Input
                                       placeholder="輸入末五碼"
@@ -1559,7 +1746,7 @@ const AdminQuotationsPanel = () => {
                                 <div className="text-sm text-muted-foreground">
                                   付款方式：{q.payment_method || "—"} ·
                                   匯款末五碼：{q.transfer_last5 || "—"} ·
-                                  狀態：{q.payment_step || "—"}
+                                  狀態：{paymentStepLabel(q.payment_step)}
                                 </div>
 
                                 {/* Show items */}
@@ -1614,6 +1801,8 @@ const AdminQuotationsPanel = () => {
           if (!open) {
             setNewQuotationStep(1);
             setNewQForm(defaultNewQuotationForm());
+            setNewQuoteProductSearch("");
+            setNewQuoteProductPopoverOpen(false);
           }
         }}
       >
@@ -1720,6 +1909,81 @@ const AdminQuotationsPanel = () => {
           {newQuotationStep === 3 && (
             <div className="space-y-3 py-2">
               <div className="space-y-1">
+                <Label>詢價商品（必填）</Label>
+                <p className="text-xs text-muted-foreground">與「手動建立訂單」相同來源；可搜尋商品名稱。</p>
+                <Popover open={newQuoteProductPopoverOpen} onOpenChange={setNewQuoteProductPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={newQuoteProductPopoverOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      {selectedNewQuoteProduct ? selectedNewQuoteProduct.name : "選擇商品…"}
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[min(100vw-2rem,320px)] p-0" align="start">
+                    <Command shouldFilter={false}>
+                      <CommandInput
+                        placeholder="輸入商品名稱搜尋…"
+                        value={newQuoteProductSearch}
+                        onValueChange={setNewQuoteProductSearch}
+                      />
+                      <CommandList>
+                        <CommandEmpty>
+                          {newQuoteProducts.length === 0 ? "商品載入中…" : "找不到商品"}
+                        </CommandEmpty>
+                        {Object.entries(filteredProductsForNewQuote).map(([category, prods]) => (
+                          <CommandGroup key={category} heading={category}>
+                            {prods.map((p) => {
+                              const notice = newQuoteProductNotices[p.id];
+                              const displayPrice = notice?.price_min ?? p.price;
+                              const minQty = notice?.min_order_qty;
+                              return (
+                                <CommandItem
+                                  key={p.id}
+                                  value={p.id}
+                                  onSelect={() => {
+                                    setNewQForm((prev) => ({ ...prev, productId: p.id }));
+                                    setNewQuoteProductPopoverOpen(false);
+                                    setNewQuoteProductSearch("");
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      newQForm.productId === p.id ? "opacity-100" : "opacity-0",
+                                    )}
+                                  />
+                                  {[
+                                    p.name,
+                                    "（NT$ ",
+                                    String(displayPrice),
+                                    minQty != null ? `，最低${minQty}份` : "",
+                                    "）",
+                                  ].join("")}
+                                </CommandItem>
+                              );
+                            })}
+                          </CommandGroup>
+                        ))}
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </div>
+              <div className="space-y-1">
+                <Label>詢價說明（必填）</Label>
+                <Textarea
+                  value={newQForm.inquiryNotes}
+                  onChange={(e) => setNewQForm((p) => ({ ...p, inquiryNotes: e.target.value }))}
+                  placeholder="需求、數量、參考風格、預算等，將顯示於後台「服務內容」與報價單訂購內容區塊。"
+                  rows={6}
+                />
+              </div>
+              <div className="space-y-1">
                 <Label>服務類型</Label>
                 <select
                   className="w-full border rounded-md px-3 py-2 text-sm bg-background"
@@ -1735,23 +1999,6 @@ const AdminQuotationsPanel = () => {
                   <option value="giftbox">禮盒</option>
                   <option value="candy_bar">甜點佈置</option>
                 </select>
-              </div>
-              <div className="space-y-1">
-                <Label>詢價說明（必填）</Label>
-                <Textarea
-                  value={newQForm.inquiryNotes}
-                  onChange={(e) => setNewQForm((p) => ({ ...p, inquiryNotes: e.target.value }))}
-                  placeholder="需求、數量、參考風格、預算等，將顯示於後台「服務內容」與報價單訂購內容區塊。"
-                  rows={6}
-                />
-              </div>
-              <div className="space-y-1">
-                <Label>品項標題（顯示於報價品項列）</Label>
-                <Input
-                  value={newQForm.itemTitle}
-                  onChange={(e) => setNewQForm((p) => ({ ...p, itemTitle: e.target.value }))}
-                  placeholder="預設：詢價品項"
-                />
               </div>
             </div>
           )}
@@ -1800,6 +2047,16 @@ const AdminQuotationsPanel = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <SpecialQuotationDialog
+        open={specialQuotationOpen}
+        onOpenChange={setSpecialQuotationOpen}
+        onCommitted={async () => {
+          await loadQuotations();
+          setActiveTab("price_reply");
+          window.dispatchEvent(new Event("admin-refresh-badges"));
+        }}
+      />
     </div>
   );
 };

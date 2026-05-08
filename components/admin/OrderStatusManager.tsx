@@ -53,6 +53,8 @@ interface Order {
   delivered_at: string | null;
   is_manual_order?: boolean;
   is_from_quotation?: boolean;
+  /** 由特殊報價單（多組合）拆單建立 */
+  is_from_special_quotation?: boolean;
   auto_cancel_exempt?: boolean;
   admin_note?: string | null;
   Email?: string | null;
@@ -279,6 +281,7 @@ const OrderStatusManager = () => {
       admin_note: order.admin_note ?? "",
       is_manual_order: !!order.is_manual_order,
       is_from_quotation: !!order.is_from_quotation,
+      is_from_special_quotation: !!order.is_from_special_quotation,
       auto_cancel_exempt: !!order.auto_cancel_exempt,
       is_hide: !!order.is_hide,
       customer_type: order.customer_type ?? "",
@@ -1094,6 +1097,11 @@ const OrderStatusManager = () => {
                                     手動訂單
                                   </Badge>
                                 )}
+                                {order.is_from_special_quotation ? (
+                                  <Badge variant="outline" className="w-fit bg-violet-50 text-violet-800 border-violet-300">
+                                    特殊報價
+                                  </Badge>
+                                ) : null}
                                 <Popover
                                   open={customerTypePopoverId === order.id}
                                   onOpenChange={(open) => setCustomerTypePopoverId(open ? order.id : null)}

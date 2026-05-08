@@ -19,6 +19,19 @@ export type QuotationPdfLineItem = {
   why_price?: string;
 };
 
+/** 特殊報價單 PDF：每一訂單組合一區塊 */
+export type QuotationPdfSpecialSection = {
+  combo_index: number;
+  pickup_date?: string;
+  location?: string;
+  receiver?: string;
+  receiver_phone?: string;
+  shipping_fee: number;
+  subtotal: number;
+  total: number;
+  lines: QuotationPdfLineItem[];
+};
+
 /** 與 Edge `webhookPayload` 一致，供單獨開立報價單預覽／列印 */
 export type QuotationPdfWebhookPayload = {
   email?: string;
@@ -42,6 +55,14 @@ export type QuotationPdfWebhookPayload = {
     total_amount: number;
   };
   customizations_json: QuotationPdfLineItem[];
+  /** 為 "special" 時走多組合版面（與一般報價互斥使用 middle 區塊邏輯） */
+  quotation_pdf_mode?: "standard" | "special";
+  special_quotation_pdf?: {
+    orderer_name: string;
+    contact_display: string;
+    sections: QuotationPdfSpecialSection[];
+    grand: { subtotal: number; shipping_fee: number; total_amount: number };
+  };
 };
 
 function escapeHtml(text: string): string {
@@ -165,10 +186,87 @@ function buildServiceOrderBlocks(body: QuotationPdfWebhookPayload): string {
   return orderBlocks.length > 0 ? orderBlocks.join("<br/>") : "<p>（本次未填寫訂購內容）</p>";
 }
 
+function buildSpecialQuotationBasicInfo(sp: NonNullable<QuotationPdfWebhookPayload["special_quotation_pdf"]>): string {
+  const row = (label: string, value: unknown) =>
+    hasValue(value)
+      ? `<tr><th>${escapeHtml(label)}</th><td>${escapeHtml(typeof value === "string" ? value : String(value))}</td></tr>`
+      : "";
+  return `
+  <table class="info-table">
+    ${safeRows([
+      row("訂購人（單位）", sp.orderer_name),
+      row("聯絡方式", sp.contact_display),
+    ])}
+  </table>
+`;
+}
+
+function formatMoney(n: number): string {
+  return Number.isFinite(n) ? n.toLocaleString("zh-TW") : "0";
+}
+
+function buildSpecialQuotationComboSections(sp: NonNullable<QuotationPdfWebhookPayload["special_quotation_pdf"]>): string {
+  const blocks = sp.sections.map((sec) => {
+    const lineRows = sec.lines
+      .map((item, index) => {
+        const up = Number(item.unit_price);
+        const qty = Number(item.quantity);
+        const lineTotal = (Number.isFinite(up) ? up : 0) * (Number.isFinite(qty) ? qty : 0);
+        return `
+        <div style="margin-bottom:10px;">
+          <strong>${escapeHtml(`品項 ${index + 1}：${item.product_name || ""}`)}</strong><br/>
+          單價：NT$ ${formatMoney(up)} × ${Number.isFinite(qty) ? qty : 0} ＝ NT$ ${formatMoney(lineTotal)}
+        </div>`;
+      })
+      .join("");
+
+    const pickupRows = safeRows([
+      hasValue(sec.pickup_date)
+        ? `<tr><th>${escapeHtml("取件日期")}</th><td>${escapeHtml(String(sec.pickup_date))}</td></tr>`
+        : "",
+      hasValue(sec.location)
+        ? `<tr><th>${escapeHtml("地點")}</th><td>${escapeHtml(String(sec.location))}</td></tr>`
+        : "",
+      hasValue(sec.receiver)
+        ? `<tr><th>${escapeHtml("該地點取件人")}</th><td>${escapeHtml(String(sec.receiver))}</td></tr>`
+        : "",
+      hasValue(sec.receiver_phone)
+        ? `<tr><th>${escapeHtml("取件人聯絡方式")}</th><td>${escapeHtml(String(sec.receiver_phone))}</td></tr>`
+        : "",
+      `<tr><th>${escapeHtml("運費")}</th><td>NT$ ${formatMoney(sec.shipping_fee)}</td></tr>`,
+      `<tr><th>${escapeHtml("組合小計")}</th><td>NT$ ${formatMoney(sec.subtotal)}</td></tr>`,
+      `<tr><th>${escapeHtml("組合總計")}</th><td>NT$ ${formatMoney(sec.total)}</td></tr>`,
+    ]);
+
+    return `
+    <h3 style="margin-top:0;color:#7a4f52;">訂單組合 ${sec.combo_index}</h3>
+    <table class="info-table">${pickupRows}</table>
+    <div style="margin-top:12px;">${lineRows || "<p>（無品項）</p>"}</div>`;
+  });
+
+  return blocks.join('<hr style="margin:20px 0;border:none;border-top:1px solid #ebd9da;" />');
+}
+
+function buildSpecialQuotationQuoteSection(sp: NonNullable<QuotationPdfWebhookPayload["special_quotation_pdf"]>): string {
+  const g = sp.grand;
+  return `
+  <table class="info-table">
+    ${safeRows([
+      `<tr><th>${escapeHtml("全單小計（各組合品項加總）")}</th><td>NT$ ${formatMoney(g.subtotal)}</td></tr>`,
+      `<tr><th>${escapeHtml("全單運費加總")}</th><td>NT$ ${formatMoney(g.shipping_fee)}</td></tr>`,
+      `<tr><th>${escapeHtml("報價總額")}</th><td><strong>NT$ ${formatMoney(g.total_amount)}</strong></td></tr>`,
+    ])}
+  </table>
+`;
+}
+
 /**
  * 由與 n8n 相同的 webhook payload 產出完整 HTML 文件（可另開視窗列印或存檔）。
  */
 export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string {
+  const sp = body.special_quotation_pdf;
+  const isSpecial = body.quotation_pdf_mode === "special" && !!sp;
+
   const cp = body.customer_profile || ({} as QuotationPdfWebhookPayload["customer_profile"]);
   const phone = normalizePhoneFromNotes(cp.notes);
 
@@ -201,7 +299,7 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
         }</td></tr>`
       : "";
 
-  const basicInfo = `
+  const basicInfo = isSpecial && sp ? buildSpecialQuotationBasicInfo(sp) : `
   <table class="info-table">
     ${safeRows([
       row("姓名", cp.name || ""),
@@ -221,7 +319,7 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
   </table>
 `;
 
-  const orderContent = buildServiceOrderBlocks(body);
+  const orderContent = isSpecial && sp ? buildSpecialQuotationComboSections(sp) : buildServiceOrderBlocks(body);
 
   const quoteBreakdownHTML = quote.items
     .map((item, index) => {
@@ -257,7 +355,10 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
   const subNum = Number(quote.subtotal);
   const shipNum = Number(quote.shipping_fee);
 
-  const quoteSection = `
+  const quoteSection =
+    isSpecial && sp
+      ? buildSpecialQuotationQuoteSection(sp)
+      : `
   <table class="info-table">
     ${safeRows([
       row(
@@ -624,7 +725,7 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
 </div>
 
 ${section("基本資訊", basicInfo)}
-${section("訂購內容", orderContent)}
+${section(isSpecial ? "訂單組合與品項" : "訂購內容", orderContent)}
 ${section("報價結果", quoteSection)}
 
 <div class="footer">
