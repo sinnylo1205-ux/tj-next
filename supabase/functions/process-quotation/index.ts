@@ -397,7 +397,15 @@ function parseComboIdFromQuotationItemEdge(customizations_json: unknown): string
   return typeof id === "string" && id.trim() ? id.trim() : null;
 }
 
-async function rollbackCreatedOrders(supabase: any, orderIds: string[], logPrefix: string) {
+type SupabaseDeleteClient = {
+  from: (table: string) => {
+    delete: () => {
+      eq: (column: string, value: string) => Promise<{ error: unknown }>;
+    };
+  };
+};
+
+async function rollbackCreatedOrders(supabase: SupabaseDeleteClient, orderIds: string[], logPrefix: string) {
   for (let i = orderIds.length - 1; i >= 0; i--) {
     const oid = orderIds[i];
     const { error: itemDeleteError } = await supabase.from("order_items").delete().eq("order_id", oid);
@@ -481,8 +489,8 @@ async function handleConvertSpecialQuotationToOrders(
   const createdOrderIds: string[] = [];
   const postCommitNotifications: Array<{
     orderId: string;
-    linePayload: Record<string, any>;
-    calendarPayload: Record<string, any>;
+    linePayload: Record<string, unknown>;
+    calendarPayload: Record<string, unknown>;
   }> = [];
 
   try {
@@ -567,7 +575,7 @@ async function handleConvertSpecialQuotationToOrders(
         .map((it: any) => `${it.product_name} x${it.quantity}`)
         .join("、");
 
-      const linePayload: Record<string, any> = {
+      const linePayload: Record<string, unknown> = {
         source: "system",
         event_type: "manual_order_created",
         ref_id: orderData.id,
