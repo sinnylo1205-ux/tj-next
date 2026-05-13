@@ -18,9 +18,11 @@ export type SpecialQuotationComboPayload = {
   pickup_location?: string | null;
   pickup_contact_name?: string | null;
   pickup_contact_phone?: string | null;
+  /** 該組運費；未約定時以 0 */
   shipping_fee: number;
-  line_subtotal: number;
-  line_total: number;
+  /** 品項皆具單價時為 Σ(單價×數量)；否則 null（禁止臆測） */
+  line_subtotal: number | null;
+  line_total: number | null;
 };
 
 export type SpecialQuotationRoot = {

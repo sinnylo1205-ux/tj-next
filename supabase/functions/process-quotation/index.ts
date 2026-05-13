@@ -15,6 +15,8 @@ const N8N_QUOTATION_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/quota
 const N8N_LINE_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/line";
 const N8N_CALENDAR_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/order-processing-to-calendar";
 
+const QUOTATION_KIND_SPECIAL = "special";
+
 const _DISABLED_PROCESS_QUOTATION = false;
 
 Deno.serve(async (req) => {
@@ -124,6 +126,35 @@ function mergeQuotationItemCustomizations(existing: unknown, patch: Record<strin
   return { ...base, ...patch };
 }
 
+/** 轉訂單：將報價品項 customizations_json 與 all_requirement（客製／備註）合併寫入 order_items */
+function orderItemCustomizationsJsonFromQuotationItem(item: any): unknown {
+  const raw = item?.customizations_json;
+  let base: Record<string, unknown> = {};
+  if (raw != null) {
+    if (typeof raw === "string") {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          base = { ...(parsed as Record<string, unknown>) };
+        }
+      } catch {
+        /* ignore */
+      }
+    } else if (typeof raw === "object" && !Array.isArray(raw)) {
+      base = { ...(raw as Record<string, unknown>) };
+    }
+  }
+  const ar = item?.all_requirement;
+  if (ar && typeof ar === "object" && !Array.isArray(ar)) {
+    const a = ar as Record<string, unknown>;
+    const cust = typeof a.customization === "string" ? a.customization.trim() : "";
+    if (cust) base.customization = cust;
+    const note = typeof a.note === "string" ? a.note.trim() : "";
+    if (note) base.note = note;
+  }
+  return Object.keys(base).length > 0 ? base : null;
+}
+
 /** 更新品項與報價單金額、狀態為已報價，並組出與 n8n 相同之 payload */
 async function applySendQuoteDb(supabase: any, body: any): Promise<{ ok: true; data: SendQuoteApplyOk } | { ok: false; response: Response }> {
   const { quotation_order_id, items, shipping_fee, line_user_id } = body;
@@ -177,13 +208,17 @@ async function applySendQuoteDb(supabase: any, body: any): Promise<{ ok: true; d
     const lineTotal = (unit_price || 0) * (existingItem.quantity || 0);
     subtotal += lineTotal;
 
+    const prevCombo = parseComboIdFromQuotationItemEdge(existingItem.customizations_json);
     const customizationsJson = mergeQuotationItemCustomizations(existingItem.customizations_json, {
-      product_name: existingItem.product_name,
-      unit_price: unit_price,
-      quantity: existingItem.quantity,
-      preview_url: preview_url || "",
-      why_price: why_price || "",
+      why_price: why_price ?? "",
     });
+    if (prevCombo && !parseComboIdFromQuotationItemEdge(customizationsJson)) {
+      (customizationsJson as Record<string, unknown>).combo_id = prevCombo;
+      const role = (customizationsJson as Record<string, unknown>).role;
+      if (role == null || role === "") {
+        (customizationsJson as Record<string, unknown>).role = "special_quotation_line";
+      }
+    }
 
     const { error: updateError } = await supabase
       .from("quotation_order_items")
@@ -295,9 +330,23 @@ async function applySendQuoteDb(supabase: any, body: any): Promise<{ ok: true; d
       unit_price: item.unit_price,
       quantity: item.quantity,
       preview_url: item.preview_url || "",
-      why_price: item.customizations_json?.why_price || "",
+      why_price: customizationWhyPriceEdge(item.customizations_json),
+      combo_id: parseComboIdFromQuotationItemEdge(item.customizations_json) ?? undefined,
+      role: customizationRoleEdge(item.customizations_json),
     })),
   };
+
+  const specialPdf = buildSpecialQuotationPdfAttachmentForEdge(
+    quotation,
+    allReq,
+    updatedItems,
+    subtotal,
+    shipping_fee || 0,
+    totalAmount,
+  );
+  if (specialPdf) {
+    Object.assign(webhookPayload, specialPdf);
+  }
 
   return {
     ok: true,
@@ -380,8 +429,6 @@ async function handleSendQuoteStandalone(supabase: any, body: any) {
   );
 }
 
-const QUOTATION_KIND_SPECIAL = "special";
-
 function parseComboIdFromQuotationItemEdge(customizations_json: unknown): string | null {
   if (customizations_json == null) return null;
   let o: unknown = customizations_json;
@@ -395,6 +442,174 @@ function parseComboIdFromQuotationItemEdge(customizations_json: unknown): string
   if (!o || typeof o !== "object") return null;
   const id = (o as Record<string, unknown>).combo_id;
   return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+function customizationWhyPriceEdge(customizations_json: unknown): string {
+  if (customizations_json == null) return "";
+  let o: unknown = customizations_json;
+  if (typeof customizations_json === "string") {
+    try {
+      o = JSON.parse(customizations_json);
+    } catch {
+      return "";
+    }
+  }
+  if (!o || typeof o !== "object") return "";
+  return String((o as Record<string, unknown>).why_price ?? "");
+}
+
+function customizationRoleEdge(customizations_json: unknown): string | undefined {
+  if (customizations_json == null) return undefined;
+  let o: unknown = customizations_json;
+  if (typeof customizations_json === "string") {
+    try {
+      o = JSON.parse(customizations_json);
+    } catch {
+      return undefined;
+    }
+  }
+  if (!o || typeof o !== "object") return undefined;
+  const r = (o as Record<string, unknown>).role;
+  return typeof r === "string" && r.trim() ? r.trim() : undefined;
+}
+
+/** PDF 品項列：從 all_requirement 或 customizations_json 讀取客製／備註（與後台儲存一致） */
+function quotationItemPdfLineAllReqEdge(item: any): { customization: string; note: string } {
+  const pick = (ar: unknown, key: string): string => {
+    if (!ar || typeof ar !== "object" || Array.isArray(ar)) return "";
+    const v = (ar as Record<string, unknown>)[key];
+    return typeof v === "string" ? v.trim() : "";
+  };
+  let customization = pick(item?.all_requirement, "customization");
+  let note = pick(item?.all_requirement, "note");
+  const raw = item?.customizations_json;
+  let o: Record<string, unknown> | null = null;
+  if (raw != null) {
+    if (typeof raw === "string") {
+      try {
+        const p = JSON.parse(raw) as unknown;
+        if (p && typeof p === "object" && !Array.isArray(p)) o = p as Record<string, unknown>;
+      } catch {
+        /* ignore */
+      }
+    } else if (typeof raw === "object" && !Array.isArray(raw)) {
+      o = raw as Record<string, unknown>;
+    }
+  }
+  if (o) {
+    if (!customization) {
+      const v = o.customization;
+      customization = typeof v === "string" ? v.trim() : "";
+    }
+    if (!note) {
+      const v = o.note;
+      note = typeof v === "string" ? v.trim() : "";
+    }
+  }
+  return { customization, note };
+}
+
+/**
+ * 特殊報價（多訂單組合）：併入 pdf_input／n8n payload，讓 buildQuotationPdfHtml 走訂單組合版面。
+ * 邏輯需與 `lib/special-quotation-pdf.ts` 之結構對齊（Edge 無法 import Next 模組故內嵌）。
+ */
+function buildSpecialQuotationPdfAttachmentForEdge(
+  quotation: any,
+  allReq: any,
+  updatedItems: any[],
+  subtotal: number,
+  shippingFee: number,
+  totalAmount: number,
+): Record<string, unknown> | null {
+  if (allReq?.quotation_kind !== QUOTATION_KIND_SPECIAL) return null;
+  const special = allReq?.special_quotation;
+  if (!special || typeof special !== "object") return null;
+  const combos: any[] = Array.isArray(special.combos) ? special.combos : [];
+  if (combos.length === 0) return null;
+
+  const byCombo = new Map<string, any[]>();
+  for (const item of updatedItems) {
+    const cid = parseComboIdFromQuotationItemEdge(item.customizations_json);
+    if (!cid) continue;
+    if (!byCombo.has(cid)) byCombo.set(cid, []);
+    byCombo.get(cid)!.push(item);
+  }
+
+  const contact = special.contact || {};
+  const customerProfile = allReq.customer_profile || {};
+  const contactEmail =
+    typeof contact.email === "string" && contact.email.trim()
+      ? contact.email.trim()
+      : String(quotation.email || customerProfile.email || "").trim();
+  const contact_display = [
+    contactEmail ? `Email：${contactEmail}` : "",
+    contact.phone ? `電話：${String(contact.phone)}` : "",
+    contact.line_user_id ? `LINE：${String(contact.line_user_id)}` : "",
+  ]
+    .filter(Boolean)
+    .join("　") || "—";
+
+  const orderer_name =
+    String(special.orderer_name || "").trim() ||
+    String(customerProfile.name || "").trim() ||
+    "客戶";
+
+  const sections = combos.map((combo: any, idx: number) => {
+    const cid = String(combo?.id ?? "").trim();
+    const rawItems = cid ? byCombo.get(cid) ?? [] : [];
+    const lines = rawItems.map((it: any) => {
+      const allReqLine = quotationItemPdfLineAllReqEdge(it);
+      return {
+        product_name: String(it.product_name || ""),
+        unit_price: Number(it.unit_price) || 0,
+        quantity: Number(it.quantity) || 0,
+        preview_url: it.preview_url || "",
+        why_price: customizationWhyPriceEdge(it.customizations_json),
+        customization: allReqLine.customization || undefined,
+        note: allReqLine.note || undefined,
+      };
+    });
+    const lineSub = lines.reduce(
+      (s: number, l: any) => s + (Number(l.unit_price) || 0) * (Number(l.quantity) || 0),
+      0,
+    );
+    const ship = Number(combo?.shipping_fee) || 0;
+    return {
+      combo_index: idx + 1,
+      pickup_date:
+        typeof combo?.expected_pickup_date === "string"
+          ? combo.expected_pickup_date.trim() || undefined
+          : undefined,
+      location:
+        typeof combo?.pickup_location === "string" ? combo.pickup_location.trim() || undefined : undefined,
+      receiver:
+        typeof combo?.pickup_contact_name === "string"
+          ? combo.pickup_contact_name.trim() || undefined
+          : undefined,
+      receiver_phone:
+        typeof combo?.pickup_contact_phone === "string"
+          ? combo.pickup_contact_phone.trim() || undefined
+          : undefined,
+      shipping_fee: ship,
+      subtotal: lineSub,
+      total: lineSub + ship,
+      lines,
+    };
+  });
+
+  return {
+    quotation_pdf_mode: "special",
+    special_quotation_pdf: {
+      orderer_name,
+      contact_display,
+      sections,
+      grand: {
+        subtotal,
+        shipping_fee: shippingFee,
+        total_amount: totalAmount,
+      },
+    },
+  };
 }
 
 /** 特殊報價單：依 combo_id 拆成多筆 orders，各自通知 */
@@ -534,7 +749,7 @@ async function handleConvertSpecialQuotationToOrders(
           quantity: item.quantity || 1,
           unit_price: item.unit_price || 0,
           preview_url: item.preview_url || null,
-          customizations_json: item.customizations_json || null,
+          customizations_json: orderItemCustomizationsJsonFromQuotationItem(item),
           category: item.category || "custom_design",
         });
         if (itemError) {
@@ -797,7 +1012,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
       quantity: item.quantity || 1,
       unit_price: item.unit_price || 0,
       preview_url: item.preview_url || null,
-      customizations_json: item.customizations_json || null,
+      customizations_json: orderItemCustomizationsJsonFromQuotationItem(item),
       category: item.category || "custom_design",
     });
 

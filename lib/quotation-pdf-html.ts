@@ -17,6 +17,9 @@ export type QuotationPdfLineItem = {
   quantity: number;
   preview_url?: string;
   why_price?: string;
+  /** 與 quotation_order_items.all_requirement 對齊 */
+  customization?: string;
+  note?: string;
 };
 
 /** 特殊報價單 PDF：每一訂單組合一區塊 */
@@ -205,17 +208,65 @@ function formatMoney(n: number): string {
   return Number.isFinite(n) ? n.toLocaleString("zh-TW") : "0";
 }
 
+/** 訂單組合一、二、三…（1-based） */
+function comboOrdinalChinese(index1Based: number): string {
+  const table: Record<number, string> = {
+    1: "一",
+    2: "二",
+    3: "三",
+    4: "四",
+    5: "五",
+    6: "六",
+    7: "七",
+    8: "八",
+    9: "九",
+    10: "十",
+    11: "十一",
+    12: "十二",
+    13: "十三",
+    14: "十四",
+    15: "十五",
+    16: "十六",
+    17: "十七",
+    18: "十八",
+    19: "十九",
+    20: "二十",
+    21: "二十一",
+    22: "二十二",
+    23: "二十三",
+    24: "二十四",
+    25: "二十五",
+    26: "二十六",
+    27: "二十七",
+    28: "二十八",
+    29: "二十九",
+    30: "三十",
+  };
+  return table[index1Based] ?? String(index1Based);
+}
+
 function buildSpecialQuotationComboSections(sp: NonNullable<QuotationPdfWebhookPayload["special_quotation_pdf"]>): string {
   const blocks = sp.sections.map((sec) => {
+    const comboOrdinal = comboOrdinalChinese(Math.max(1, Number(sec.combo_index) || 1));
     const lineRows = sec.lines
       .map((item, index) => {
         const up = Number(item.unit_price);
         const qty = Number(item.quantity);
         const lineTotal = (Number.isFinite(up) ? up : 0) * (Number.isFinite(qty) ? qty : 0);
+        const cust = hasValue(item.customization)
+          ? `<div style="margin-top:6px;color:#444;font-size:13px;line-height:1.5;"><span style="color:#666;">客製化需求：</span>${escapeHtml(String(item.customization)).replace(/\n/g, "<br/>")}</div>`
+          : "";
+        const noteBlock = hasValue(item.note)
+          ? `<div style="margin-top:4px;color:#444;font-size:13px;line-height:1.5;"><span style="color:#666;">備註：</span>${escapeHtml(String(item.note)).replace(/\n/g, "<br/>")}</div>`
+          : "";
+        const whyBlock = hasValue(item.why_price)
+          ? `<div style="margin-top:4px;color:#555;font-size:13px;line-height:1.5;"><span style="color:#666;">報價備註：</span>${escapeHtml(String(item.why_price)).replace(/\n/g, "<br/>")}</div>`
+          : "";
         return `
         <div style="margin-bottom:10px;">
           <strong>${escapeHtml(`品項 ${index + 1}：${item.product_name || ""}`)}</strong><br/>
           單價：NT$ ${formatMoney(up)} × ${Number.isFinite(qty) ? qty : 0} ＝ NT$ ${formatMoney(lineTotal)}
+          ${cust}${noteBlock}${whyBlock}
         </div>`;
       })
       .join("");
@@ -239,7 +290,7 @@ function buildSpecialQuotationComboSections(sp: NonNullable<QuotationPdfWebhookP
     ]);
 
     return `
-    <h3 style="margin-top:0;color:#7a4f52;">訂單組合 ${sec.combo_index}</h3>
+    <h3 style="margin-top:0;color:#7a4f52;">訂單組合${comboOrdinal}</h3>
     <table class="info-table">${pickupRows}</table>
     <div style="margin-top:12px;">${lineRows || "<p>（無品項）</p>"}</div>`;
   });
@@ -319,7 +370,9 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
   </table>
 `;
 
-  const orderContent = isSpecial && sp ? buildSpecialQuotationComboSections(sp) : buildServiceOrderBlocks(body);
+  const orderContent = isSpecial && sp
+    ? `<p style="margin:0;color:#666;font-size:14px;line-height:1.65;">本報價為<strong>特殊報價單</strong>（多訂單組合）。各組合之取件地點、聯絡人、品項與金額，請見下方<strong>報價結果</strong>區塊內之<strong>報價明細</strong>。</p>`
+    : buildServiceOrderBlocks(body);
 
   const quoteBreakdownHTML = quote.items
     .map((item, index) => {
@@ -357,7 +410,13 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
 
   const quoteSection =
     isSpecial && sp
-      ? buildSpecialQuotationQuoteSection(sp)
+      ? `
+  <div class="special-quote-detail" style="margin-bottom:18px;">
+    <h3 style="margin:0 0 12px 0;color:#5a3d3f;font-size:17px;">報價明細（依訂單組合）</h3>
+    ${buildSpecialQuotationComboSections(sp)}
+  </div>
+  ${buildSpecialQuotationQuoteSection(sp)}
+`
       : `
   <table class="info-table">
     ${safeRows([
@@ -725,7 +784,7 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
 </div>
 
 ${section("基本資訊", basicInfo)}
-${section(isSpecial ? "訂單組合與品項" : "訂購內容", orderContent)}
+${section(isSpecial ? "訂單組合說明" : "訂購內容", orderContent)}
 ${section("報價結果", quoteSection)}
 
 <div class="footer">
