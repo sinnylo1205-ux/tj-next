@@ -20,6 +20,7 @@ import { zhTW } from "date-fns/locale";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/lib/supabase";
+import { getTaiwanPublicHolidaysInCalendarMonth } from "@/lib/taiwan-public-holidays";
 import * as XLSX from "xlsx";
 import type { CellObject } from "xlsx";
 
@@ -74,6 +75,7 @@ function isWeekday(date: Date): boolean {
 }
 
 function generateDefaultBlocks(month: Date): ScheduleBlock[] {
+  const twHolidays = getTaiwanPublicHolidaysInCalendarMonth(month);
   const start = startOfMonth(month);
   const end = endOfMonth(month);
   const days = eachDayOfInterval({ start, end });
@@ -82,6 +84,7 @@ function generateDefaultBlocks(month: Date): ScheduleBlock[] {
   days.forEach((day) => {
     if (!DEFAULT_WORK_DAYS.includes(getDay(day))) return;
     const dateStr = format(day, "yyyy-MM-dd");
+    if (twHolidays.has(dateStr)) return;
     EMPLOYEES.forEach((emp) => {
       SLOTS.forEach((slot) => {
         if (slot >= DEFAULT_START && slot < DEFAULT_END) {
@@ -123,6 +126,11 @@ const AdminHRPanel = () => {
 
   const weekdays = useMemo(() => getWeekdaysInMonth(currentMonth), [currentMonth]);
 
+  const taiwanHolidays = useMemo(
+    () => getTaiwanPublicHolidaysInCalendarMonth(currentMonth),
+    [currentMonth],
+  );
+
   const blockMap = useMemo(() => {
     const m = new Map<string, ScheduleBlock>();
     blocks.forEach((b) => m.set(`${b.employeeId}-${b.date}-${b.slot}`, b));
@@ -154,13 +162,19 @@ const AdminHRPanel = () => {
       slot: Number(r.slot),
     }));
 
+    const holidayMap = getTaiwanPublicHolidaysInCalendarMonth(month);
+    const cleanedBlocks = dbBlocks.filter((b) => !holidayMap.has(b.date));
+
     // If no schedule data for this month, generate defaults and save
     if (dbBlocks.length === 0) {
       const defaults = generateDefaultBlocks(month);
       setBlocks(defaults);
       await saveBlocksToDB(defaults, month);
     } else {
-      setBlocks(dbBlocks);
+      setBlocks(cleanedBlocks);
+      if (cleanedBlocks.length !== dbBlocks.length) {
+        await saveBlocksToDB(cleanedBlocks, month);
+      }
     }
 
     const leaves = new Set<string>();
@@ -254,6 +268,10 @@ const AdminHRPanel = () => {
   const handleDrop = (e: React.DragEvent, targetDate: string, targetSlot: number) => {
     e.preventDefault();
     if (!dragData) return;
+    if (taiwanHolidays.has(targetDate)) {
+      setDragData(null);
+      return;
+    }
     const block = blocks.find((b) => b.id === dragData.blockId);
     if (!block) return;
 
@@ -301,6 +319,7 @@ const AdminHRPanel = () => {
   };
 
   const handleAddBlock = (employeeId: string, date: string, slot: number) => {
+    if (taiwanHolidays.has(date)) return;
     const key = `${employeeId}-${date}-${slot}`;
     if (blockMap.has(key)) return;
     updateBlocks((prev) => [...prev, { id: key, employeeId, date, slot }]);
@@ -308,6 +327,10 @@ const AdminHRPanel = () => {
 
   // ── 請假 ──
   const handleLeave = async (employeeId: string, date: string, reason: string) => {
+    if (taiwanHolidays.has(date)) {
+      toast({ title: "此日為國定假日", description: "無需標記請假。", variant: "destructive" });
+      return;
+    }
     updateBlocks((prev) => prev.filter((b) => !(b.employeeId === employeeId && b.date === date)));
     const key = `${employeeId}-${date}`;
     setLeaveRecords((prev) => new Set(prev).add(key));
@@ -332,7 +355,7 @@ const AdminHRPanel = () => {
 
     // Restore default blocks if it's a default work day
     const d = new Date(date);
-    if (DEFAULT_WORK_DAYS.includes(getDay(d))) {
+    if (DEFAULT_WORK_DAYS.includes(getDay(d)) && !taiwanHolidays.has(date)) {
       const restored: ScheduleBlock[] = [];
       SLOTS.forEach((slot) => {
         if (slot >= DEFAULT_START && slot < DEFAULT_END) {
@@ -355,6 +378,7 @@ const AdminHRPanel = () => {
     const monthStr = format(currentMonth, "yyyyMM");
     const monthNum = format(currentMonth, "M");
     const daysInMonth = getDaysInMonth(currentMonth);
+    const holidayMap = getTaiwanPublicHolidaysInCalendarMonth(currentMonth);
     const wb = XLSX.utils.book_new();
 
     EMPLOYEES.forEach((emp) => {
@@ -377,6 +401,12 @@ const AdminHRPanel = () => {
         const dateStr = format(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d), "yyyy-MM-dd");
         const slots = (dateSlots.get(dateStr) || []).sort((a, b) => a - b);
         const isLeave = leaveRecords.has(`${emp.id}-${dateStr}`);
+        const twHolidayName = holidayMap.get(dateStr);
+
+        if (twHolidayName) {
+          rows.push([dateStr, null, null, null, null, null, null, `國定假日：${twHolidayName}`]);
+          continue;
+        }
 
         // 收集該天的刪除備註
         const dayNotes: string[] = [];
@@ -519,16 +549,28 @@ const AdminHRPanel = () => {
                   <div className="p-2 text-xs font-medium text-muted-foreground border-r">時段</div>
                   {week.map((day) => {
                     const dateStr = format(day, "yyyy-MM-dd");
+                    const holidayName = taiwanHolidays.get(dateStr);
                     return (
                       <div
                         key={day.toISOString()}
-                        className="p-2 text-center text-xs font-medium border-r last:border-r-0 cursor-pointer hover:bg-red-50 transition-colors group"
+                        className={cn(
+                          "p-2 text-center text-xs font-medium border-r last:border-r-0 transition-colors group",
+                          holidayName
+                            ? "cursor-default bg-sky-50/80"
+                            : "cursor-pointer hover:bg-red-50",
+                        )}
                         onClick={() => setLeaveDialogDate(dateStr)}
-                        title="點擊設定請假"
+                        title={holidayName ? `國定假日：${holidayName}` : "點擊設定請假"}
                       >
                         <div>{format(day, "EEE", { locale: zhTW })}</div>
                         <div className="text-sm font-semibold">{format(day, "M/d")}</div>
-                        <div className="text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">請假</div>
+                        {holidayName ? (
+                          <div className="text-[10px] text-sky-800 font-semibold leading-tight mt-0.5 px-0.5 line-clamp-3">
+                            {holidayName}
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-red-400 opacity-0 group-hover:opacity-100 transition-opacity">請假</div>
+                        )}
                       </div>
                     );
                   })}
@@ -563,6 +605,7 @@ const AdminHRPanel = () => {
                           isLeave: leaveRecords.has(`${emp.id}-${dateStr}`),
                         }));
 
+                        const holidayName = taiwanHolidays.get(dateStr);
                         return (
                           <div
                             key={dateStr}
@@ -578,7 +621,17 @@ const AdminHRPanel = () => {
                               const leaveKey = `${emp.id}-${dateStr}`;
                               const leaveNote = leaveReasons.get(leaveKey);
 
-                              return isLeave && !block ? (
+                              return holidayName ? (
+                                <div
+                                  key={emp.id}
+                                  className="flex-1 flex items-center justify-center bg-sky-50/90 text-sky-900/80 text-[10px] font-medium select-none px-0.5 text-center leading-tight"
+                                  title={`國定假日：${holidayName}`}
+                                >
+                                  {full && slot === SLOTS[0] ? (
+                                    <span className="line-clamp-3">{holidayName}</span>
+                                  ) : null}
+                                </div>
+                              ) : isLeave && !block ? (
                                 <div
                                   key={emp.id}
                                   className="flex-1 flex items-center justify-center bg-red-50 text-red-400 text-sm font-semibold select-none relative group"
@@ -687,7 +740,19 @@ const AdminHRPanel = () => {
             <DialogTitle>設定請假 — {leaveDialogDate}</DialogTitle>
           </DialogHeader>
 
-          {!leaveSelectedEmp ? (
+          {leaveDialogDate && taiwanHolidays.has(leaveDialogDate) ? (
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-muted-foreground">
+                此日為國定假日，無需排班與請假紀錄。
+              </p>
+              <p className="text-sm font-medium text-sky-900 bg-sky-50 border border-sky-200 rounded-md px-3 py-2">
+                {taiwanHolidays.get(leaveDialogDate)}
+              </p>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setLeaveDialogDate(null)}>關閉</Button>
+              </DialogFooter>
+            </div>
+          ) : !leaveSelectedEmp ? (
             <div className="space-y-3 py-2">
               <p className="text-sm text-muted-foreground">選擇該日請假的員工：</p>
               {EMPLOYEES.map((emp) => {
