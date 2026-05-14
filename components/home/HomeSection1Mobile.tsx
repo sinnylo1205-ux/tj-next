@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+import { MOBILE_HERO_URL } from "@/lib/home-lcp-urls";
 import { cn } from "@/lib/utils";
 
 const SECTION1_MOBILE_CTA = [
@@ -39,7 +40,7 @@ function swapTopAndBottomImages<T>(list: T[]): T[] {
 }
 
 /**
- * 手機首頁 Section 1：三枚導向按鈕置中，CMS 前景圖疊於按鈕右側並遮住部分按鈕區。
+ * 手機首頁 Section 1：背景圖以原始比例完整納入區塊（`object-contain`，不裁切、不拉伸）+ 淡漸層；三枚導向按鈕置中，CMS 前景圖疊於按鈕右側。
  */
 export function HomeSection1Mobile({
   items,
@@ -51,8 +52,24 @@ export function HomeSection1Mobile({
   const imageItems = swapTopAndBottomImages(items);
 
   return (
-    <div className="relative w-full bg-gradient-to-b from-[hsl(var(--brand-50))] via-background to-[hsl(var(--muted))]/35">
-      <div className="relative mx-auto flex min-h-[min(88dvh,640px)] max-w-lg flex-col items-center justify-center overflow-visible px-3 pb-28 pt-24">
+    <div className="relative isolate w-full min-h-[min(88dvh,640px)] overflow-hidden">
+      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+        <img
+          src={MOBILE_HERO_URL}
+          alt=""
+          className="h-auto w-auto max-h-[min(88dvh,640px)] max-w-full object-contain object-center"
+          loading="eager"
+          fetchPriority="high"
+          decoding="async"
+          sizes="100vw"
+          aria-hidden
+        />
+      </div>
+      <div
+        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[hsl(var(--brand-50))]/55 via-background/40 to-[hsl(var(--muted))]/45"
+        aria-hidden
+      />
+      <div className="relative z-10 mx-auto flex min-h-[min(88dvh,640px)] max-w-lg flex-col items-center justify-center overflow-visible px-3 pb-28 pt-24">
         <div className="relative w-[min(320px,90vw)] shrink-0">
           {/* 下層：三按鈕（淡品牌粉） */}
           <div className="relative z-10 flex min-w-0 flex-col gap-8 sm:gap-10">
@@ -94,7 +111,7 @@ export function HomeSection1Mobile({
                       height={128}
                       className="block h-auto max-h-[128px] w-full max-w-[140px] object-contain sm:max-h-[140px] sm:max-w-[156px]"
                       loading={isLcpCandidate ? "eager" : "lazy"}
-                      fetchPriority={isLcpCandidate ? "high" : undefined}
+                      fetchPriority={isLcpCandidate ? "low" : undefined}
                       decoding="async"
                     />
                   </button>
