@@ -620,6 +620,12 @@ async function rollbackCreatedOrders(supabase: any, orderIds: string[]) {
   }
 }
 
+function resolveQuotationOrderUserId(bodyUserId: unknown, quotationUserId: unknown): string | null {
+  if (typeof bodyUserId === "string" && bodyUserId.trim()) return bodyUserId.trim();
+  if (typeof quotationUserId === "string" && quotationUserId.trim()) return quotationUserId.trim();
+  return null;
+}
+
 /** 特殊報價單：依 combo_id 拆成多筆 orders，各自通知 */
 async function handleConvertSpecialQuotationToOrders(
   supabase: any,
@@ -681,7 +687,13 @@ async function handleConvertSpecialQuotationToOrders(
     if (c && typeof c.id === "string") comboMetaById.set(c.id, c);
   }
 
-  const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1";
+  const userId = resolveQuotationOrderUserId(bodyUserId, quotation.user_id);
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "轉單前請先綁定會員，避免訂單歸戶錯誤" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
   const lineUserId = bodyLineUserId || quotation.line_user_id || special.contact?.line_user_id || null;
   const ordererName = String(special.orderer_name || "").trim() || "客戶";
   const contactEmail = quotation.email || special.contact?.email || null;
@@ -829,7 +841,7 @@ async function handleConvertSpecialQuotationToOrders(
         payment_method,
         payment_step: payment_step || "verified",
         transfer_last5: transfer_last5 || null,
-        user_id: bodyUserId || quotation.user_id || null,
+        user_id: userId,
         line_user_id: bodyLineUserId || quotation.line_user_id || null,
         all_requirement: nextAllReq,
         updated_at: new Date().toISOString(),
@@ -963,7 +975,13 @@ async function handleConvertToOrder(supabase: any, body: any) {
   const customerProfile = allReq.customer_profile || {};
 
   // 3. Create order（優先使用 body 傳入的 user_id、line_user_id，否則用報價單上的）
-  const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1"; // fallback to admin user
+  const userId = resolveQuotationOrderUserId(bodyUserId, quotation.user_id);
+  if (!userId) {
+    return new Response(JSON.stringify({ error: "轉單前請先綁定會員，避免訂單歸戶錯誤" }), {
+      status: 400,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
   const lineUserId = bodyLineUserId || quotation.line_user_id || null;
   const orderInsert = {
     user_id: userId,
@@ -1061,7 +1079,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
         payment_method,
         payment_step: payment_step || "verified",
         transfer_last5: transfer_last5 || null,
-        user_id: bodyUserId || quotation.user_id || null,
+        user_id: userId,
         line_user_id: bodyLineUserId || quotation.line_user_id || null,
         updated_at: new Date().toISOString(),
       })
