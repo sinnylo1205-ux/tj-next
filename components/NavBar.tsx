@@ -16,15 +16,14 @@ import {
 } from "@/components/ui/navigation-menu";
 import { cn } from "@/lib/utils";
 import { SafeImage } from "@/components/SafeImage";
-
-const LOGO_URL =
-  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/brand_logo1.png";
+import { SITE_CONFIG } from "@/lib/site";
 
 const productMenuItems = [
   { label: "客製甜點單品", path: "/order" },
   { label: "企業/活動禮盒", path: "/gift-boxes" },
   { label: "甜點茶會佈置", path: "/gallery" },
   { label: "選購經典款式", path: "/classic-styles" },
+  { label: "企業合作／IP 授權", path: "/collaboration/enterprise" },
 ];
 
 const brandMenuItems = [
@@ -42,7 +41,12 @@ const NavBar = () => {
   const { user } = useAuth();
   const [userName, setUserName] = useState<string>("");
 
-  const isActive = (path: string) => pathname === path;
+  const isActive = (path: string) => {
+    if (path === "/collaboration/enterprise") {
+      return pathname.startsWith("/collaboration");
+    }
+    return pathname === path;
+  };
 
   useEffect(() => {
     if (user) {
@@ -82,30 +86,31 @@ const NavBar = () => {
       className="sticky top-0 z-[1000] bg-brand-500 h-14 md:h-16"
       style={{ boxShadow: "var(--elev-navbar)" }}
     >
-      <div className="container h-full flex items-center justify-between">
-        {/* Logo */}
+      <div className="container flex h-full items-center justify-between gap-2 md:gap-3">
+        {/* Logo：z-10 避免導覽列橫向溢出時內容畫在 Logo 底下；勿加實心白底（圖載不到會變方塊） */}
         <Link
           href="/"
-          className="hover:opacity-85 transition-opacity focus-visible:outline-2 focus-visible:outline-white/60 focus-visible:outline-offset-2 rounded"
+          className="relative z-10 flex shrink-0 items-center hover:opacity-90 focus-visible:outline-2 focus-visible:outline-white/60 focus-visible:outline-offset-2 rounded-md"
         >
           <SafeImage
-            src={LOGO_URL}
+            src={SITE_CONFIG.LOGO_URL}
             alt="T&J 客製化甜點"
-            className="h-12 md:h-20 w-auto"
-            width={120}
-            height={100}
-            sizes="120px"
+            className="block h-9 w-auto max-h-9 min-h-[2.25rem] min-w-[4.5rem] object-contain object-left md:h-11 md:max-h-11 md:min-h-[2.75rem] [filter:drop-shadow(0_1px_1px_rgba(0,0,0,0.12))]"
+            width={160}
+            height={80}
+            sizes="(min-width: 768px) 160px, 120px"
+            priority
           />
         </Link>
 
-        {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-6">
+        {/* Desktop Navigation：橫向溢出時可捲動，避免 nowrap 連結疊到 Logo */}
+        <div className="relative z-0 hidden min-h-0 min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain py-1 [-ms-overflow-style:none] [scrollbar-width:none] md:flex [&::-webkit-scrollbar]:hidden">
           {productMenuItems.map((item) => (
             <Link
               key={item.path}
               href={item.path}
               className={cn(
-                "text-ink-inverse hover:opacity-85 transition-opacity py-2 px-3 rounded whitespace-nowrap",
+                "shrink-0 text-ink-inverse hover:opacity-85 transition-opacity rounded py-1.5 px-2 text-[15px] whitespace-nowrap md:text-base",
                 isActive(item.path) && "font-medium bg-white/10",
               )}
             >
@@ -116,7 +121,7 @@ const NavBar = () => {
           <NavigationMenu>
             <NavigationMenuList>
               <NavigationMenuItem>
-                <NavigationMenuTrigger className="bg-transparent text-ink-inverse hover:bg-white/10 data-[state=open]:bg-white/10 focus:bg-white/10 h-auto py-2 text-base">
+                <NavigationMenuTrigger className="shrink-0 bg-transparent text-ink-inverse hover:bg-white/10 data-[state=open]:bg-white/10 focus:bg-white/10 h-auto rounded py-1.5 px-2 text-[15px] md:text-base">
                   品牌與聯絡資訊
                 </NavigationMenuTrigger>
                 <NavigationMenuContent>
@@ -145,7 +150,7 @@ const NavBar = () => {
           <Link
             href="/cart"
             className={cn(
-              "text-ink-inverse hover:opacity-85 transition-opacity py-2 px-3 rounded",
+              "shrink-0 text-ink-inverse hover:opacity-85 transition-opacity rounded py-1.5 px-2",
               isActive("/cart") && "font-medium",
             )}
             aria-label="購物車"
@@ -157,7 +162,7 @@ const NavBar = () => {
             <Link
               href="/member"
               className={cn(
-                "text-ink-inverse hover:opacity-85 transition-opacity py-2 px-3 rounded",
+                "shrink-0 text-ink-inverse hover:opacity-85 transition-opacity rounded py-1.5 px-2",
                 isActive("/member") && "font-medium",
               )}
               aria-label="會員中心"
@@ -167,13 +172,13 @@ const NavBar = () => {
           )}
 
           {user ? (
-            <div className="flex items-center gap-2">
-              <span className="text-ink-inverse py-2 px-3 whitespace-nowrap">
+            <div className="flex shrink-0 items-center gap-1">
+              <span className="max-w-[8.5rem] truncate text-ink-inverse py-1.5 px-1 text-[15px] md:max-w-[12rem] md:text-base">
                 Hi {userName || "使用者"}
               </span>
               <button
                 onClick={handleLogout}
-                className="text-ink-inverse hover:opacity-85 transition-opacity py-2 px-3 rounded flex items-center gap-1"
+                className="text-ink-inverse hover:opacity-85 transition-opacity rounded py-1.5 px-2 flex shrink-0 items-center gap-1"
                 aria-label="登出"
               >
                 <LogOut size={18} />
@@ -183,7 +188,7 @@ const NavBar = () => {
             <Link
               href="/login"
               className={cn(
-                "text-ink-inverse hover:opacity-85 transition-opacity py-2 px-3 rounded whitespace-nowrap",
+                "shrink-0 text-ink-inverse hover:opacity-85 transition-opacity rounded py-1.5 px-2 text-[15px] whitespace-nowrap md:text-base",
                 isActive("/login") && "font-medium",
               )}
             >

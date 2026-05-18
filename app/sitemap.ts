@@ -14,6 +14,8 @@ const STATIC_ROUTES: { path: string; changeFrequency: MetadataRoute.Sitemap[0]["
   { path: "/faq", changeFrequency: "monthly", priority: 0.5 },
   { path: "/how-to-order", changeFrequency: "monthly", priority: 0.6 },
   { path: "/blog", changeFrequency: "weekly", priority: 0.8 },
+  { path: "/collaboration/enterprise", changeFrequency: "monthly", priority: 0.65 },
+  { path: "/collaboration/ip", changeFrequency: "monthly", priority: 0.55 },
 ];
 
 /** 部落格文章 slug（與原 sitemap 一致） */
