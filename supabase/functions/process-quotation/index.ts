@@ -106,6 +106,11 @@ type SendQuoteApplyOk = {
   webhookPayload: Record<string, unknown>;
 };
 
+type CreatedOrderRow = {
+  id: string;
+  [key: string]: unknown;
+};
+
 /** 合併更新報價品項 JSON，保留特殊報價的 combo_id／role／product_id 等欄位（send_quote 不可覆寫洗掉拆單依據） */
 function mergeQuotationItemCustomizations(existing: unknown, patch: Record<string, unknown>): Record<string, unknown> {
   let base: Record<string, unknown> = {};
@@ -155,7 +160,16 @@ function orderItemCustomizationsJsonFromQuotationItem(item: any): unknown {
   return Object.keys(base).length > 0 ? base : null;
 }
 
-async function rollbackCreatedOrders(supabase: any, orderIds: string[]) {
+async function rollbackCreatedOrders(
+  supabase: {
+    from: (table: string) => {
+      delete: () => {
+        eq: (column: string, value: string) => Promise<unknown>;
+      };
+    };
+  },
+  orderIds: string[],
+) {
   for (let i = orderIds.length - 1; i >= 0; i--) {
     const oid = orderIds[i];
     await supabase.from("order_items").delete().eq("order_id", oid);
@@ -695,8 +709,8 @@ async function handleConvertSpecialQuotationToOrders(
 
   const createdOrderIds: string[] = [];
   const deferredNotifications: Array<{
-    linePayload: Record<string, any>;
-    calendarPayload: Record<string, any>;
+    linePayload: Record<string, unknown>;
+    calendarPayload: Record<string, unknown>;
   }> = [];
 
   try {
@@ -1015,7 +1029,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
   );
 
   const createdOrderIds: string[] = [];
-  let orderData: any = null;
+  let orderData: CreatedOrderRow | null = null;
 
   try {
     const { data, error: orderError } = await supabase
@@ -1037,8 +1051,8 @@ async function handleConvertToOrder(supabase: any, body: any) {
       JSON.stringify(
         {
           order_id: orderData.id,
-          is_from_quotation: (orderData as any)?.is_from_quotation,
-          user_id: (orderData as any)?.user_id,
+          is_from_quotation: orderData.is_from_quotation,
+          user_id: orderData.user_id,
         },
         null,
         2,
