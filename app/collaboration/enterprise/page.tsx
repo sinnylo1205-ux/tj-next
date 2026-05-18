@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { PresentationViewer } from "@/components/collaboration/PresentationViewer";
 import { enterpriseProposalSlides, enterpriseProposalToc } from "@/lib/enterprise-proposal-slides";
 import { getFullUrl, SITE_CONFIG } from "@/lib/site";
@@ -34,6 +34,13 @@ export const metadata: Metadata = {
   alternates: { canonical: getFullUrl(path) },
 };
 
+/** 簡報頁：避免 iOS 將版面當作可縮放文字、並配合瀏海安全區 */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
 const webPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebPage",
@@ -47,7 +54,7 @@ const webPageJsonLd = {
 
 export default function EnterpriseCollaborationPage() {
   return (
-    <main>
+    <main className="w-full min-w-0 max-w-full px-2 sm:px-4">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageJsonLd) }} />
       <header className="mb-6 max-w-3xl">
         <h1 className="font-serif text-3xl font-semibold tracking-tight text-ink md:text-4xl">企業合作提案</h1>

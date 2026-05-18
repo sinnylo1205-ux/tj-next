@@ -16,17 +16,23 @@
   height: auto;
 }
 
-/* 手機／窄視窗：改為 9:16 直屏 */
+/* 手機／窄視窗：9:16 直屏 — 以「可用寬度」為主（勿再用 (視窗高×9/16) 當寬，否則 iPhone 直向會比螢幕窄很多、兩側留白過大） */
 @media (max-width: 767px) {
   .tj-proposal-deck-shell {
+    --tj-deck-chrome: 118px;
     aspect-ratio: 9 / 16;
-    width: min(100%, calc((100svh - var(--tj-deck-chrome)) * 9 / 16));
-    max-height: calc(100svh - var(--tj-deck-chrome));
+    width: 100%;
+    max-width: 100%;
+    max-height: none;
+    height: auto;
+    touch-action: manipulation;
   }
 }
 
 .tj-proposal {
   --tj-paper: #ecd8d9;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
   --tj-paper-soft: #e0c7c9;
   --tj-paper-warm: #e8d2d3;
   --tj-card: #f4e1e2;
@@ -214,6 +220,33 @@
   object-fit: contain;
   object-position: center;
   display: block;
+}
+
+/* 窄舞台（與單欄 breakpoint 對齊）：圖片欄改依內容高度，勿用 height:100% 搶滿未定父高，避免與文案重疊；捲動留在內層 split／grid */
+@container tj-deck (max-width: 767px) {
+  .tj-proposal .proposal-photo-cell {
+    flex: 0 0 auto !important;
+    width: 100%;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .tj-proposal .proposal-photo-cell .tj-photo-slot {
+    height: auto;
+    min-height: 120px;
+    max-height: min(42vh, 280px);
+    max-height: min(42dvh, 280px);
+    aspect-ratio: 4 / 3;
+    align-self: stretch;
+  }
+
+  .tj-proposal .proposal-photo-cell .tj-photo-slot__img {
+    width: 100%;
+    height: auto;
+    max-height: min(42vh, 280px);
+    max-height: min(42dvh, 280px);
+    object-fit: contain;
+  }
 }
 
 .tj-proposal .tj-photo-slot__label {
@@ -900,6 +933,97 @@
   /* 照片在左、文案在右：加寬照片欄 */
   .tj-proposal .case-split--rev {
     grid-template-columns: 1.2fr 0.8fr;
+  }
+}
+
+/* 窄舞台（單欄）：圖在文案下；區塊內可捲動，圖片欄不與文字搶 flex 高度，避免壓到標籤／內文 */
+@container tj-deck (max-width: 767px) {
+  /* 外層 .frame 不再捲動，由內層 plan／service／case 區塊專責直向捲動，才能穩定「先讀完文案再捲到圖」 */
+  .tj-proposal .frame:has(> .proposal-plan-grid),
+  .tj-proposal .frame:has(> .proposal-service-grid),
+  .tj-proposal .frame:has(> .case-split) {
+    overflow-y: hidden;
+  }
+
+  .tj-proposal .case-split {
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tj-proposal .case-split > div:not(.proposal-photo-cell) {
+    flex: 0 1 auto !important;
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .tj-proposal .case-split > .proposal-photo-cell {
+    flex: 0 0 auto !important;
+  }
+
+  .tj-proposal .case-split.case-split--rev {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(14px, 2.2vw, 40px);
+    align-items: stretch;
+    min-height: 0;
+  }
+
+  .tj-proposal .case-split.case-split--rev > .order-1 {
+    order: 2;
+  }
+
+  .tj-proposal .case-split.case-split--rev > .order-2 {
+    order: 1;
+  }
+
+  .tj-proposal .proposal-plan-grid {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(12px, 3vw, 24px);
+    align-items: stretch;
+    min-height: 0;
+    flex: 1 1 0%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tj-proposal .proposal-plan-grid > .proposal-photo-cell {
+    order: 2;
+    flex: 0 0 auto !important;
+  }
+
+  .tj-proposal .proposal-plan-grid > div:not(.proposal-photo-cell) {
+    order: 1;
+    flex: 0 1 auto !important;
+    min-height: 0;
+  }
+
+  /* C 方案三格：勿在單欄用 mt-auto 把區塊推到底，否則易與下方圖片欄視覺重疊 */
+  .tj-proposal .proposal-plan-grid3 {
+    margin-top: 0 !important;
+  }
+
+  .tj-proposal .proposal-service-grid {
+    min-height: 0;
+    flex: 1 1 0%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tj-proposal .proposal-service-grid > .proposal-photo-cell {
+    flex: 0 0 auto !important;
+  }
+
+  .tj-proposal .proposal-service-grid > div:not(.proposal-photo-cell) {
+    flex: 0 1 auto !important;
+    min-height: 0;
+    min-width: 0;
   }
 }
 

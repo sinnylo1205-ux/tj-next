@@ -101,7 +101,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
                 </div>
               </div>
               <div className="cover-right">
-                <div className="cover-hero-wrap">
+                <div className="cover-hero-wrap proposal-photo-cell">
                   {slide.coverHeroSlot ? <PhotoSlotView slot={slide.coverHeroSlot} /> : null}
                 </div>
                 <div className="cover-stamp">
@@ -210,7 +210,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
           <div className="frame">
             <CornerBrand />
             {slide.cornerRule ? <CornerRule text={slide.cornerRule} /> : null}
-            <div className="grid min-h-0 flex-1 grid-cols-1 items-center gap-6 @md/tj-deck:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)] @md/tj-deck:gap-10 @lg/tj-deck:gap-14">
+            <div className="proposal-service-grid grid min-h-0 flex-1 grid-cols-1 items-center gap-6 @md/tj-deck:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)] @md/tj-deck:gap-10 @lg/tj-deck:gap-14">
               <div className="min-h-0 min-w-0">
                 <div className="eyebrow">{slide.serviceEyebrow}</div>
                 <h2 className="stitle mt-4">
@@ -233,7 +233,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
                   </div>
                 </div>
               </div>
-              <div className="min-h-0 flex-1">
+              <div className="proposal-photo-cell min-h-0 flex-1">
                 {slide.servicePhotoSlot ? <PhotoSlotView slot={slide.servicePhotoSlot} /> : null}
               </div>
             </div>
@@ -303,7 +303,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
       case "planA":
       case "planC": {
         const grid = (
-          <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 @md/tj-deck:grid-cols-[minmax(0,0.68fr)_minmax(0,1.32fr)] @md/tj-deck:gap-6 @lg/tj-deck:gap-10">
+          <div className="proposal-plan-grid grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 @md/tj-deck:grid-cols-[minmax(0,0.68fr)_minmax(0,1.32fr)] @md/tj-deck:gap-6 @lg/tj-deck:gap-10">
             <div className="flex min-h-0 min-w-0 flex-col">
               <div className="ital text-[clamp(18px,2.6vw,40px)] tracking-wide text-[var(--tj-rose)]">{slide.planItalic}</div>
               <div className="plan-letter-xl">{slide.planLetter}</div>
@@ -333,7 +333,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
                 </div>
               ) : null}
               {slide.planGrid3 ? (
-                <div className="mt-auto grid grid-cols-3 gap-3 pt-6">
+                <div className="proposal-plan-grid3 mt-auto grid grid-cols-3 gap-3 pt-6">
                   {slide.planGrid3.map((g) => (
                     <div key={g.num}>
                       <div className="label">{g.num}</div>
@@ -343,7 +343,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
                 </div>
               ) : null}
             </div>
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="proposal-photo-cell flex min-h-0 flex-1 flex-col">
               {slide.planPhotoSlot ? <PhotoSlotView slot={slide.planPhotoSlot} /> : null}
             </div>
           </div>
@@ -360,8 +360,8 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
 
       case "planB": {
         const grid = (
-          <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 @md/tj-deck:grid-cols-[minmax(0,1.32fr)_minmax(0,0.68fr)] @md/tj-deck:gap-6 @lg/tj-deck:gap-10">
-            <div className="order-1 flex min-h-0 flex-1 flex-col">
+          <div className="proposal-plan-grid grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 @md/tj-deck:grid-cols-[minmax(0,1.32fr)_minmax(0,0.68fr)] @md/tj-deck:gap-6 @lg/tj-deck:gap-10">
+            <div className="proposal-photo-cell order-1 flex min-h-0 flex-1 flex-col">
               {slide.planPhotoSlot ? <PhotoSlotView slot={slide.planPhotoSlot} /> : null}
             </div>
             <div className="order-2 flex min-h-0 min-w-0 flex-1 flex-col">
@@ -439,7 +439,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
                   </div>
                 ) : null}
               </div>
-              <div className="flex min-h-0 flex-1 flex-col">
+              <div className="proposal-photo-cell flex min-h-0 flex-1 flex-col">
                 {slide.casePhotoSlot ? <PhotoSlotView slot={slide.casePhotoSlot} /> : null}
               </div>
             </div>
@@ -454,7 +454,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
             <CornerBrand />
             {slide.cornerRule ? <CornerRule text={slide.cornerRule} /> : null}
             <div className="case-split case-split--rev min-h-0 flex-1">
-              <div className="order-1 flex min-h-0 flex-1 flex-col @md/tj-deck:order-1">
+              <div className="proposal-photo-cell order-1 flex min-h-0 flex-1 flex-col @md/tj-deck:order-1">
                 {slide.casePhotoSlot ? <PhotoSlotView slot={slide.casePhotoSlot} /> : null}
               </div>
               <div className="order-2 flex min-h-0 min-w-0 flex-1 flex-col @md/tj-deck:order-2">
