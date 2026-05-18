@@ -1,19 +1,27 @@
 /* 企業提案簡報 — 對應 TJ-Proposal-Website.html（響應式縮放） */
 
-/* 16:9 舞台：寬 = min(全寬, 依視窗高度推算)；max-height 避免窄螢幕只拉寬時高度過小導致內容裁切 */
+/* 電腦版：16:9 舞台（與先前一致） */
 .tj-proposal-deck-shell {
   --tj-deck-chrome: 175px;
+  container-name: tj-deck;
+  container-type: inline-size;
+  box-sizing: border-box;
+  display: block;
+  margin-inline: auto;
+  min-width: 0;
   aspect-ratio: 16 / 9;
   width: min(100%, calc((100svh - var(--tj-deck-chrome)) * 16 / 9));
   max-width: 100%;
   max-height: calc(100svh - var(--tj-deck-chrome));
-  margin-inline: auto;
-  box-sizing: border-box;
+  height: auto;
 }
 
-@media (max-width: 640px) {
+/* 手機／窄視窗：改為 9:16 直屏 */
+@media (max-width: 767px) {
   .tj-proposal-deck-shell {
-    width: 100%;
+    aspect-ratio: 9 / 16;
+    width: min(100%, calc((100svh - var(--tj-deck-chrome)) * 9 / 16));
+    max-height: calc(100svh - var(--tj-deck-chrome));
   }
 }
 
@@ -231,7 +239,7 @@
   min-height: 0;
 }
 
-@media (min-width: 900px) {
+@container tj-deck (min-width: 900px) {
   .tj-proposal .cover-grid {
     grid-template-columns: 1.05fr 0.95fr;
     align-items: stretch;
@@ -310,7 +318,7 @@
   min-height: 0;
 }
 
-@media (min-width: 900px) {
+@container tj-deck (min-width: 900px) {
   .tj-proposal .cover-right {
     min-height: 0;
   }
@@ -323,7 +331,7 @@
   min-height: 0;
 }
 
-@media (min-width: 900px) {
+@container tj-deck (min-width: 900px) {
   .tj-proposal .cover-hero-wrap {
     position: absolute;
     inset: 0;
@@ -371,7 +379,7 @@
   align-content: start;
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .toc-grid {
     grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
   }
@@ -387,7 +395,7 @@
   min-height: 0;
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .toc-side {
     border-right: 1px solid var(--tj-line);
     padding-right: clamp(24px, 5vw, 80px);
@@ -413,7 +421,7 @@
   border-bottom: 1px solid var(--tj-line);
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .toc-item {
     grid-template-columns: 52px minmax(0, 1fr) minmax(72px, 1fr);
     gap: 10px 14px;
@@ -598,7 +606,7 @@
 /* ----- PLANS ----- */
 .tj-proposal .plans {
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: clamp(10px, 1.5vw, 20px);
   margin-top: clamp(8px, 1.2vw, 36px);
   flex: 1;
@@ -611,7 +619,7 @@
   padding-bottom: 2px;
 }
 
-@media (min-width: 900px) {
+@container tj-deck (min-width: 900px) {
   .tj-proposal .plans {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: clamp(12px, 1.8vw, 20px);
@@ -626,6 +634,25 @@
   flex-direction: column;
   position: relative;
   min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* flex 子項預設 min-width:auto，會用「整行內文」當最小寬度導致不換行、橫向溢出 */
+.tj-proposal .plan > * {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.tj-proposal .plan-name,
+.tj-proposal .plan-tag,
+.tj-proposal .plan-zh,
+.tj-proposal .plan-desc,
+.tj-proposal .plan-foot {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .tj-proposal .plan.featured {
@@ -678,7 +705,6 @@
   margin-top: clamp(10px, 1.5vw, 36px);
   letter-spacing: 0.06em;
   line-height: 1.28;
-  overflow-wrap: anywhere;
 }
 
 .tj-proposal .plan-divider {
@@ -689,10 +715,15 @@
 }
 
 .tj-proposal .plan-desc {
+  width: 100%;
+  margin: 0;
   font-size: clamp(12px, 1.1vw, 20px);
   line-height: 1.75;
   color: var(--tj-ink-soft);
   letter-spacing: 0.04em;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .tj-proposal .plan-foot {
@@ -703,6 +734,73 @@
   font-size: clamp(10px, 0.95vw, 18px);
   color: var(--tj-ink-mute);
   letter-spacing: 0.1em;
+}
+
+/* 方案總覽：窄舞台（手機直屏）— flex 直向 + 明確 gap，避免 grid+min-height 壓縮列高造成卡片重疊；底留白避開頁碼 */
+@container tj-deck (max-width: 520px) {
+  .tj-proposal .frame--plans-overview {
+    padding-bottom: calc(clamp(52px, 13vw, 88px) + var(--tj-safe));
+  }
+
+  .tj-proposal .frame--plans-overview h2.stitle {
+    margin-top: 0.45rem;
+  }
+
+  .tj-proposal .frame--plans-overview .plans.plans--overview {
+    display: flex;
+    flex-direction: column;
+    gap: clamp(22px, 6.5vw, 36px);
+    margin-top: 6px;
+    flex: 0 1 auto;
+    min-height: auto;
+    overflow-x: hidden;
+    overflow-y: visible;
+    overscroll-behavior: auto;
+    -webkit-overflow-scrolling: auto;
+  }
+
+  .tj-proposal .frame--plans-overview .plan {
+    padding: clamp(14px, 4.2vw, 22px) clamp(14px, 3.8vw, 20px);
+    flex-shrink: 0;
+    min-height: auto;
+    min-width: 0;
+  }
+
+  .tj-proposal .frame--plans-overview .plan-name {
+    font-size: clamp(22px, 7vw, 34px);
+    letter-spacing: 0.08em;
+  }
+
+  .tj-proposal .frame--plans-overview .plan-tag {
+    margin-top: 3px;
+    font-size: clamp(11px, 3.1vw, 17px);
+    line-height: 1.22;
+    letter-spacing: 0.06em;
+  }
+
+  .tj-proposal .frame--plans-overview .plan-zh {
+    font-size: clamp(13px, 3.5vw, 21px);
+    line-height: 1.2;
+    margin-top: 5px;
+    letter-spacing: 0.03em;
+  }
+
+  .tj-proposal .frame--plans-overview .plan-divider {
+    margin: 6px 0 5px;
+  }
+
+  .tj-proposal .frame--plans-overview .plan-desc {
+    font-size: clamp(11px, 3.1vw, 15px);
+    line-height: 1.4;
+    letter-spacing: 0.02em;
+  }
+
+  .tj-proposal .frame--plans-overview .plan-foot {
+    padding-top: 8px;
+    font-size: clamp(9px, 2.6vw, 13px);
+    line-height: 1.28;
+    letter-spacing: 0.05em;
+  }
 }
 
 /* ----- CLIENT WALL ----- */
@@ -727,7 +825,7 @@
   align-items: start;
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .client-wall {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 12px 10px;
@@ -793,7 +891,7 @@
   min-height: 0;
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .case-split {
     grid-template-columns: 0.8fr 1.2fr;
     align-items: stretch;
@@ -858,7 +956,7 @@
   min-height: 240px;
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .gallery {
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: 1fr 1fr;
@@ -871,7 +969,7 @@
   min-height: 100px;
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .gallery .tj-photo-slot {
     min-height: 0;
   }
@@ -881,7 +979,7 @@
   grid-row: span 1;
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .gallery .span2 {
     grid-row: span 2;
   }
@@ -893,7 +991,7 @@
   min-height: 0;
 }
 
-@media (min-width: 768px) {
+@container tj-deck (min-width: 768px) {
   .tj-proposal .gallery.gallery--three {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     grid-template-rows: minmax(0, 1fr);
@@ -915,7 +1013,7 @@
   flex: 1;
 }
 
-@media (min-width: 900px) {
+@container tj-deck (min-width: 900px) {
   .tj-proposal .why-grid {
     grid-template-columns: repeat(3, 1fr);
     gap: 24px;
@@ -969,7 +1067,7 @@
   flex: 1;
 }
 
-@media (min-width: 900px) {
+@container tj-deck (min-width: 900px) {
   .tj-proposal .process {
     grid-template-columns: repeat(4, 1fr);
     gap: 16px;

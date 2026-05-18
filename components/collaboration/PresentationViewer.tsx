@@ -210,7 +210,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
           <div className="frame">
             <CornerBrand />
             {slide.cornerRule ? <CornerRule text={slide.cornerRule} /> : null}
-            <div className="grid min-h-0 flex-1 grid-cols-1 items-center gap-6 md:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)] md:gap-10 lg:gap-14">
+            <div className="grid min-h-0 flex-1 grid-cols-1 items-center gap-6 @md/tj-deck:grid-cols-[minmax(0,0.38fr)_minmax(0,0.62fr)] @md/tj-deck:gap-10 @lg/tj-deck:gap-14">
               <div className="min-h-0 min-w-0">
                 <div className="eyebrow">{slide.serviceEyebrow}</div>
                 <h2 className="stitle mt-4">
@@ -275,12 +275,12 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
 
       case "plansOverview":
         return (
-          <div className="frame">
+          <div className="frame frame--plans-overview">
             <CornerBrand />
             {slide.cornerRule ? <CornerRule text={slide.cornerRule} /> : null}
             <div className="eyebrow">{slide.plansEyebrow}</div>
             <h2 className="stitle mt-3">{slide.plansTitle}</h2>
-            <div className="plans min-h-0 flex-1">
+            <div className="plans plans--overview">
               {slide.planCards?.map((p) => (
                 <div key={p.letter} className={cn("plan", p.featured && "featured")}>
                   <div className="plan-name" style={p.featured ? { color: "var(--tj-rose-soft)" } : undefined}>
@@ -303,7 +303,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
       case "planA":
       case "planC": {
         const grid = (
-          <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 md:grid-cols-[minmax(0,0.68fr)_minmax(0,1.32fr)] md:gap-6 lg:gap-10">
+          <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 @md/tj-deck:grid-cols-[minmax(0,0.68fr)_minmax(0,1.32fr)] @md/tj-deck:gap-6 @lg/tj-deck:gap-10">
             <div className="flex min-h-0 min-w-0 flex-col">
               <div className="ital text-[clamp(18px,2.6vw,40px)] tracking-wide text-[var(--tj-rose)]">{slide.planItalic}</div>
               <div className="plan-letter-xl">{slide.planLetter}</div>
@@ -360,7 +360,7 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
 
       case "planB": {
         const grid = (
-          <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 md:grid-cols-[minmax(0,1.32fr)_minmax(0,0.68fr)] md:gap-6 lg:gap-10">
+          <div className="grid min-h-0 flex-1 grid-cols-1 items-stretch gap-4 @md/tj-deck:grid-cols-[minmax(0,1.32fr)_minmax(0,0.68fr)] @md/tj-deck:gap-6 @lg/tj-deck:gap-10">
             <div className="order-1 flex min-h-0 flex-1 flex-col">
               {slide.planPhotoSlot ? <PhotoSlotView slot={slide.planPhotoSlot} /> : null}
             </div>
@@ -454,10 +454,10 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
             <CornerBrand />
             {slide.cornerRule ? <CornerRule text={slide.cornerRule} /> : null}
             <div className="case-split case-split--rev min-h-0 flex-1">
-              <div className="order-1 flex min-h-0 flex-1 flex-col md:order-1">
+              <div className="order-1 flex min-h-0 flex-1 flex-col @md/tj-deck:order-1">
                 {slide.casePhotoSlot ? <PhotoSlotView slot={slide.casePhotoSlot} /> : null}
               </div>
-              <div className="order-2 flex min-h-0 min-w-0 flex-1 flex-col md:order-2">
+              <div className="order-2 flex min-h-0 min-w-0 flex-1 flex-col @md/tj-deck:order-2">
                 {slide.caseMeta ? <div className="case-meta">{slide.caseMeta}</div> : null}
                 <h2 className="stitle">
                   {slide.caseTitleLines?.[0]}
@@ -740,7 +740,7 @@ export function PresentationViewer({ slides, toc, deckTitle, tocBeforeDeck = fal
   return (
     <section className="relative pb-24 md:pb-28" aria-label={deckTitle}>
       {tocBeforeDeck ? tocNav : null}
-      <div className="tj-proposal-deck-shell relative overflow-hidden rounded-xl shadow-[var(--elev-card)]">
+      <div className="@container/tj-deck tj-proposal-deck-shell relative overflow-hidden rounded-xl shadow-[var(--elev-card)]">
         <div className="tj-proposal relative h-full min-h-0 w-full">
           {slides.map((slide, i) => (
             <ProposalSlideArticle key={slide.id} slide={slide} active={i === index} />
