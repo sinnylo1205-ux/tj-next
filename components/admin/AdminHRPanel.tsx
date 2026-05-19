@@ -172,9 +172,6 @@ const AdminHRPanel = () => {
       await saveBlocksToDB(defaults, month);
     } else {
       setBlocks(cleanedBlocks);
-      if (cleanedBlocks.length !== dbBlocks.length) {
-        await saveBlocksToDB(cleanedBlocks, month);
-      }
     }
 
     const leaves = new Set<string>();
