@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, type TouchEvent } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -14,6 +14,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight, Images } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { QUERY_KEYS } from "@/lib/react-query-keys";
 
 interface ProductItem {
   id: string;
@@ -26,9 +29,22 @@ interface ProductItem {
   ui_height?: number | null;
 }
 
+/** 與 Supabase `Website_photo_material` 插入資料約定一致（見內容管理／SQL） */
+const ORDER_EXAMPLES_CATEGORY = "order_popup";
+const ORDER_EXAMPLES_PUT_WHERE = "customer_examples";
+
+interface OrderExampleSlide {
+  id: string;
+  item_name: string | null;
+  photo_url: string | null;
+  photo_url_mobile: string | null;
+  sort_order: number | null;
+  description: string | null;
+}
+
 const ORDER_QUERY_KEYS = {
-  orderBackground: ["order", "background"] as const,
-  orderProducts: ["order", "products"] as const,
+  orderBackground: QUERY_KEYS.orderBackground,
+  orderProducts: QUERY_KEYS.orderProducts,
 };
 
 export default function OrderPage() {
@@ -36,6 +52,12 @@ export default function OrderPage() {
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [showCakeDialog, setShowCakeDialog] = useState(false);
+  const [showExamplesDialog, setShowExamplesDialog] = useState(false);
+  const [exampleSlideIndex, setExampleSlideIndex] = useState(0);
+  const [isNarrowViewport, setIsNarrowViewport] = useState(false);
+  const exampleTouchStartX = useRef<number | null>(null);
+  /** 每次進入本頁只自動開一次；離開再進或資料清空後會重置 */
+  const examplesAutoOpenedRef = useRef(false);
 
   const DESIGN_WIDTH = 1680;
   const DESIGN_HEIGHT = 1050;
@@ -68,6 +90,14 @@ export default function OrderPage() {
     };
   }, []);
 
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const apply = () => setIsNarrowViewport(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
+
   const { data: backgroundUrl = "" } = useQuery({
     queryKey: ORDER_QUERY_KEYS.orderBackground,
     queryFn: async () => {
@@ -79,6 +109,104 @@ export default function OrderPage() {
       return data?.photo_url || "";
     },
   });
+
+  const { data: exampleSlidesRaw = [] } = useQuery({
+    queryKey: QUERY_KEYS.orderCustomerExamples,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("Website_photo_material")
+        .select("id, item_name, photo_url, photo_url_mobile, sort_order, description")
+        .eq("category", ORDER_EXAMPLES_CATEGORY)
+        .eq("put_where", ORDER_EXAMPLES_PUT_WHERE)
+        .not("sort_order", "is", null)
+        .order("sort_order", { ascending: true });
+      if (error) {
+        console.error("[order] customer examples fetch:", error.message);
+        return [] as OrderExampleSlide[];
+      }
+      return (data ?? []) as OrderExampleSlide[];
+    },
+  });
+
+  const exampleSlides = useMemo(
+    () =>
+      exampleSlidesRaw.filter((s) => {
+        const d = (s.photo_url ?? "").trim();
+        const m = (s.photo_url_mobile ?? "").trim();
+        return Boolean(d || m);
+      }),
+    [exampleSlidesRaw],
+  );
+
+  useEffect(() => {
+    if (exampleSlides.length === 0) {
+      examplesAutoOpenedRef.current = false;
+      return;
+    }
+    if (examplesAutoOpenedRef.current) return;
+    const id = window.setTimeout(() => {
+      setShowExamplesDialog(true);
+      examplesAutoOpenedRef.current = true;
+    }, 0);
+    return () => clearTimeout(id);
+  }, [exampleSlides.length]);
+
+  const exampleDisplayIndex =
+    exampleSlides.length === 0 ? 0 : Math.min(exampleSlideIndex, exampleSlides.length - 1);
+
+  const handleExamplesOpenChange = useCallback((open: boolean) => {
+    setShowExamplesDialog(open);
+  }, []);
+
+  const openExamplesDialog = useCallback(() => {
+    setExampleSlideIndex(0);
+    setShowExamplesDialog(true);
+  }, []);
+
+  const goExamplePrev = useCallback(() => {
+    setExampleSlideIndex((i) => {
+      const len = exampleSlides.length;
+      if (len === 0) return 0;
+      const start = Math.min(i, len - 1);
+      return (start - 1 + len) % len;
+    });
+  }, [exampleSlides.length]);
+
+  const goExampleNext = useCallback(() => {
+    setExampleSlideIndex((i) => {
+      const len = exampleSlides.length;
+      if (len === 0) return 0;
+      const start = Math.min(i, len - 1);
+      return (start + 1) % len;
+    });
+  }, [exampleSlides.length]);
+
+  const onExampleTouchStart = useCallback((e: TouchEvent) => {
+    exampleTouchStartX.current = e.changedTouches[0]?.clientX ?? null;
+  }, []);
+
+  const onExampleTouchEnd = useCallback(
+    (e: TouchEvent) => {
+      if (exampleTouchStartX.current == null) return;
+      const endX = e.changedTouches[0]?.clientX ?? exampleTouchStartX.current;
+      const dx = endX - exampleTouchStartX.current;
+      exampleTouchStartX.current = null;
+      if (Math.abs(dx) < 48) return;
+      if (dx > 0) goExamplePrev();
+      else goExampleNext();
+    },
+    [goExamplePrev, goExampleNext],
+  );
+
+  useEffect(() => {
+    if (!showExamplesDialog || exampleSlides.length === 0) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") goExamplePrev();
+      if (e.key === "ArrowRight") goExampleNext();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [showExamplesDialog, exampleSlides.length, goExamplePrev, goExampleNext]);
 
   const { data: nonGiftboxItems = [], isLoading } = useQuery({
     queryKey: ORDER_QUERY_KEYS.orderProducts,
@@ -120,8 +248,27 @@ export default function OrderPage() {
   const baseScaleClass = "scale-[2]";
   const hoverScaleClass = "hover:scale-[2.05]";
 
+  const currentExample = exampleSlides[exampleDisplayIndex];
+  const currentExampleSrc = currentExample
+    ? isNarrowViewport
+      ? (currentExample.photo_url_mobile ?? "").trim() || (currentExample.photo_url ?? "").trim()
+      : (currentExample.photo_url ?? "").trim()
+    : "";
+
   return (
     <div className="relative min-h-screen overflow-x-hidden overflow-y-auto bg-background">
+      {exampleSlides.length > 0 && !showExamplesDialog && (
+        <button
+          type="button"
+          onClick={openExamplesDialog}
+          className="fixed bottom-4 right-4 z-40 flex items-center gap-2 rounded-full border-2 border-[hsl(var(--color-brand-300))] bg-[hsl(var(--color-brand-100))] px-3 py-2 text-xs font-medium text-[hsl(var(--color-ink))] shadow-md transition-opacity hover:opacity-95 sm:bottom-6 sm:right-6 sm:text-sm"
+          aria-label="來看看其他客人客製化了什麼"
+        >
+          <Images className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+          客製範例
+        </button>
+      )}
+
       {/* 右側直排：桌機 z 須高於畫布 z-[11]，否則全幅畫布會整塊蓋住標題 */}
       <div className="pointer-events-none absolute right-2.5 top-14 z-50 sm:right-5 sm:top-16 sm:z-[12] md:right-8">
         <div className="flex flex-row-reverse items-start gap-2 sm:gap-1.5">
@@ -276,6 +423,90 @@ export default function OrderPage() {
           </div>
         </div>
       </div>
+
+      {/* 客製範例輪播（Website_photo_material：category=order_popup, put_where=customer_examples） */}
+      <Dialog open={showExamplesDialog} onOpenChange={handleExamplesOpenChange}>
+        <DialogContent
+          className={cn(
+            "!flex h-auto max-h-[min(92vh,900px)] w-[100vw] max-w-[100vw] flex-col gap-0 overflow-hidden rounded-none border-2 border-[hsl(var(--color-brand-300))] bg-white p-0 shadow-xl",
+            "sm:left-[50%] sm:top-[50%] sm:max-h-[min(88vh,820px)] sm:max-w-[min(720px,92vw)] sm:w-full sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg",
+            "z-[100]",
+          )}
+        >
+          <DialogHeader className="relative shrink-0 space-y-0 border-b-2 border-[hsl(var(--color-brand-300))] bg-[hsl(var(--color-brand-100))] px-4 py-3 pr-12 text-left sm:px-5 sm:py-3.5 sm:pr-14">
+            <DialogTitle className="text-center text-sm font-semibold leading-snug text-[hsl(var(--color-ink))] sm:text-base">
+              來看看其他人客製化了什麼！
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              使用左右箭頭、圓點或左右滑動切換客製成品照片。
+            </DialogDescription>
+          </DialogHeader>
+
+          {currentExample && currentExampleSrc ? (
+            <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-white">
+              <div
+                role="region"
+                aria-roledescription="輪播"
+                aria-label="客製成品照片"
+                className="relative flex min-h-[min(52vh,420px)] w-full flex-1 touch-pan-y items-center justify-center bg-white px-0 py-2 sm:min-h-[min(48vh,440px)] sm:px-4 sm:py-4"
+                onTouchStart={onExampleTouchStart}
+                onTouchEnd={onExampleTouchEnd}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- 輪播外連 Supabase Storage，與本頁畫布區塊一致 */}
+                <img
+                  src={currentExampleSrc}
+                  alt={currentExample.item_name || `客製範例 ${exampleDisplayIndex + 1}`}
+                  className="h-auto max-h-[min(78vh,640px)] w-full max-w-none object-contain sm:max-h-[min(70vh,520px)] sm:max-w-full sm:rounded-md"
+                  loading="eager"
+                  decoding="async"
+                  draggable={false}
+                />
+
+                {exampleSlides.length > 1 && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={goExamplePrev}
+                      className="absolute left-1 top-1/2 z-[1] flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[hsl(var(--color-brand-300))]/60 bg-white/90 text-[hsl(var(--color-ink))] shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 sm:left-2 sm:h-10 sm:w-10"
+                      aria-label="上一張"
+                    >
+                      <ChevronLeft className="h-5 w-5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goExampleNext}
+                      className="absolute right-1 top-1/2 z-[1] flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full border border-[hsl(var(--color-brand-300))]/60 bg-white/90 text-[hsl(var(--color-ink))] shadow-sm backdrop-blur-sm transition-opacity hover:opacity-100 sm:right-2 sm:h-10 sm:w-10"
+                      aria-label="下一張"
+                    >
+                      <ChevronRight className="h-5 w-5" />
+                    </button>
+                  </>
+                )}
+              </div>
+
+              {exampleSlides.length > 1 && (
+                <div className="flex shrink-0 items-center justify-center gap-1.5 border-t border-[hsl(var(--color-brand-300))]/30 bg-white px-3 py-2.5 sm:py-3">
+                  {exampleSlides.map((s, idx) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setExampleSlideIndex(idx)}
+                      className={cn(
+                        "h-2 w-2 rounded-full transition-colors",
+                        idx === exampleDisplayIndex
+                          ? "bg-[hsl(var(--color-brand-500))]"
+                          : "bg-[hsl(var(--color-brand-300))]/40 hover:bg-[hsl(var(--color-brand-300))]/70",
+                      )}
+                      aria-label={`第 ${idx + 1} 張`}
+                      aria-current={idx === exampleDisplayIndex ? "true" : undefined}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       {/* 客製化蛋糕服務彈窗 */}
       <Dialog open={showCakeDialog} onOpenChange={setShowCakeDialog}>

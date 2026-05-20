@@ -14,6 +14,8 @@ export const QUERY_KEYS = {
   order: ["order"],
   orderBackground: ["order", "background"],
   orderProducts: ["order", "products"],
+  /** 與 `app/order/page.tsx` 的 `Website_photo_material` 查詢條件一致 */
+  orderCustomerExamples: ["order", "customerExamples", "order_popup", "customer_examples"] as const,
   home: ["home"],
   homeBackground: ["home", "background"],
   homeForeground: ["home", "foreground"],

@@ -150,6 +150,25 @@ export const preloadOrderData = async (queryClient: ReturnType<typeof useQueryCl
     },
   });
 
+  // 訂購頁客製範例彈窗輪播（與 app/order/page.tsx 查詢一致）
+  await queryClient.fetchQuery({
+    queryKey: QUERY_KEYS.orderCustomerExamples,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("Website_photo_material")
+        .select("id, item_name, photo_url, photo_url_mobile, sort_order, description")
+        .eq("category", "order_popup")
+        .eq("put_where", "customer_examples")
+        .not("sort_order", "is", null)
+        .order("sort_order", { ascending: true });
+      if (error) {
+        console.error("[preload order] customer examples:", error.message);
+        return [];
+      }
+      return data ?? [];
+    },
+  });
+
   // Products
   await queryClient.fetchQuery({
     queryKey: QUERY_KEYS.orderProducts,
