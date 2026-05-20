@@ -681,8 +681,8 @@ async function handleConvertSpecialQuotationToOrders(
   const createdOrderIds: string[] = [];
   const notificationJobs: Array<{
     orderId: string;
-    linePayload: Record<string, any>;
-    calendarPayload: Record<string, any>;
+    linePayload: Record<string, unknown> & { payload: Record<string, unknown> };
+    calendarPayload: Record<string, unknown>;
   }> = [];
 
   try {
