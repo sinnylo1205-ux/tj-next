@@ -403,3 +403,35 @@ input[type="number"] {
   -moz-appearance: textfield;
   appearance: textfield;
 }
+
+/* 404「返回首頁」：fixed 對齊視窗右上、緊貼在 NavBar（h-14 / md:h-16）下方。
+ * 勿只靠 Tailwind 任意值寫 env(..., 0px)：逗號易讓 md 斷點的 top 整段失效，
+ * 結果 top 卡在 3.5rem，在 md 被 4rem 高的導覽列整塊蓋住（硬重新整理也一樣）。 */
+.tj-notfound-home {
+  position: fixed;
+  right: max(4px, env(safe-area-inset-right, 0px));
+  top: calc(env(safe-area-inset-top, 0px) + 3.5rem + 6px);
+  z-index: 1001;
+  display: block;
+  box-sizing: border-box;
+  /* 寬度寫在 CSS：避免僅靠 Tailwind 任意值時層疊／掃描導致未生效，看起來「怎麼改都沒變小」 */
+  width: min(42vw, 196px);
+  max-width: calc(100vw - 12px);
+}
+@media (min-width: 640px) {
+  .tj-notfound-home {
+    width: min(36vw, 210px);
+  }
+}
+@media (min-width: 768px) {
+  .tj-notfound-home {
+    top: calc(env(safe-area-inset-top, 0px) + 4rem + 8px);
+    right: max(10px, env(safe-area-inset-right, 0px));
+    width: min(30vw, 224px);
+  }
+}
+@media (min-width: 1024px) {
+  .tj-notfound-home {
+    width: min(26vw, 238px);
+  }
+}
