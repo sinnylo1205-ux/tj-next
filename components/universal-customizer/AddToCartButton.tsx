@@ -25,6 +25,8 @@ const GROUP_NAME_MAP: Record<string, string> = {
   package_screenshot: "包裝預覽圖",
   package_style: "包裝款式",
   box_config: "盒裝配置",
+  /** 禮盒外殼顏色（7287/7288/7289，與圖層 color root 分開） */
+  gift_box_shell_color: "禮盒顏色",
   package_decoration: "包裝裝飾",
   macaron_mode: "馬卡龍模式",
   conditional_fee: "條件費用",
@@ -515,6 +517,24 @@ export function useAddToCart() {
               group_name_zh: upload.label || "客製化照片連結",
               items: [{ url: upload.url, option_id: upload.option_id }],
             });
+          });
+        }
+
+        // --------------------------------------------------
+        // 禮盒外殼顏色（giftbox_big / midium / small）
+        // --------------------------------------------------
+        if (groupKey === "gift_box_shell_color" && value && typeof value === "object" && !Array.isArray(value)) {
+          const val = value as any;
+          collectedGroups.push({
+            group: "gift_box_shell_color",
+            group_name_zh: GROUP_NAME_MAP["gift_box_shell_color"],
+            items: [
+              {
+                option_id: val.option_id,
+                option_name: val.option_name_zh,
+                metadata: val.metadata_product,
+              },
+            ],
           });
         }
       });

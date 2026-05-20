@@ -1194,6 +1194,17 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
       selectedColors.forEach((color) => selectedOptionIds.push(color.option_id));
       selectedFlavors.forEach((flavor) => selectedOptionIds.push(flavor.option_id));
       selectedSizes.forEach((size) => selectedOptionIds.push(size.option_id));
+      // 禮盒外殼顏色（與 GiftBoxColorSelector / 後端計價一致）
+      if (
+        config.giftBoxColorRootId &&
+        giftBoxColorState.isSupported &&
+        giftBoxColorState.selectedColor
+      ) {
+        const shellId = giftBoxColorState.selectedColor.option_id;
+        if (!selectedOptionIds.includes(shellId)) {
+          selectedOptionIds.push(shellId);
+        }
+      }
 
       const verifyResponse = await calculatePrice({
         product_id: productType,
@@ -1280,6 +1291,20 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
         selectedColors.forEach((option, rootId) => {
           selectedOptions[`color_${rootId}`] = option;
         });
+      }
+
+      // 1b. 禮盒外殼顏色（購物車明細／與計價選項一致）
+      if (
+        config.giftBoxColorRootId &&
+        giftBoxColorState.isSupported &&
+        giftBoxColorState.selectedColor
+      ) {
+        const shell = giftBoxColorState.selectedColor;
+        selectedOptions.gift_box_shell_color = {
+          option_id: shell.option_id,
+          option_name_zh: shell.option_name_zh,
+          price_modifier: shell.price_modifier ?? 0,
+        };
       }
 
       // 2. 馬卡龍專用：顏色分配資訊（不包含 hex）
