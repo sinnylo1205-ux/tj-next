@@ -83,23 +83,88 @@ interface QuotationOrderItem {
 
 type QuotationEditsState = Partial<QuotationOrder> & { tax_title?: string; tax_id?: string };
 
+function parseAllRequirement(raw: unknown): Record<string, unknown> | null {
+  if (raw == null) return null;
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    try {
+      const o = JSON.parse(raw) as unknown;
+      if (o && typeof o === "object" && !Array.isArray(o)) return o as Record<string, unknown>;
+    } catch {
+      /* ignore */
+    }
+  }
+  return null;
+}
+
+const ITEM_AR_TEXT_EXCLUDE = new Set(["customization", "note", "reference_images"]);
+
+/** 將 all_requirement 物件（排除已知鍵）轉成多行文字 */
+function formatAllRequirementFieldsAsText(
+  obj: Record<string, unknown> | null,
+  excludeKeys: Set<string> = ITEM_AR_TEXT_EXCLUDE,
+): string {
+  if (!obj) return "";
+  return Object.entries(obj)
+    .filter(
+      ([k, v]) =>
+        !excludeKeys.has(k) &&
+        v !== null &&
+        v !== undefined &&
+        v !== "" &&
+        !(Array.isArray(v) && v.length === 0),
+    )
+    .map(([k, v]) => `${translateKey(k)}：${renderValue(v)}`)
+    .join("\n");
+}
+
+/** 品項編輯器「客製化需求」：僅來自 quotation_order_items.all_requirement */
+function getDefaultItemCustomization(item: QuotationOrderItem): string {
+  const itemAr = parseAllRequirement(item.all_requirement);
+  if (!itemAr) return "";
+  const cust = itemAr.customization;
+  if (typeof cust === "string" && cust.trim()) return cust.trim();
+  return formatAllRequirementFieldsAsText(itemAr);
+}
+
+function getDefaultItemNote(item: QuotationOrderItem): string {
+  const itemAr = parseAllRequirement(item.all_requirement);
+  const note = itemAr?.note;
+  return typeof note === "string" ? note : "";
+}
+
 function buildQuotationEditsFromOrder(q: QuotationOrder): QuotationEditsState {
-  const ar = q.all_requirement || {};
-  const cp = ar.customer_profile || {};
-  const del = ar.delivery || {};
-  const nameOrReceiver = q.recipient_name || q.who_receive || cp.name || del.receiver || null;
+  const ar = parseAllRequirement(q.all_requirement) || {};
+  const cp = (ar.customer_profile as Record<string, unknown> | undefined) || {};
+  const del = (ar.delivery as Record<string, unknown> | undefined) || {};
+  const nameOrReceiver =
+    q.recipient_name ||
+    q.who_receive ||
+    (typeof cp.name === "string" ? cp.name : null) ||
+    (typeof del.receiver === "string" ? del.receiver : null) ||
+    null;
   return {
     shipping_fee: q.shipping_fee,
     subtotal: q.subtotal,
     total_amount: q.total_amount,
     notes: q.notes ?? null,
-    shipping_way: q.shipping_way || del.method || null,
+    shipping_way:
+      q.shipping_way ||
+      (typeof del.method === "string" ? del.method : null) ||
+      null,
     discount_amount: q.discount_amount,
-    email: q.email || cp.email || null,
+    email: q.email || (typeof cp.email === "string" ? cp.email : null) || null,
     who_receive: nameOrReceiver,
     recipient_name: nameOrReceiver,
-    shipping_address_text: q.shipping_address_text || del.address || null,
-    expected_pickup_date: q.expected_pickup_date || del.special_date || del.self_pick_date || null,
+    shipping_address_text:
+      q.shipping_address_text ||
+      (typeof del.address === "string" ? del.address : null) ||
+      null,
+    expected_pickup_date:
+      q.expected_pickup_date ||
+      (typeof del.special_date === "string" ? del.special_date : null) ||
+      (typeof del.self_pick_date === "string" ? del.self_pick_date : null) ||
+      null,
     line_user_id: q.line_user_id ?? null,
     user_id: q.user_id ?? null,
   };
@@ -273,7 +338,7 @@ function collectImageUrlsFromField(raw: unknown): string[] {
 
 /** 品項 all_requirement / customizations_json 內的風格參考圖 */
 function getItemStyleReferenceUrls(item: QuotationOrderItem): string[] {
-  const req = item.all_requirement;
+  const req = parseAllRequirement(item.all_requirement);
   const fromReq = collectImageUrlsFromField(req?.reference_images);
   const cust = item.customizations_json;
   const fromCust =
@@ -284,12 +349,14 @@ function getItemStyleReferenceUrls(item: QuotationOrderItem): string[] {
 }
 
 /** 全單 service_order（甜點佈置 candyBar、禮盒 GiftBox）內上傳的參考圖／檔連結 */
-function getOrderServiceStyleReferenceUrls(allReq: any): string[] {
+function getOrderServiceStyleReferenceUrls(allReqRaw: unknown): string[] {
+  const allReq = parseAllRequirement(allReqRaw);
   const so = allReq?.service_order;
   if (!so || typeof so !== "object") return [];
+  const soRec = so as Record<string, unknown>;
   const keys = ["reference_images", "reference_files", "style_reference_images"] as const;
   const urls: string[] = [];
-  for (const block of [so.candyBar, so.GiftBox]) {
+  for (const block of [soRec.candyBar, soRec.GiftBox]) {
     if (!block || typeof block !== "object") continue;
     for (const k of keys) {
       urls.push(...collectImageUrlsFromField((block as Record<string, unknown>)[k]));
@@ -316,127 +383,6 @@ const StyleReferenceLinksBlock = ({ label, urls }: { label: string; urls: string
           </a>
         ))}
       </div>
-    </div>
-  );
-};
-
-// Render all_requirement JSON into readable sections
-const renderAllRequirement = (allReq: any) => {
-  if (!allReq || typeof allReq !== "object") return null;
-
-  const sections: { title: string; entries: { key: string; value: string }[] }[] = [];
-
-  // customer_profile
-  if (allReq.customer_profile) {
-    const entries = Object.entries(allReq.customer_profile)
-      .filter(([, v]) => v !== null && v !== undefined && v !== "")
-      .map(([k, v]) => ({ key: translateKey(k), value: renderValue(v) }));
-    if (entries.length > 0) sections.push({ title: "👤 客戶資訊", entries });
-  }
-
-  // delivery
-  if (allReq.delivery) {
-    const entries = Object.entries(allReq.delivery)
-      .filter(([, v]) => v !== null && v !== undefined && v !== "")
-      .map(([k, v]) => ({ key: translateKey(k), value: renderValue(v) }));
-    if (entries.length > 0) sections.push({ title: "🚚 配送資訊", entries });
-  }
-
-  // service_order
-  if (allReq.service_order) {
-    const entries: { key: string; value: string }[] = [];
-    const so = allReq.service_order;
-    if (so.service_type) entries.push({ key: "服務類型", value: SERVICE_TYPE_ZH[so.service_type] || so.service_type });
-    if (so.selections && so.selections.length > 0) {
-      entries.push({ key: "選擇項目", value: so.selections.join("、") });
-    }
-    if (entries.length > 0) sections.push({ title: "🎨 服務內容", entries });
-
-    // CandyBar 客製化細節 — 展開 JSON
-    if (so.candyBar && typeof so.candyBar === "object") {
-      const candyBarEntries = Object.entries(so.candyBar as Record<string, any>)
-        .filter(([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0))
-        .map(([k, v]) => ({ key: translateKey(k), value: renderValue(v) }));
-      if (candyBarEntries.length > 0) {
-        sections.push({ title: "🎨 甜點佈置客製化細節", entries: candyBarEntries });
-      }
-    }
-
-    // GiftBox 客製化細節 — 展開 JSON
-    if (so.GiftBox && typeof so.GiftBox === "object") {
-      const giftBoxEntries = Object.entries(so.GiftBox as Record<string, any>)
-        .filter(([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0))
-        .map(([k, v]) => ({ key: translateKey(k), value: renderValue(v) }));
-      if (giftBoxEntries.length > 0) {
-        sections.push({ title: "🎁 禮盒客製化細節", entries: giftBoxEntries });
-      }
-    }
-  }
-
-  return (
-    <div className="space-y-3">
-      {sections.map((section, idx) => (
-        <div key={idx}>
-          <p className="font-semibold text-sm mb-1">{section.title}</p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            {section.entries.map((entry, i) => (
-              <div key={i} className="flex gap-2">
-                <span className="text-muted-foreground whitespace-nowrap">{entry.key}：</span>
-                <span className="break-all">{entry.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
-
-// Render only service_order (服務內容、甜點佈置、禮盒) — for 報價填寫 block
-const renderServiceAndProductRequirement = (allReq: any) => {
-  if (!allReq?.service_order || typeof allReq.service_order !== "object") return null;
-  const sections: { title: string; entries: { key: string; value: string }[] }[] = [];
-  const so = allReq.service_order;
-
-  const entries: { key: string; value: string }[] = [];
-  if (so.service_type) entries.push({ key: "服務類型", value: SERVICE_TYPE_ZH[so.service_type] || so.service_type });
-  if (so.selections && so.selections.length > 0) {
-    entries.push({ key: "選擇項目", value: so.selections.join("、") });
-  }
-  if (entries.length > 0) sections.push({ title: "🎨 服務內容", entries });
-
-  if (so.candyBar && typeof so.candyBar === "object") {
-    const candyBarEntries = Object.entries(so.candyBar as Record<string, any>)
-      .filter(([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0))
-      .map(([k, v]) => ({ key: translateKey(k), value: renderValue(v) }));
-    if (candyBarEntries.length > 0) {
-      sections.push({ title: "🎨 甜點佈置客製化細節", entries: candyBarEntries });
-    }
-  }
-  if (so.GiftBox && typeof so.GiftBox === "object") {
-    const giftBoxEntries = Object.entries(so.GiftBox as Record<string, any>)
-      .filter(([, v]) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && v.length === 0))
-      .map(([k, v]) => ({ key: translateKey(k), value: renderValue(v) }));
-    if (giftBoxEntries.length > 0) {
-      sections.push({ title: "🎁 禮盒客製化細節", entries: giftBoxEntries });
-    }
-  }
-  if (sections.length === 0) return null;
-  return (
-    <div className="space-y-3">
-      {sections.map((section, idx) => (
-        <div key={idx}>
-          <p className="font-semibold text-sm mb-1">{section.title}</p>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-            {section.entries.map((entry, i) => (
-              <div key={i} className="flex gap-2">
-                <span className="text-muted-foreground whitespace-nowrap">{entry.key}：</span>
-                <span className="break-all">{entry.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
     </div>
   );
 };
@@ -864,10 +810,7 @@ const AdminQuotationsPanel = () => {
           const productName = productNameRaw || "待補充";
           const qty = Math.max(1, Math.floor(Number(rowEd.itemQuantities?.[item.id] ?? item.quantity ?? 1)) || 1);
 
-          const baseReq =
-            item.all_requirement && typeof item.all_requirement === "object" && !Array.isArray(item.all_requirement)
-              ? { ...item.all_requirement }
-              : {};
+          const baseReq = { ...(parseAllRequirement(item.all_requirement) || {}) };
           const custStr = (rowEd.itemCustomizations?.[item.id] ?? "").trim();
           const noteStr = (rowEd.itemNotes?.[item.id] ?? "").trim();
           if (custStr) baseReq.customization = custStr;
@@ -925,9 +868,8 @@ const AdminQuotationsPanel = () => {
                 String(customizationJsonRecord(row.customizations_json).why_price ?? "").trim() || "";
               itemProductNames[row.id] = row.product_name || "";
               itemQuantities[row.id] = Math.max(1, row.quantity ?? 1);
-              const ar = row.all_requirement || {};
-              itemCustomizations[row.id] = typeof ar.customization === "string" ? ar.customization : "";
-              itemNotes[row.id] = typeof ar.note === "string" ? ar.note : "";
+              itemCustomizations[row.id] = getDefaultItemCustomization(row);
+              itemNotes[row.id] = getDefaultItemNote(row);
             });
             return {
               ...prev,
@@ -1054,19 +996,19 @@ const AdminQuotationsPanel = () => {
       const itemQuantities: Record<string, number> = {};
       const itemCustomizations: Record<string, string> = {};
       const itemNotes: Record<string, string> = {};
-      (data || []).forEach((item) => {
+      const itemList = data || [];
+      const quotation = quotations.find((q) => q.id === quotationOrderId);
+      itemList.forEach((item) => {
         itemPrices[item.id] = item.unit_price;
         itemPreviewUrls[item.id] = item.preview_url || "";
         itemWhyPrices[item.id] =
           String(customizationJsonRecord(item.customizations_json).why_price ?? "").trim() || "";
         itemProductNames[item.id] = item.product_name || "";
         itemQuantities[item.id] = Math.max(1, item.quantity ?? 1);
-        const ar = item.all_requirement || {};
-        itemCustomizations[item.id] = typeof ar.customization === "string" ? ar.customization : "";
-        itemNotes[item.id] = typeof ar.note === "string" ? ar.note : "";
+        itemCustomizations[item.id] = getDefaultItemCustomization(item);
+        itemNotes[item.id] = getDefaultItemNote(item);
       });
 
-      const quotation = quotations.find((q) => q.id === quotationOrderId);
       setEditData((prev) => ({
         ...prev,
         [quotationOrderId]: {
@@ -1115,21 +1057,19 @@ const AdminQuotationsPanel = () => {
 
   const renderQuotationItemEditors = (qid: string, qItemsList: QuotationOrderItem[]) =>
     qItemsList.map((item) => {
-      const ar =
-        item.all_requirement && typeof item.all_requirement === "object" && !Array.isArray(item.all_requirement)
-          ? item.all_requirement
-          : {};
-      const defCust = typeof ar.customization === "string" ? ar.customization : "";
-      const defNote = typeof ar.note === "string" ? ar.note : "";
+      const defCust = getDefaultItemCustomization(item);
+      const defNote = getDefaultItemNote(item);
       const edLocal = editData[qid];
+      const storedCust = edLocal?.itemCustomizations?.[item.id];
+      const storedNote = edLocal?.itemNotes?.[item.id];
       return (
         <ItemEditor
           key={item.id}
           item={item}
           productName={edLocal?.itemProductNames?.[item.id] ?? item.product_name ?? ""}
           quantity={edLocal?.itemQuantities?.[item.id] ?? Math.max(1, item.quantity ?? 1)}
-          customization={edLocal?.itemCustomizations?.[item.id] ?? defCust}
-          note={edLocal?.itemNotes?.[item.id] ?? defNote}
+          customization={storedCust?.trim() ? storedCust : defCust}
+          note={storedNote?.trim() ? storedNote : defNote}
           unitPrice={edLocal?.itemPrices[item.id] ?? null}
           previewUrl={edLocal?.itemPreviewUrls[item.id] ?? ""}
           whyPrice={edLocal?.itemWhyPrices?.[item.id] ?? ""}
@@ -1708,12 +1648,19 @@ const AdminQuotationsPanel = () => {
                                     placeholder="email@example.com"
                                   />
                                 </div>
-                                {q.all_requirement?.delivery?.phone != null && String(q.all_requirement.delivery.phone).trim() !== "" && (
+                                {(() => {
+                                  const phone = parseAllRequirement(q.all_requirement)?.delivery as
+                                    | Record<string, unknown>
+                                    | undefined;
+                                  const phoneStr = phone?.phone != null ? String(phone.phone).trim() : "";
+                                  if (!phoneStr) return null;
+                                  return (
                                   <div className="space-y-1 col-span-2">
                                     <Label className="text-sm">電話（來自詢價，唯讀）</Label>
-                                    <p className="text-sm text-muted-foreground py-2">{renderValue(q.all_requirement.delivery.phone)}</p>
+                                    <p className="text-sm text-muted-foreground py-2">{renderValue(phoneStr)}</p>
                                   </div>
-                                )}
+                                  );
+                                })()}
                                 {sqShowHeaderText(qe.shipping_way) && (
                                 <div className="space-y-1">
                                   <Label className="text-sm">配送方式</Label>
@@ -1787,7 +1734,7 @@ const AdminQuotationsPanel = () => {
 
                             <Separator />
 
-                            {/* ========== 下半部：報價填寫（品項細節僅此區，無重複服務內容/客製化品項明細） ========== */}
+                            {/* ========== 下半部：（品項細節僅此區，無重複服務內容/客製化品項明細） ========== */}
                             <div className="space-y-4">
                             {/* ========== Price Asked: Admin fills prices ========== */}
                             {activeTab === "price_asked" && (

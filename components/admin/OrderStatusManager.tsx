@@ -9,17 +9,15 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Check, ChevronDown, ExternalLink, Plus, Trash2, CalendarIcon, X, Upload } from "lucide-react";
+import { Check, ChevronDown, ChevronLeft, Plus, Trash2, CalendarIcon, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
 import { buildReceiptHtml, ntdIntegerToChineseCapital, triggerDownloadHtmlFile } from "@/lib/receipt-html";
-import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import ManualOrderForm from "./ManualOrderForm";
-import { SafeImage } from "@/components/SafeImage";
+import { AdminOrderDetailPanel, getMobileOrderListName } from "./AdminOrderDetailPanel";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -134,6 +132,7 @@ const OrderStatusManager = () => {
   const [editDraft, setEditDraft] = useState<Record<string, any>>({});
   const [savingEdit, setSavingEdit] = useState(false);
   const [uploadingItemKey, setUploadingItemKey] = useState<string | null>(null);
+  const [mobileDetailOrder, setMobileDetailOrder] = useState<Order | null>(null);
 
   // Loading action state to prevent duplicate clicks
   const [loadingAction, setLoadingAction] = useState<{
@@ -254,6 +253,15 @@ const OrderStatusManager = () => {
       loadOrderItems(orderId);
     }
     setExpandedOrders(newExpanded);
+  };
+
+  const openMobileDetail = (order: Order) => {
+    setMobileDetailOrder(order);
+    void loadOrderItems(order.id);
+  };
+
+  const closeMobileDetail = () => {
+    setMobileDetailOrder(null);
   };
 
   const openEditOrder = (order: Order) => {
@@ -789,6 +797,105 @@ const OrderStatusManager = () => {
 
   const filteredOrders = getFilteredOrders();
 
+  const renderOrderActions = (order: Order) => (
+    <div className="flex flex-wrap gap-2 items-center">
+      {order.payment_step === "pending" && (
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => void handleAssembleReceiptDownload(order)}
+          disabled={loadingAction !== null}
+        >
+          {loadingAction?.orderId === order.id && loadingAction?.action === "assemble_receipt"
+            ? "產生中..."
+            : "預先組裝收據"}
+        </Button>
+      )}
+      {order.payment_step === "submitted" && (
+        <Button
+          size="sm"
+          onClick={() => handleVerifyPayment(order.id)}
+          disabled={loadingAction !== null}
+        >
+          {loadingAction?.orderId === order.id && loadingAction?.action === "verify_payment"
+            ? "處理中..."
+            : "確認收到匯款"}
+        </Button>
+      )}
+      {order.order_status === "awaiting_payment" && order.payment_step !== "verified" && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-amber-400 text-amber-700 hover:bg-amber-50"
+          onClick={() => handleForceProcessing(order.id)}
+          disabled={loadingAction !== null}
+        >
+          {loadingAction?.orderId === order.id && loadingAction?.action === "force_processing"
+            ? "處理中..."
+            : "未匯款，先出貨"}
+        </Button>
+      )}
+      {order.order_status === "processing" && (
+        <Button
+          size="sm"
+          onClick={() => handleConfirmShipment(order.id)}
+          disabled={loadingAction !== null}
+        >
+          {loadingAction?.orderId === order.id && loadingAction?.action === "confirm_shipment"
+            ? "處理中..."
+            : "確認出貨"}
+        </Button>
+      )}
+      {order.order_status === "shipped" && (
+        <Button
+          size="sm"
+          onClick={() => handleMarkDelivered(order.id)}
+          disabled={loadingAction !== null}
+        >
+          {loadingAction?.orderId === order.id && loadingAction?.action === "mark_delivered"
+            ? "處理中..."
+            : "標記已送達"}
+        </Button>
+      )}
+      {order.order_status === "delivered" && activeTab === "history" && (
+        <Button
+          size="sm"
+          variant="destructive"
+          onClick={() => handleReturn(order.id)}
+          disabled={loadingAction !== null}
+        >
+          {loadingAction?.orderId === order.id && loadingAction?.action === "return"
+            ? "處理中..."
+            : "退貨"}
+        </Button>
+      )}
+      <AlertDialog>
+        <AlertDialogTrigger asChild>
+          <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10">
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>確定要隱藏此訂單？</AlertDialogTitle>
+            <AlertDialogDescription>
+              此操作會隱藏訂單，資料不會被刪除，可在資料庫中恢復。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => handleDeleteOrder(order.id)}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              確定隱藏
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+
   // If showing manual order form, render it instead
   if (showManualOrderForm) {
     return (
@@ -866,7 +973,38 @@ const OrderStatusManager = () => {
             ) : filteredOrders.length === 0 ? (
               <p className="text-center text-muted-foreground py-12">目前沒有訂單</p>
             ) : (
-              <Table className="table-fixed">
+              <>
+                {/* 手機：取貨日期 + 姓名 */}
+                <div className="md:hidden -mx-4 sm:-mx-0 rounded-lg border border-border overflow-hidden">
+                  <div className="grid grid-cols-2 gap-3 px-4 py-2.5 text-xs font-medium text-muted-foreground bg-muted/40 border-b">
+                    <span>取貨日期</span>
+                    <span className="text-right">姓名</span>
+                  </div>
+                  <ul className="divide-y divide-border bg-white">
+                    {filteredOrders.map((order) => {
+                      const userInfo = users[order.user_id];
+                      const listName = getMobileOrderListName(order, buyerDisplayName(userInfo));
+                      return (
+                        <li key={order.id}>
+                          <button
+                            type="button"
+                            className="grid w-full grid-cols-2 gap-3 px-4 py-3.5 text-left text-sm transition-colors hover:bg-muted/40 active:bg-muted/60"
+                            onClick={() => openMobileDetail(order)}
+                          >
+                            <span className="font-medium tabular-nums text-foreground">
+                              {order.expected_pickup_date || "未指定"}
+                            </span>
+                            <span className="text-right truncate text-foreground">{listName}</span>
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+
+                {/* 桌機：完整表格 */}
+                <div className="hidden md:block w-full max-w-full overflow-x-auto md:overflow-x-visible">
+              <Table className="table-fixed w-full min-w-[36rem] md:min-w-0">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[5.5rem] min-w-0">訂單號</TableHead>
@@ -988,101 +1126,7 @@ const OrderStatusManager = () => {
                           </TableCell>
                           <TableCell className="min-w-0 align-top py-3 px-2 md:px-3">
                             <div className="flex gap-2 items-center flex-wrap" onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()}>
-                              {order.payment_step === "pending" && (
-                                <Button
-                                  size="sm"
-                                  variant="secondary"
-                                  onClick={() => void handleAssembleReceiptDownload(order)}
-                                  disabled={loadingAction !== null}
-                                >
-                                  {loadingAction?.orderId === order.id && loadingAction?.action === "assemble_receipt"
-                                    ? "產生中..."
-                                    : "預先組裝收據"}
-                                </Button>
-                              )}
-                              {order.payment_step === "submitted" && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleVerifyPayment(order.id)}
-                                  disabled={loadingAction !== null}
-                                >
-                                  {loadingAction?.orderId === order.id && loadingAction?.action === "verify_payment"
-                                    ? "處理中..."
-                                    : "確認收到匯款"}
-                                </Button>
-                              )}
-                              {order.order_status === "awaiting_payment" && order.payment_step !== "verified" && (
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="border-amber-400 text-amber-700 hover:bg-amber-50"
-                                  onClick={() => handleForceProcessing(order.id)}
-                                  disabled={loadingAction !== null}
-                                >
-                                  {loadingAction?.orderId === order.id && loadingAction?.action === "force_processing"
-                                    ? "處理中..."
-                                    : "未匯款，先出貨"}
-                                </Button>
-                              )}
-                              {order.order_status === "processing" && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleConfirmShipment(order.id)}
-                                  disabled={loadingAction !== null}
-                                >
-                                  {loadingAction?.orderId === order.id && loadingAction?.action === "confirm_shipment"
-                                    ? "處理中..."
-                                    : "確認出貨"}
-                                </Button>
-                              )}
-                              {order.order_status === "shipped" && (
-                                <Button
-                                  size="sm"
-                                  onClick={() => handleMarkDelivered(order.id)}
-                                  disabled={loadingAction !== null}
-                                >
-                                  {loadingAction?.orderId === order.id && loadingAction?.action === "mark_delivered"
-                                    ? "處理中..."
-                                    : "標記已送達"}
-                                </Button>
-                              )}
-                              {order.order_status === "delivered" && activeTab === "history" && (
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => handleReturn(order.id)}
-                                  disabled={loadingAction !== null}
-                                >
-                                  {loadingAction?.orderId === order.id && loadingAction?.action === "return"
-                                    ? "處理中..."
-                                    : "退貨"}
-                                </Button>
-                              )}
-                              {/* 隱藏訂單按鈕 */}
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                  <Button size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10">
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                  <AlertDialogHeader>
-                                    <AlertDialogTitle>確定要隱藏此訂單？</AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      此操作會隱藏訂單，資料不會被刪除，可在資料庫中恢復。
-                                    </AlertDialogDescription>
-                                  </AlertDialogHeader>
-                                  <AlertDialogFooter>
-                                    <AlertDialogCancel>取消</AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => handleDeleteOrder(order.id)}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    >
-                                      確定隱藏
-                                    </AlertDialogAction>
-                                  </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                              {renderOrderActions(order)}
                             </div>
                           </TableCell>
                           <TableCell
@@ -1214,227 +1258,26 @@ const OrderStatusManager = () => {
                         </TableRow>
 
                         {isExpanded && (
-                          <TableRow key={`${order.id}-detail`}>
+                          <TableRow key={`${order.id}-detail`} className="hover:bg-transparent">
                             <TableCell
                               colSpan={9}
-                              className="bg-muted/30"
+                              className="bg-muted/30 p-0 align-top overflow-hidden"
                               onClick={(e) => e.stopPropagation()}
                               onMouseDown={(e) => e.stopPropagation()}
                             >
-                              <div className="p-4 space-y-4">
-                                {/* 置頂：收件人、地址、電話、備註 */}
-                                <div className="grid md:grid-cols-2 gap-x-6 gap-y-2 text-sm bg-white rounded-md p-3 border border-border">
-                                  <div>
-                                    <span className="font-semibold">收件人：</span>
-                                    {order.who_receive || "未填寫"}
-                                  </div>
-                                  <div>
-                                    <span className="font-semibold">電話：</span>
-                                    {order.phone || "未填寫"}
-                                  </div>
-                                  <div className="md:col-span-2">
-                                    <span className="font-semibold">地址：</span>
-                                    {order.shipping_address_text || "—"}
-                                  </div>
-                                  <div className="md:col-span-2">
-                                    <span className="font-semibold">備註：</span>
-                                    {order.notes || "—"}
-                                  </div>
-                                </div>
-
-                                <div className="grid md:grid-cols-2 gap-6 text-sm">
-                                  <div className="space-y-3">
-                                    <div>
-                                      <span className="font-medium">會員名（訂購人）：</span>
-                                      {buyerDisplayName(userInfo) || "—"}
-                                    </div>
-                                    <div>
-                                      <span className="font-medium">預計取件日：</span>
-                                      {order.expected_pickup_date || "未指定"}
-                                    </div>
-                                    <div>
-                                      <span className="font-medium">聯絡信箱：</span>
-                                      {order.Email || "未填寫"}
-                                    </div>
-                                    <div>
-                                      <span className="font-medium">配送方式：</span>
-                                      {order.shipping_way || "未指定"}
-                                    </div>
-                                    {order.transfer_last5 && (
-                                      <div>
-                                        <span className="font-medium">轉帳末五碼：</span>
-                                        {order.transfer_last5}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div className="space-y-3">
-                                    <div>
-                                      <span className="font-medium">商品小計：</span>
-                                      NT$ {order.subtotal || 0}
-                                    </div>
-                                    <div>
-                                      <span className="font-medium">運費：</span>
-                                      NT$ {order.shipping_fee || 0}
-                                    </div>
-                                    <div className="font-semibold text-primary">
-                                      <span className="font-medium text-foreground">總計（含運費）：</span>
-                                      NT$ {order.total_amount}
-                                    </div>
-                                    <div>
-                                      <span className="font-medium">發票抬頭：</span>
-                                      {order.TAX_title || "—"}
-                                    </div>
-                                    <div>
-                                      <span className="font-medium">統一編號：</span>
-                                      {order.TAX_id ?? "—"}
-                                    </div>
-                                  </div>
-                                </div>
-
-                                <Separator />
-
-                                <div>
-                                  <h4 className="font-semibold mb-3">商品明細</h4>
-                                  <p className="text-xs text-muted-foreground mb-3">
-                                    左側可為每個品項上傳管理員附圖（custom_asset · {ORDER_ADMIN_MEDIA_PREFIX}/…）；若無附圖則顯示客製預覽圖。
-                                  </p>
-                                  {items.map((item) => {
-                                    const customizationRows = asOrderCustomizationsList(item.customizations_json);
-                                    const adminUrl = pickAdminMediaUrl(item);
-                                    const preview =
-                                      typeof item.preview_url === "string" && item.preview_url.trim() !== ""
-                                        ? item.preview_url.trim()
-                                        : null;
-                                    const thumbUrl = adminUrl || preview;
-                                    const thumbLabel = adminUrl ? "管理員附圖" : preview ? "客製預覽" : null;
-                                    const itemKey = `${order.id}-${String(item.order_item_id)}`;
-                                    const uploadingThis = uploadingItemKey === itemKey;
-
-                                    return (
-                                    <div key={item.order_item_id} className="flex gap-4 mb-4 p-3 bg-background rounded-lg border border-border/60">
-                                      <div className="flex flex-col items-center gap-1.5 shrink-0 w-[104px]">
-                                        <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded border bg-muted/40">
-                                          {thumbUrl ? (
-                                            <a
-                                              href={thumbUrl}
-                                              target="_blank"
-                                              rel="noopener noreferrer"
-                                              className="relative block h-full w-full"
-                                              title="開啟圖片"
-                                            >
-                                              <SafeImage
-                                                src={thumbUrl}
-                                                alt={item.product_name}
-                                                fill
-                                                className="object-cover"
-                                                sizes="96px"
-                                              />
-                                            </a>
-                                          ) : (
-                                            <span className="text-[10px] text-muted-foreground px-1 text-center">無圖</span>
-                                          )}
-                                        </div>
-                                        {thumbLabel && (
-                                          <span className="text-[10px] text-muted-foreground">{thumbLabel}</span>
-                                        )}
-                                        <Button
-                                          type="button"
-                                          size="sm"
-                                          variant="secondary"
-                                          className="w-full text-xs h-8"
-                                          disabled={uploadingThis}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            e.preventDefault();
-                                            console.log("[admin-media] upload button clicked", { orderId: order.id, orderItemId: item.order_item_id });
-                                            const input = document.createElement("input");
-                                            input.type = "file";
-                                            input.accept = "image/*";
-                                            input.onchange = () => {
-                                              const f = input.files?.[0];
-                                              console.log("[admin-media] file picked:", f?.name, f?.type, f?.size);
-                                              if (f) void handleOrderItemAdminMediaUpload(order.id, Number(item.order_item_id), f);
-                                            };
-                                            input.click();
-                                          }}
-                                        >
-                                          {uploadingThis ? (
-                                            "上傳中…"
-                                          ) : (
-                                            <>
-                                              <Upload className="h-3 w-3 mr-1 shrink-0" />
-                                              上傳
-                                            </>
-                                          )}
-                                        </Button>
-                                        {adminUrl && (
-                                          <button
-                                            type="button"
-                                            className="text-[10px] text-destructive hover:underline"
-                                            onClick={() => void clearOrderItemAdminMedia(order.id, Number(item.order_item_id))}
-                                          >
-                                            移除附圖
-                                          </button>
-                                        )}
-                                        {adminUrl && (
-                                          <a
-                                            href={adminUrl}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-[10px] text-primary hover:underline inline-flex items-center"
-                                          >
-                                            管理員附圖連結 <ExternalLink className="ml-0.5 h-3 w-3" />
-                                          </a>
-                                        )}
-                                        {preview && (
-                                          <a
-                                            href={preview}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="text-[10px] text-primary hover:underline inline-flex items-center"
-                                          >
-                                            客製預覽 <ExternalLink className="ml-0.5 h-3 w-3" />
-                                          </a>
-                                        )}
-                                      </div>
-                                      <div className="flex-1 space-y-2 min-w-0">
-                                        <p className="font-medium">{item.product_name}</p>
-                                        {customizationRows.length > 0 && (
-                                          <div className="space-y-1 text-sm text-muted-foreground">
-                                            {customizationRows.map((custom: any, idx: number) => (
-                                              <div key={idx}>
-                                                <span className="font-medium">{custom.group_name_zh}：</span>
-                                                {custom.summary}
-                                                {custom.value?.url && (
-                                                  <a
-                                                    href={custom.value.url}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="ml-2 text-primary hover:underline inline-flex items-center"
-                                                  >
-                                                    查看 <ExternalLink className="ml-1 h-3 w-3" />
-                                                  </a>
-                                                )}
-                                              </div>
-                                            ))}
-                                          </div>
-                                        )}
-                                        <div className="text-sm">
-                                          <span className="text-muted-foreground">單價：</span>
-                                          NT$ {Number(item.unit_price ?? 0).toLocaleString()}
-                                        </div>
-                                        <div className="text-sm">
-                                          <span className="text-muted-foreground">數量：</span>
-                                          {item.quantity_description || item.quantity}
-                                        </div>
-                                        <div className="text-sm font-semibold">
-                                          小計：NT$ {item.unit_price * item.quantity}
-                                        </div>
-                                      </div>
-                                    </div>
-                                  );
-                                  })}
-                                </div>
+                              <div className="p-4">
+                                <AdminOrderDetailPanel
+                                  order={order}
+                                  items={items}
+                                  buyerName={buyerDisplayName(userInfo)}
+                                  uploadingItemKey={uploadingItemKey}
+                                  onUploadItem={(orderItemId, file) =>
+                                    void handleOrderItemAdminMediaUpload(order.id, orderItemId, file)
+                                  }
+                                  onClearItemMedia={(orderItemId) =>
+                                    void clearOrderItemAdminMedia(order.id, orderItemId)
+                                  }
+                                />
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1444,11 +1287,97 @@ const OrderStatusManager = () => {
                   })}
                 </TableBody>
               </Table>
+              </div>
+              </>
             )}
           </TabsContent>
         </Tabs>
       </CardContent>
     </Card>
+
+    {/* 手機：全螢幕訂單詳情（適合截圖） */}
+    <Dialog
+      open={!!mobileDetailOrder}
+      onOpenChange={(open) => {
+        if (!open) closeMobileDetail();
+      }}
+    >
+      <DialogContent className="md:hidden fixed inset-0 left-0 top-0 z-50 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-0 bg-white p-0 sm:rounded-none [&>button.absolute]:hidden">
+        {mobileDetailOrder && (() => {
+          const order = mobileDetailOrder;
+          const items = orderItems[order.id] || [];
+          const userInfo = users[order.user_id];
+          return (
+            <>
+              <div className="flex shrink-0 items-center gap-2 border-b bg-white px-3 py-2.5 pr-4">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-9 shrink-0 px-2 -ml-1 text-foreground"
+                  onClick={closeMobileDetail}
+                  aria-label="返回訂單列表"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                  返回
+                </Button>
+                <div className="min-w-0 flex-1 text-left">
+                  <DialogTitle className="truncate text-base leading-tight">
+                    訂單 #{order.id.slice(0, 6).toUpperCase()}
+                  </DialogTitle>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {order.expected_pickup_date || "未指定取件日"} ·{" "}
+                    {getMobileOrderListName(order, buyerDisplayName(userInfo))}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-9 w-9 shrink-0"
+                  onClick={closeMobileDetail}
+                  aria-label="關閉"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-4">
+                <AdminOrderDetailPanel
+                  order={order}
+                  items={items}
+                  buyerName={buyerDisplayName(userInfo)}
+                  screenshotMode
+                  uploadingItemKey={uploadingItemKey}
+                  onUploadItem={(orderItemId, file) =>
+                    void handleOrderItemAdminMediaUpload(order.id, orderItemId, file)
+                  }
+                  onClearItemMedia={(orderItemId) =>
+                    void clearOrderItemAdminMedia(order.id, orderItemId)
+                  }
+                />
+              </div>
+              <div className="shrink-0 border-t bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-3">
+                {renderOrderActions(order)}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    openEditOrder(order);
+                    closeMobileDetail();
+                  }}
+                >
+                  編輯訂單
+                </Button>
+                <Button type="button" variant="secondary" className="w-full" onClick={closeMobileDetail}>
+                  返回訂單列表
+                </Button>
+              </div>
+            </>
+          );
+        })()}
+      </DialogContent>
+    </Dialog>
 
     <Dialog open={!!editingOrder} onOpenChange={(open) => (!open ? setEditingOrder(null) : null)}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
