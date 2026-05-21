@@ -103,6 +103,8 @@ export type ProposalSlide = {
   planBody?: string;
   planTags?: string[];
   planPhotoSlot?: PhotoSlot;
+  /** planB：多張橫向作品圖 */
+  planPhotoSlots?: PhotoSlot[];
   planBullets?: string[];
   planGrid3?: { num: string; text: string }[];
   /** case splits */
@@ -364,6 +366,7 @@ export const enterpriseProposalSlides: ProposalSlide[] = [
       },
       {
         letter: "B",
+        featured: true,
         tagEn: "Plan · Gift Box",
         zhLines: ["客製化", "企業禮盒"],
         desc: "企業禮盒，加上部分客製化的甜點品項，適合伴手禮、小型活動使用。",
@@ -371,7 +374,6 @@ export const enterpriseProposalSlides: ProposalSlide[] = [
       },
       {
         letter: "C",
-        featured: true,
         tagEn: "Plan · Candy Bar",
         zhLines: ["Candy Bar", "設計"],
         desc: "包含場地佈置、客製化甜點製作，以及前兩項服務的完整方案。",
@@ -408,12 +410,26 @@ export const enterpriseProposalSlides: ProposalSlide[] = [
     planTitleLines: ["客製化", "企業禮盒"],
     planBody: "依企業需求訂製甜點品牌色、造型、LOGO 字樣、甜點插卡、吊牌、緞帶，每個細節都呼應品牌。",
     planBullets: ["品牌色", "造型", "LOGO 字樣", "甜點插卡", "吊牌", "緞帶"],
-    planPhotoSlot: {
-      slotId: "plan-b",
-      alt: "B 方案 — 企業禮盒作品照",
-      label: "B 方案 — 企業禮盒作品照",
-      src: "/images/ppt/p11禮盒.webp",
-    },
+    planPhotoSlots: [
+      {
+        slotId: "plan-b-1",
+        alt: "B 方案 — 企業禮盒作品照 一",
+        label: "企業禮盒 一",
+        src: "/images/ppt/p11-1.webp",
+      },
+      {
+        slotId: "plan-b-2",
+        alt: "B 方案 — 企業禮盒作品照 二",
+        label: "企業禮盒 二",
+        src: "/images/ppt/p11-2.webp",
+      },
+      {
+        slotId: "plan-b-3",
+        alt: "B 方案 — 企業禮盒作品照 三",
+        label: "企業禮盒 三",
+        src: "/images/ppt/p11-3.webp",
+      },
+    ],
   },
   {
     id: 12,
@@ -613,7 +629,13 @@ export const enterpriseProposalSlides: ProposalSlide[] = [
     caseTitleEm: "micron",
     caseDetail:
       "我們以「星光」作為本次慶祝活動的核心意象。每一位員工與合作夥伴，都如同夜空中的一顆星，各自閃耀著獨特的光芒。",
-    palette: [{ color: "#0e1d3f" }, { color: "#3c4e7c" }, { color: "#d4b572" }, { color: "transparent", caption: "Starry night" }],
+    palette: [
+      { color: "#0e1d3f" },
+      { color: "#3c4e7c" },
+      { color: "#d4b572" },
+      { color: "#e8688a" },
+      { color: "transparent", caption: "Starry night" },
+    ],
     casePhotoSlot: {
       slotId: "case-micron",
       alt: "micron 星光主題",

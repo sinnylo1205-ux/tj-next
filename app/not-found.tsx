@@ -1,5 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 const ASSET_BASE = "/images/404page";
 
@@ -8,25 +9,45 @@ function asset404(filename: string) {
   return `${ASSET_BASE}/${encodeURIComponent(filename)}`;
 }
 
-const BG_FILE = "404 BG_11zon.jpg";
+const BG_FILE = "404 background.webp";
 const HOME_FILE = "返回首頁.webp";
+const CLOUD_BASE_FILE = "雲朵 背景.webp";
+
+/** 雲朵底圖原始尺寸，供 aspect-ratio 與 overlay 對齊 */
+const CLOUD_BASE_WIDTH = 1605;
+const CLOUD_BASE_HEIGHT = 1125;
 
 /**
- * 雲朵 01–06：由左上到右下（三欄兩列）。
- * 檔名內路徑已對應為站內完整路徑。
+ * 物件 01–06：左上到右下（三欄兩列），疊在雲朵底圖上。
  */
 const CLOUD_NAV: { file: string; href: string; label: string }[] = [
-  { file: "雲朵_01 :luck.webp", href: "/customizer/luck", label: "籤詩餅乾（客製）" },
-  { file: "雲朵_02:cupcake_choco .webp", href: "/customizer/cupcake_choco", label: "杯子蛋糕（客製）" },
-  { file: "雲朵_03 :cookie.webp", href: "/customizer/cookie", label: "餅乾（客製）" },
-  { file: "雲朵_04 :order.webp", href: "/order", label: "訂購說明" },
-  { file: "雲朵_05:giftbox.webp", href: "/gift-boxes", label: "禮盒專區" },
-  { file: "雲朵_06 :gallery.webp", href: "/gallery", label: "作品Gallery" },
+  { file: "雲朵_01 拷貝.webp", href: "/product/luck", label: "籤詩餅乾" },
+  { file: "雲朵_02 拷貝.webp", href: "/product/cupcake_choco", label: "杯子蛋糕" },
+  { file: "雲朵_03 拷貝.webp", href: "/product/cookie", label: "餅乾" },
+  { file: "雲朵_04 拷貝.webp", href: "/order", label: "訂購說明" },
+  { file: "雲朵_05 拷貝.webp", href: "/gift-boxes", label: "禮盒專區" },
+  { file: "雲朵_06 拷貝.webp", href: "/gallery", label: "作品 Gallery" },
 ];
+
+/** 個別物件微調（index 0 = 01） */
+const CLOUD_OBJECT_TWEAKS: Record<number, { linkClass?: string; imgClass?: string }> = {
+  1: { linkClass: "max-h-[84%] max-w-[84%] -translate-y-2 sm:-translate-y-10" }, // 02 往上
+  2: { imgClass: "max-h-[64%] max-w-[64%] sm:-translate-y-4" }, // 03 縮小
+  3: {
+    linkClass: "translate-y-2 sm:translate-y-10",
+    imgClass: "max-h-[104%] max-w-[104%] sm:max-h-[100%] sm:max-w-[100%]",
+  }, // 04 略放大＋往下
+  4: { imgClass: "max-h-[74%] max-w-[74%] sm:translate-y-6" }, // 05 縮小
+  5: { linkClass: "translate-x-3 translate-y-2 sm:translate-x-6 sm:translate-y-10" }, // 06 往右＋往下
+};
 
 /** 與 NavBar `h-14` / `md:h-16` 對齊，避免 404 區塊高度超出首屏被 footer 擠壓裁切 */
 const NOT_FOUND_VIEWPORT =
   "h-[calc(100svh-3.5rem)] min-h-0 max-h-[calc(100svh-3.5rem)] md:h-[calc(100svh-4rem)] md:max-h-[calc(100svh-4rem)]";
+
+/** 與舊版六張雲拼貼相近的可視寬度 */
+const CLOUD_COMPOSITE_WIDTH =
+  "w-[min(96vw,900px)] max-w-[min(96vw,900px)] sm:w-[min(94vw,880px)] md:w-[min(92vw,860px)]";
 
 export default function NotFound() {
   return (
@@ -34,14 +55,14 @@ export default function NotFound() {
       className={`relative flex w-full flex-col overflow-x-visible overflow-y-visible bg-[#f6f0ea] ${NOT_FOUND_VIEWPORT}`}
       role="presentation"
     >
-      {/* 背景：完整納入可視區（不裁切主體） */}
+      {/* 背景 */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <Image
           src={asset404(BG_FILE)}
           alt=""
           fill
           priority
-          className="object-contain object-center"
+          className="object-cover object-center"
           sizes="100vw"
         />
       </div>
@@ -63,37 +84,56 @@ export default function NotFound() {
         </span>
       </Link>
 
-      {/* 前景：雲朵網格（頂部留白避免與 fixed 按鈕重疊） */}
+      {/* 前景：雲朵底圖 + 六個物件（頂部留白避免與 fixed 按鈕重疊） */}
       <div className="relative z-10 flex h-full min-h-0 w-full flex-col pt-[min(26vw,118px)] sm:pt-[min(24vw,126px)] md:pt-32 lg:pt-36">
         <div className="flex min-h-0 flex-1 items-center justify-center overflow-visible px-4 pb-6 sm:px-6 sm:pb-8 md:px-8 md:pb-10">
-          <div className="w-max max-w-[min(96vw,900px)] -translate-x-8 -translate-y-2 sm:-translate-x-12 sm:-translate-y-3 md:-translate-x-16 md:-translate-y-4 lg:-translate-x-[min(18vw,9rem)] lg:-translate-y-5">
-            {/* 雲朵拼貼：零 gap、欄寬 auto 依圖檔；Link 不強制比例、img 不用 object-contain 填格 */}
-            {/* 外層 scale：六張雲整組等比縮小，不影響個別 translate 對齊 */}
-            <div className="origin-center scale-[0.7] sm:scale-[0.7] md:scale-[0.7]">
+          {/* 整組雲朵：scale 縮放大小；translate-x 負值 = 往左移（數字越大移越多） */}
+          <div
+            className={`origin-center -translate-x-[9.5rem] scale-[0.7] sm:-translate-x-[12rem] sm:scale-[0.72] md:-translate-x-[18rem] md:scale-[0.75] ${CLOUD_COMPOSITE_WIDTH}`}
+          >
+            <div
+              className="relative w-full"
+              style={{ aspectRatio: `${CLOUD_BASE_WIDTH} / ${CLOUD_BASE_HEIGHT}` }}
+            >
+              <Image
+                src={asset404(CLOUD_BASE_FILE)}
+                alt=""
+                fill
+                priority
+                className="pointer-events-none select-none object-contain"
+                sizes="(max-width:768px) 96vw, 900px"
+              />
+
               <nav
-                className="inline-grid w-max grid-cols-[repeat(3,auto)] gap-0 overflow-visible leading-none"
+                className="absolute inset-[7%_5.5%_9%_5.5%] grid grid-cols-3 grid-rows-2 place-items-center"
                 aria-label="404 導覽捷徑"
               >
                 {CLOUD_NAV.map((item, index) => {
-                  const isMiddleColumn = index === 1 || index === 4;
+                  const tweak = CLOUD_OBJECT_TWEAKS[index];
                   return (
-                    <Link
-                      key={item.file}
-                      href={item.href}
-                      className={`m-0 block p-0 leading-none outline-none ring-brand-500/40 transition-opacity hover:opacity-95 focus-visible:ring-2 focus-visible:ring-offset-2 active:opacity-90${isMiddleColumn ? " -translate-y-1 sm:-translate-y-1.5 md:-translate-y-2" : ""}`}
-                      aria-label={item.label}
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element -- 依素材原始像素拼貼，避免 next/image 填格 */}
-                      <img
-                        src={asset404(item.file)}
-                        alt=""
-                        loading={index < 3 ? "eager" : "lazy"}
-                        decoding="async"
-                        draggable={false}
-                        className="m-0 block h-auto w-auto max-h-[min(38vmin,300px)] max-w-[min(32vmin,260px)] select-none sm:max-h-[min(36vmin,320px)] sm:max-w-[min(30vmin,280px)] md:max-h-[340px] md:max-w-[300px]"
-                      />
-                      <span className="sr-only">{item.label}</span>
-                    </Link>
+                  <Link
+                    key={item.file}
+                    href={item.href}
+                    className={cn(
+                      "flex h-full w-full items-center justify-center outline-none ring-brand-500/40 transition-opacity hover:opacity-95 focus-visible:ring-2 focus-visible:ring-offset-2 active:opacity-90",
+                      tweak?.linkClass,
+                    )}
+                    aria-label={item.label}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- 依素材比例置中疊加於底圖 */}
+                    <img
+                      src={asset404(item.file)}
+                      alt=""
+                      loading={index < 3 ? "eager" : "lazy"}
+                      decoding="async"
+                      draggable={false}
+                      className={cn(
+                        "max-h-[88%] max-w-[88%] h-auto w-auto select-none object-contain",
+                        tweak?.imgClass,
+                      )}
+                    />
+                    <span className="sr-only">{item.label}</span>
+                  </Link>
                   );
                 })}
               </nav>

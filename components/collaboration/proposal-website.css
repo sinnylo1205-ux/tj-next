@@ -534,6 +534,182 @@
   letter-spacing: 0.03em;
 }
 
+/* C 方案（p12）：01／02／03 三格 — 字小、不換行、緊接內文上方 */
+.tj-proposal .proposal-plan-grid3 {
+  gap: clamp(6px, 0.9vw, 14px);
+  margin-top: clamp(10px, 1.2vw, 20px);
+  padding-top: 0;
+}
+
+.tj-proposal .plan-grid3-item {
+  min-width: 0;
+}
+
+.tj-proposal .plan-grid3-num {
+  font-size: clamp(9px, 0.78vw, 13px);
+  color: var(--tj-ink-mute);
+  letter-spacing: 0.22em;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.tj-proposal .plan-grid3-text {
+  font-family: var(--font-noto-sans-tc), "Noto Sans TC", sans-serif;
+  font-size: clamp(10px, 0.82vw, 14px);
+  line-height: 1.3;
+  color: var(--tj-ink-soft);
+  letter-spacing: 0.02em;
+  margin-top: 3px;
+  white-space: nowrap;
+}
+
+/* B 方案：三張禮盒圖橫向排列、放大 */
+.tj-proposal .plan-b-photo-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(8px, 1.1vw, 14px);
+  width: 100%;
+  min-height: 0;
+  flex: 1;
+  align-items: stretch;
+}
+
+.tj-proposal .proposal-photo-cell--row {
+  min-height: clamp(200px, 34vw, 520px);
+}
+
+.tj-proposal .plan-b-photo-row .tj-photo-slot {
+  min-height: clamp(180px, 30vw, 480px);
+  height: 100%;
+}
+
+.tj-proposal .plan-b-photo-row .tj-photo-slot__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+@container tj-deck (max-width: 767px) {
+  .tj-proposal .proposal-photo-cell--row {
+    min-height: auto;
+  }
+
+  .tj-proposal .plan-b-photo-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: clamp(6px, 2vw, 10px);
+  }
+
+  .tj-proposal .plan-b-photo-row .tj-photo-slot {
+    min-height: clamp(120px, 28vw, 200px);
+    max-height: min(36vh, 240px);
+    max-height: min(36dvh, 240px);
+    aspect-ratio: auto;
+  }
+
+  .tj-proposal .plan-b-photo-row .tj-photo-slot__img {
+    max-height: min(36vh, 240px);
+    max-height: min(36dvh, 240px);
+  }
+}
+
+/* A 方案（p10）：單品圖放大、整頁內容略上移 */
+.tj-proposal .frame--plan-a {
+  padding-top: calc(var(--tj-logo-band) + var(--tj-safe) * 0.75);
+}
+
+.tj-proposal .frame--plan-a .proposal-plan-grid--plan-a {
+  margin-top: clamp(-10px, -1.2vw, -20px);
+}
+
+@container tj-deck (min-width: 768px) {
+  .tj-proposal .proposal-plan-grid--plan-a {
+    grid-template-columns: minmax(0, 0.56fr) minmax(0, 1.44fr) !important;
+  }
+
+  .tj-proposal .proposal-photo-cell--plan-a {
+    min-height: clamp(280px, 44vw, 580px);
+  }
+
+  .tj-proposal .proposal-photo-cell--plan-a .tj-photo-slot {
+    min-height: clamp(260px, 42vw, 560px);
+  }
+}
+
+@container tj-deck (max-width: 767px) {
+  .tj-proposal .proposal-photo-cell--plan-a .tj-photo-slot {
+    min-height: clamp(160px, 36vw, 220px);
+    max-height: min(50vh, 340px);
+    max-height: min(50dvh, 340px);
+    aspect-ratio: auto;
+  }
+
+  .tj-proposal .proposal-photo-cell--plan-a .tj-photo-slot__img {
+    max-height: min(50vh, 340px);
+    max-height: min(50dvh, 340px);
+  }
+}
+
+/* 指定頁（p12／14／15／16／18）：案例／方案圖放大 */
+@container tj-deck (min-width: 768px) {
+  .tj-proposal .proposal-plan-grid--plan-c {
+    grid-template-columns: minmax(0, 0.64fr) minmax(0, 1.36fr) !important;
+  }
+
+  .tj-proposal .proposal-photo-cell--plan-c {
+    min-height: clamp(220px, 36vw, 460px);
+  }
+
+  .tj-proposal .proposal-photo-cell--plan-c .tj-photo-slot {
+    min-height: clamp(200px, 34vw, 440px);
+  }
+
+  .tj-proposal .proposal-plan-grid--photo-lg {
+    grid-template-columns: minmax(0, 0.56fr) minmax(0, 1.44fr) !important;
+  }
+
+  .tj-proposal .case-split--photo-lg {
+    grid-template-columns: 0.68fr 1.32fr;
+  }
+
+  .tj-proposal .case-split--photo-lg.case-split--rev {
+    grid-template-columns: 1.32fr 0.68fr;
+  }
+
+  .tj-proposal .proposal-photo-cell--lg {
+    min-height: clamp(280px, 44vw, 580px);
+  }
+
+  .tj-proposal .proposal-photo-cell--lg .tj-photo-slot {
+    min-height: clamp(260px, 42vw, 560px);
+  }
+}
+
+@container tj-deck (max-width: 767px) {
+  .tj-proposal .proposal-photo-cell--plan-c .tj-photo-slot {
+    min-height: clamp(140px, 32vw, 200px);
+    max-height: min(44vh, 300px);
+    max-height: min(44dvh, 300px);
+    aspect-ratio: auto;
+  }
+
+  .tj-proposal .proposal-photo-cell--plan-c .tj-photo-slot__img {
+    max-height: min(44vh, 300px);
+    max-height: min(44dvh, 300px);
+  }
+
+  .tj-proposal .proposal-photo-cell--lg .tj-photo-slot {
+    min-height: clamp(160px, 36vw, 220px);
+    max-height: min(50vh, 340px);
+    max-height: min(50dvh, 340px);
+    aspect-ratio: auto;
+  }
+
+  .tj-proposal .proposal-photo-cell--lg .tj-photo-slot__img {
+    max-height: min(50vh, 340px);
+    max-height: min(50dvh, 340px);
+  }
+}
+
 .tj-proposal .client-wall-foot {
   flex-shrink: 0;
   width: 100%;
@@ -657,6 +833,51 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: clamp(12px, 1.8vw, 20px);
   }
+
+  .tj-proposal .frame--plans-overview .plans--overview .plan {
+    padding: clamp(18px, 2vw, 38px);
+  }
+}
+
+/* 方案總覽（p9）：卡片依內容撐高，避免文字溢出底色 */
+.tj-proposal .frame--plans-overview .plans.plans--overview {
+  flex: 0 1 auto;
+  min-height: auto;
+  overflow-y: visible;
+  align-items: stretch;
+}
+
+.tj-proposal .frame--plans-overview .plans--overview .plan {
+  min-height: min-content;
+  height: auto;
+}
+
+.tj-proposal .frame--plans-overview .plan-zh {
+  margin-top: clamp(8px, 1vw, 18px);
+  font-size: clamp(14px, 1.35vw, 22px);
+  line-height: 1.26;
+}
+
+.tj-proposal .frame--plans-overview .plan-divider {
+  width: clamp(64px, 36%, 120px);
+  margin: clamp(12px, 1.4vw, 20px) 0 clamp(10px, 1.2vw, 16px);
+}
+
+.tj-proposal .frame--plans-overview .plan-desc {
+  font-size: clamp(11px, 0.92vw, 16px);
+  line-height: 1.62;
+  flex: 1 1 auto;
+}
+
+.tj-proposal .frame--plans-overview .plan-foot {
+  padding-top: clamp(10px, 1.2vw, 18px);
+  flex-shrink: 0;
+}
+
+@container tj-deck (min-width: 900px) {
+  .tj-proposal .frame--plans-overview .plans.plans--overview {
+    grid-template-rows: auto;
+  }
 }
 
 .tj-proposal .plan {
@@ -741,10 +962,24 @@
 }
 
 .tj-proposal .plan-divider {
-  width: 48px;
+  width: clamp(72px, 32%, 140px);
   height: 1px;
   background: var(--tj-rose);
-  margin: 14px 0 12px;
+  margin: clamp(18px, 2.2vw, 32px) 0 clamp(16px, 2vw, 28px);
+}
+
+.tj-proposal .frame--plans-overview .plans--overview .plan:not(.featured) {
+  background: var(--tj-card);
+  border-color: rgba(204, 125, 110, 0.42);
+}
+
+.tj-proposal .frame--plans-overview .plans--overview .plan.featured {
+  background: var(--tj-plum);
+  border-color: var(--tj-plum-deep);
+}
+
+.tj-proposal .frame--plans-overview .plans--overview .plan.featured .plan-divider {
+  background: var(--tj-teal-soft);
 }
 
 .tj-proposal .plan-desc {
@@ -819,7 +1054,8 @@
   }
 
   .tj-proposal .frame--plans-overview .plan-divider {
-    margin: 6px 0 5px;
+    width: clamp(72px, 38%, 120px);
+    margin: clamp(14px, 3.5vw, 22px) 0 clamp(12px, 3vw, 18px);
   }
 
   .tj-proposal .frame--plans-overview .plan-desc {

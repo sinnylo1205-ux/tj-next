@@ -83,7 +83,7 @@ const NavBar = () => {
     <nav
       role="navigation"
       aria-label="主選單"
-      className="sticky top-0 z-[1000] bg-brand-500 h-14 md:h-16"
+      className="sticky top-0 z-[1000] overflow-visible bg-brand-500 h-14 md:h-16"
       style={{ boxShadow: "var(--elev-navbar)" }}
     >
       <div className="container flex h-full items-center justify-between gap-2 md:gap-3">
@@ -103,22 +103,24 @@ const NavBar = () => {
           />
         </Link>
 
-        {/* Desktop Navigation：橫向溢出時可捲動，避免 nowrap 連結疊到 Logo */}
-        <div className="relative z-0 hidden min-h-0 min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain py-1 [-ms-overflow-style:none] [scrollbar-width:none] md:flex [&::-webkit-scrollbar]:hidden">
-          {productMenuItems.map((item) => (
-            <Link
-              key={item.path}
-              href={item.path}
-              className={cn(
-                "shrink-0 text-ink-inverse hover:opacity-85 transition-opacity rounded py-1.5 px-2 text-[15px] whitespace-nowrap md:text-base",
-                isActive(item.path) && "font-medium bg-white/10",
-              )}
-            >
-              {item.label}
-            </Link>
-          ))}
+        {/* Desktop Navigation：商品連結可橫向捲動；下拉選單須在 overflow 容器外，否則會被裁切 */}
+        <div className="relative z-0 hidden min-h-0 min-w-0 flex-1 items-center justify-end gap-2 py-1 md:flex">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 overflow-x-auto overflow-y-hidden overscroll-x-contain [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {productMenuItems.map((item) => (
+              <Link
+                key={item.path}
+                href={item.path}
+                className={cn(
+                  "shrink-0 text-ink-inverse hover:opacity-85 transition-opacity rounded py-1.5 px-2 text-[15px] whitespace-nowrap md:text-base",
+                  isActive(item.path) && "font-medium bg-white/10",
+                )}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </div>
 
-          <NavigationMenu>
+          <NavigationMenu className="shrink-0">
             <NavigationMenuList>
               <NavigationMenuItem>
                 <NavigationMenuTrigger className="shrink-0 bg-transparent text-ink-inverse hover:bg-white/10 data-[state=open]:bg-white/10 focus:bg-white/10 h-auto rounded py-1.5 px-2 text-[15px] md:text-base">
