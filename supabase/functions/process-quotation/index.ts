@@ -612,7 +612,15 @@ function buildSpecialQuotationPdfAttachmentForEdge(
   };
 }
 
-async function rollbackCreatedOrders(supabase: any, orderIds: string[]) {
+type SupabaseDeleteClient = {
+  from: (table: string) => {
+    delete: () => {
+      eq: (column: string, value: unknown) => Promise<unknown>;
+    };
+  };
+};
+
+async function rollbackCreatedOrders(supabase: SupabaseDeleteClient, orderIds: string[]) {
   for (let i = orderIds.length - 1; i >= 0; i--) {
     const oid = orderIds[i];
     await supabase.from("order_items").delete().eq("order_id", oid);
@@ -695,8 +703,8 @@ async function handleConvertSpecialQuotationToOrders(
 
   const createdOrderIds: string[] = [];
   const pendingNotifications: Array<{
-    linePayload: Record<string, any>;
-    calendarPayload: Record<string, any>;
+    linePayload: Record<string, unknown>;
+    calendarPayload: Record<string, unknown>;
   }> = [];
 
   try {
