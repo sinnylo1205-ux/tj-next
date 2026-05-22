@@ -36,7 +36,7 @@ export interface ProductNoticeRow {
   price_min: number | null;
 }
 
-type LineForm = { id: string; productId: string; unit_price: number; quantity: number };
+type LineForm = { id: string; productId: string; productName: string; unit_price: number; quantity: number };
 type ComboForm = {
   id: string;
   expected_pickup_date: string;
@@ -50,6 +50,7 @@ type ComboForm = {
 const newLine = (): LineForm => ({
   id: crypto.randomUUID(),
   productId: "",
+  productName: "",
   unit_price: 0,
   quantity: 1,
 });
@@ -216,12 +217,12 @@ export function SpecialQuotationDialog({ open, onOpenChange, onCommitted }: Prop
       return;
     }
     for (const c of form.combos) {
-      if (!c.lines.some((l) => l.productId && (Number(l.quantity) || 0) > 0)) {
+      if (!c.lines.some((l) => (l.productName.trim() || l.productId) && (Number(l.quantity) || 0) > 0)) {
         toast({ title: "每個訂單組合至少需一筆有效品項", variant: "destructive" });
         return;
       }
       for (const l of c.lines) {
-        if (!l.productId.trim()) continue;
+        if (!l.productName.trim() && !l.productId.trim()) continue;
         if ((Number(l.quantity) || 0) <= 0) {
           toast({ title: "品項數量需大於 0", variant: "destructive" });
           return;
@@ -255,11 +256,11 @@ export function SpecialQuotationDialog({ open, onOpenChange, onCommitted }: Prop
           line_total: lineTotal,
         });
         const pdfLines = c.lines
-          .filter((l) => l.productId)
+          .filter((l) => l.productName.trim() || l.productId)
           .map((l) => {
-            const pr = products.find((p) => p.id === l.productId);
+            const pr = l.productId ? products.find((p) => p.id === l.productId) : undefined;
             return {
-              product_name: pr?.name || "品項",
+              product_name: l.productName.trim() || pr?.name || "品項",
               unit_price: Number(l.unit_price) || 0,
               quantity: Number(l.quantity) || 0,
             };
@@ -335,18 +336,23 @@ export function SpecialQuotationDialog({ open, onOpenChange, onCommitted }: Prop
       const inserts: Record<string, unknown>[] = [];
       for (const c of form.combos) {
         for (const l of c.lines) {
-          if (!l.productId) continue;
-          const pr = products.find((p) => p.id === l.productId);
+          if (!l.productName.trim() && !l.productId.trim()) continue;
+          const pr = l.productId ? products.find((p) => p.id === l.productId) : undefined;
           const cat = (pr?.category || "custom_design").toString().slice(0, 200);
+          const customizations: Record<string, unknown> = {
+            combo_id: c.id,
+            role: "special_quotation_line",
+          };
+          if (l.productId.trim()) customizations.product_id = l.productId.trim();
           inserts.push({
             quotation_order_id: row.id,
-            product_name: (pr?.name || "品項").slice(0, 500),
+            product_name: (l.productName.trim() || pr?.name || "品項").slice(0, 500),
             quantity: Number(l.quantity) || 1,
             unit_price: Number(l.unit_price) || 0,
             preview_url: null,
             category: cat,
             all_requirement: {},
-            customizations_json: { combo_id: c.id, role: "special_quotation_line", product_id: l.productId },
+            customizations_json: customizations,
             quantity_description: null,
           });
         }
@@ -385,15 +391,14 @@ export function SpecialQuotationDialog({ open, onOpenChange, onCommitted }: Prop
     const key = lineKey(comboId, line.id);
     const search = productSearch[key] ?? "";
     const filtered = filterProducts(search);
-    const selected = products.find((p) => p.id === line.productId);
     return (
       <Popover
         open={productPopoverOpen[key] ?? false}
         onOpenChange={(o) => setProductPopoverOpen((prev) => ({ ...prev, [key]: o }))}
       >
         <PopoverTrigger asChild>
-          <Button type="button" variant="outline" role="combobox" className="w-full justify-between font-normal text-xs h-9">
-            <span className="truncate">{selected ? selected.name : "選擇商品…"}</span>
+          <Button type="button" variant="outline" size="sm" className="shrink-0 h-9 px-2 text-xs">
+            商品庫
             <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
           </Button>
         </PopoverTrigger>
@@ -429,6 +434,7 @@ export function SpecialQuotationDialog({ open, onOpenChange, onCommitted }: Prop
                                         ? {
                                             ...ln,
                                             productId: p.id,
+                                            productName: p.name,
                                             unit_price: displayPrice ?? p.price ?? 0,
                                           }
                                         : ln,
@@ -530,7 +536,32 @@ export function SpecialQuotationDialog({ open, onOpenChange, onCommitted }: Prop
                   <Label className="text-xs">品項</Label>
                   {combo.lines.map((line) => (
                     <div key={line.id} className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-end">
-                      <div className="flex-1 min-w-0">{renderProductPicker(combo.id, line)}</div>
+                      <div className="flex-1 min-w-0 space-y-1">
+                        <Label className="text-xs">品項名稱</Label>
+                        <div className="flex gap-2">
+                          <Input
+                            className="flex-1 min-w-0"
+                            placeholder="可自訂品項名稱"
+                            value={line.productName}
+                            onChange={(e) =>
+                              setForm((p) => ({
+                                ...p,
+                                combos: p.combos.map((c) =>
+                                  c.id !== combo.id
+                                    ? c
+                                    : {
+                                        ...c,
+                                        lines: c.lines.map((ln) =>
+                                          ln.id === line.id ? { ...ln, productName: e.target.value } : ln,
+                                        ),
+                                      },
+                                ),
+                              }))
+                            }
+                          />
+                          {renderProductPicker(combo.id, line)}
+                        </div>
+                      </div>
                       <div className="w-full sm:w-24 space-y-1">
                         <Label className="text-xs">單價</Label>
                         <Input

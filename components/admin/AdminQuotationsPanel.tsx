@@ -235,6 +235,24 @@ interface ProductNoticeRow {
   price_min: number | null;
 }
 
+type NewQuotationDraftItem = {
+  id: string;
+  productName: string;
+  productId: string;
+  customization: string;
+  quantity: number;
+};
+
+function newDraftQuotationItem(): NewQuotationDraftItem {
+  return {
+    id: crypto.randomUUID(),
+    productName: "",
+    productId: "",
+    customization: "",
+    quantity: 1,
+  };
+}
+
 // ========== Key Translation Map ==========
 const KEY_ZH_MAP: Record<string, string> = {
   // customer_profile
@@ -762,19 +780,22 @@ const AdminQuotationsPanel = () => {
     expectedPickupDate: "",
     serviceType: "custom_design" as "custom_design" | "giftbox" | "candy_bar",
     inquiryNotes: "",
-    productId: "",
   });
 
   const [newQuotationOpen, setNewQuotationOpen] = useState(false);
   const [newQuotationStep, setNewQuotationStep] = useState(1);
   const [newQuotationSubmitting, setNewQuotationSubmitting] = useState(false);
   const [newQForm, setNewQForm] = useState(() => defaultNewQuotationForm());
+  const [newQuoteDraftItems, setNewQuoteDraftItems] = useState<NewQuotationDraftItem[]>(() => [
+    newDraftQuotationItem(),
+  ]);
+  const [newQuoteDraftItemPopoverOpen, setNewQuoteDraftItemPopoverOpen] = useState<Record<string, boolean>>({});
+  const [newQuoteDraftItemProductSearch, setNewQuoteDraftItemProductSearch] = useState<Record<string, string>>({});
 
   const [newQuoteProducts, setNewQuoteProducts] = useState<NewQuotationProductRow[]>([]);
   const [newQuoteProductsByCategory, setNewQuoteProductsByCategory] = useState<Record<string, NewQuotationProductRow[]>>({});
   const [newQuoteProductNotices, setNewQuoteProductNotices] = useState<Record<string, ProductNoticeRow>>({});
-  const [newQuoteProductSearch, setNewQuoteProductSearch] = useState("");
-  const [newQuoteProductPopoverOpen, setNewQuoteProductPopoverOpen] = useState(false);
+  const [addingQuotationItemId, setAddingQuotationItemId] = useState<string | null>(null);
   const [specialQuotationOpen, setSpecialQuotationOpen] = useState(false);
   const [quotationAiDraftOpen, setQuotationAiDraftOpen] = useState(false);
 
@@ -1037,6 +1058,107 @@ const AdminQuotationsPanel = () => {
     setExpandedOrders(newExpanded);
   };
 
+  const handleAddQuotationItem = async (quotationId: string) => {
+    const q = quotations.find((x) => x.id === quotationId);
+    if (!q) return;
+    if (isSpecialQuotation(q.all_requirement)) {
+      toast({ title: "特殊報價單請使用訂單組合管理品項", variant: "destructive" });
+      return;
+    }
+
+    const orderAr = parseAllRequirement(q.all_requirement);
+    const so = orderAr?.service_order;
+    const serviceType =
+      so && typeof so === "object" && !Array.isArray(so)
+        ? String((so as Record<string, unknown>).service_type || "custom_design")
+        : "custom_design";
+
+    setAddingQuotationItemId(quotationId);
+    try {
+      const { data, error } = await supabase
+        .from("quotation_order_items")
+        .insert({
+          quotation_order_id: quotationId,
+          product_name: "待補充",
+          quantity: 1,
+          unit_price: null,
+          preview_url: null,
+          category: serviceType.slice(0, 200),
+          all_requirement: {},
+          customizations_json: null,
+          quantity_description: null,
+        })
+        .select("*")
+        .single();
+
+      if (error) throw error;
+      if (!data) throw new Error("新增失敗");
+
+      const newItem = data as QuotationOrderItem;
+      setItems((prev) => ({
+        ...prev,
+        [quotationId]: [...(prev[quotationId] || []), newItem],
+      }));
+
+      setEditData((prev) => {
+        const cur = prev[quotationId] ?? {
+          itemPrices: {},
+          itemPreviewUrls: {},
+          itemWhyPrices: {},
+          itemProductNames: {},
+          itemQuantities: {},
+          itemCustomizations: {},
+          itemNotes: {},
+          shippingFee: q.shipping_fee ?? null,
+          lineUserId: q.line_user_id || "",
+        };
+        return {
+          ...prev,
+          [quotationId]: {
+            ...cur,
+            itemPrices: { ...cur.itemPrices, [newItem.id]: newItem.unit_price },
+            itemPreviewUrls: { ...cur.itemPreviewUrls, [newItem.id]: newItem.preview_url || "" },
+            itemWhyPrices: { ...cur.itemWhyPrices, [newItem.id]: "" },
+            itemProductNames: { ...cur.itemProductNames, [newItem.id]: newItem.product_name || "待補充" },
+            itemQuantities: { ...cur.itemQuantities, [newItem.id]: Math.max(1, newItem.quantity ?? 1) },
+            itemCustomizations: {
+              ...cur.itemCustomizations,
+              [newItem.id]: getDefaultItemCustomization(newItem),
+            },
+            itemNotes: { ...cur.itemNotes, [newItem.id]: getDefaultItemNote(newItem) },
+          },
+        };
+      });
+
+      toast({ title: "✅ 已新增品項", description: "請填寫品項名稱與報價後儲存。" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "新增失敗";
+      toast({ title: "新增品項失敗", description: msg, variant: "destructive" });
+    } finally {
+      setAddingQuotationItemId(null);
+    }
+  };
+
+  const renderGeneralQuotationAddItemButton = (q: QuotationOrder) => {
+    if (isSpecialQuotation(q.all_requirement)) return null;
+    return (
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        disabled={addingQuotationItemId === q.id}
+        onClick={() => void handleAddQuotationItem(q.id)}
+      >
+        {addingQuotationItemId === q.id ? (
+          <Loader2 className="h-4 w-4 animate-spin mr-2" />
+        ) : (
+          <Plus className="h-4 w-4 mr-2" />
+        )}
+        新增品項
+      </Button>
+    );
+  };
+
   // Calculate subtotal from item prices
   const calcSubtotal = (quotationId: string) => {
     const qItems = items[quotationId] || [];
@@ -1286,8 +1408,9 @@ const AdminQuotationsPanel = () => {
       toast({ title: "請填寫詢價說明", variant: "destructive" });
       return;
     }
-    if (!f.productId.trim()) {
-      toast({ title: "請選擇詢價商品", variant: "destructive" });
+    const validDraftItems = newQuoteDraftItems.filter((d) => d.productName.trim());
+    if (validDraftItems.length === 0) {
+      toast({ title: "請至少新增一筆品項", description: "每筆品項需填寫品項名稱。", variant: "destructive" });
       return;
     }
 
@@ -1338,20 +1461,24 @@ const AdminQuotationsPanel = () => {
       if (qErr) throw qErr;
       if (!row?.id) throw new Error("建立失敗");
 
-      const product = newQuoteProducts.find((p) => p.id === f.productId);
-      const itemCategory = (product?.category || f.serviceType || "custom_design").toString().slice(0, 200);
-
-      const { error: itemErr } = await supabase.from("quotation_order_items").insert({
-        quotation_order_id: row.id,
-        product_name: (product?.name || "詢價品項").slice(0, 500),
-        quantity: 1,
-        unit_price: null,
-        preview_url: null,
-        category: itemCategory,
-        all_requirement: { customization: f.inquiryNotes.trim() },
-        customizations_json: null,
-        quantity_description: null,
+      const itemRows = validDraftItems.map((draft) => {
+        const product = draft.productId ? newQuoteProducts.find((p) => p.id === draft.productId) : undefined;
+        const itemCategory = (product?.category || f.serviceType || "custom_design").toString().slice(0, 200);
+        const customization = draft.customization.trim() || f.inquiryNotes.trim();
+        return {
+          quotation_order_id: row.id,
+          product_name: draft.productName.trim().slice(0, 500),
+          quantity: Math.max(1, Math.floor(Number(draft.quantity) || 1)),
+          unit_price: null,
+          preview_url: null,
+          category: itemCategory,
+          all_requirement: customization ? { customization } : {},
+          customizations_json: draft.productId.trim() ? { product_id: draft.productId.trim() } : null,
+          quantity_description: null,
+        };
       });
+
+      const { error: itemErr } = await supabase.from("quotation_order_items").insert(itemRows);
 
       if (itemErr) throw itemErr;
 
@@ -1359,6 +1486,9 @@ const AdminQuotationsPanel = () => {
       setNewQuotationOpen(false);
       setNewQuotationStep(1);
       setNewQForm(defaultNewQuotationForm());
+      setNewQuoteDraftItems([newDraftQuotationItem()]);
+      setNewQuoteDraftItemPopoverOpen({});
+      setNewQuoteDraftItemProductSearch({});
       setActiveTab("price_asked");
       await loadQuotations();
       window.dispatchEvent(new Event("admin-refresh-badges"));
@@ -1443,9 +1573,9 @@ const AdminQuotationsPanel = () => {
     }
   };
 
-  const getFilteredProductsForNewQuotation = () => {
-    if (!newQuoteProductSearch.trim()) return newQuoteProductsByCategory;
-    const query = newQuoteProductSearch.toLowerCase();
+  const getFilteredProductsForSearch = (search: string) => {
+    if (!search.trim()) return newQuoteProductsByCategory;
+    const query = search.toLowerCase();
     const filtered: Record<string, NewQuotationProductRow[]> = {};
     Object.entries(newQuoteProductsByCategory).forEach(([category, prods]) => {
       const matchedProds = prods.filter((p) => p.name.toLowerCase().includes(query));
@@ -1453,9 +1583,6 @@ const AdminQuotationsPanel = () => {
     });
     return filtered;
   };
-
-  const selectedNewQuoteProduct = newQuoteProducts.find((p) => p.id === newQForm.productId);
-  const filteredProductsForNewQuote = getFilteredProductsForNewQuotation();
 
   const filtered = getFilteredQuotations();
 
@@ -1749,6 +1876,7 @@ const AdminQuotationsPanel = () => {
 
                                 {/* Item editors */}
                                 {renderQuotationItemEditors(q.id, qItems)}
+                                {renderGeneralQuotationAddItemButton(q)}
 
                                 {/* Order-level fields（LINE 僅在上半部客戶與配送編輯） */}
                                 <div className="grid grid-cols-2 gap-4">
@@ -1998,6 +2126,7 @@ const AdminQuotationsPanel = () => {
                                 ) : null}
 
                                 {renderQuotationItemEditors(q.id, qItems)}
+                                {renderGeneralQuotationAddItemButton(q)}
 
                                 {/* Editable 報價欄位（小計／運費／折扣／總金額／發票）；特殊報價單僅顯示表頭有值的欄位 */}
                                 {showQuoteHeaderAmountsPriceReply && (
@@ -2227,6 +2356,7 @@ const AdminQuotationsPanel = () => {
                                 </div>
 
                                 {renderQuotationItemEditors(q.id, qItems)}
+                                {renderGeneralQuotationAddItemButton(q)}
                               </div>
                             )}
                             </div>
@@ -2250,8 +2380,9 @@ const AdminQuotationsPanel = () => {
           if (!open) {
             setNewQuotationStep(1);
             setNewQForm(defaultNewQuotationForm());
-            setNewQuoteProductSearch("");
-            setNewQuoteProductPopoverOpen(false);
+            setNewQuoteDraftItems([newDraftQuotationItem()]);
+            setNewQuoteDraftItemPopoverOpen({});
+            setNewQuoteDraftItemProductSearch({});
           }
         }}
       >
@@ -2357,79 +2488,191 @@ const AdminQuotationsPanel = () => {
 
           {newQuotationStep === 3 && (
             <div className="space-y-3 py-2">
-              <div className="space-y-1">
-                <Label>詢價商品（必填）</Label>
-                <p className="text-xs text-muted-foreground">與「手動建立訂單」相同來源；可搜尋商品名稱。</p>
-                <Popover open={newQuoteProductPopoverOpen} onOpenChange={setNewQuoteProductPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      role="combobox"
-                      aria-expanded={newQuoteProductPopoverOpen}
-                      className="w-full justify-between font-normal"
-                    >
-                      {selectedNewQuoteProduct ? selectedNewQuoteProduct.name : "選擇商品…"}
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-[min(100vw-2rem,320px)] p-0" align="start">
-                    <Command shouldFilter={false}>
-                      <CommandInput
-                        placeholder="輸入商品名稱搜尋…"
-                        value={newQuoteProductSearch}
-                        onValueChange={setNewQuoteProductSearch}
-                      />
-                      <CommandList>
-                        <CommandEmpty>
-                          {newQuoteProducts.length === 0 ? "商品載入中…" : "找不到商品"}
-                        </CommandEmpty>
-                        {Object.entries(filteredProductsForNewQuote).map(([category, prods]) => (
-                          <CommandGroup key={category} heading={category}>
-                            {prods.map((p) => {
-                              const notice = newQuoteProductNotices[p.id];
-                              const displayPrice = notice?.price_min ?? p.price;
-                              const minQty = notice?.min_order_qty;
-                              return (
-                                <CommandItem
-                                  key={p.id}
-                                  value={p.id}
-                                  onSelect={() => {
-                                    setNewQForm((prev) => ({ ...prev, productId: p.id }));
-                                    setNewQuoteProductPopoverOpen(false);
-                                    setNewQuoteProductSearch("");
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      newQForm.productId === p.id ? "opacity-100" : "opacity-0",
-                                    )}
-                                  />
-                                  {[
-                                    p.name,
-                                    "（NT$ ",
-                                    String(displayPrice),
-                                    minQty != null ? `，最低${minQty}份` : "",
-                                    "）",
-                                  ].join("")}
-                                </CommandItem>
-                              );
-                            })}
-                          </CommandGroup>
-                        ))}
-                      </CommandList>
-                    </Command>
-                  </PopoverContent>
-                </Popover>
+              <div className="flex items-center justify-between gap-2">
+                <Label>品項列表（至少一筆，品項名稱必填）</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNewQuoteDraftItems((prev) => [...prev, newDraftQuotationItem()])}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  新增品項
+                </Button>
               </div>
+
+              {newQuoteDraftItems.map((draft, draftIdx) => {
+                const selectedProduct = draft.productId
+                  ? newQuoteProducts.find((p) => p.id === draft.productId)
+                  : undefined;
+                const draftSearch = newQuoteDraftItemProductSearch[draft.id] ?? "";
+                const filteredProductsForDraft = getFilteredProductsForSearch(draftSearch);
+                const popoverOpen = newQuoteDraftItemPopoverOpen[draft.id] ?? false;
+
+                return (
+                  <div key={draft.id} className="border rounded-lg p-3 space-y-2 bg-muted/20">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium">品項 {draftIdx + 1}</span>
+                      {newQuoteDraftItems.length > 1 ? (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive h-8"
+                          onClick={() => {
+                            setNewQuoteDraftItems((prev) => prev.filter((d) => d.id !== draft.id));
+                            setNewQuoteDraftItemPopoverOpen((prev) => {
+                              const next = { ...prev };
+                              delete next[draft.id];
+                              return next;
+                            });
+                            setNewQuoteDraftItemProductSearch((prev) => {
+                              const next = { ...prev };
+                              delete next[draft.id];
+                              return next;
+                            });
+                          }}
+                        >
+                          刪除
+                        </Button>
+                      ) : null}
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">品項名稱（必填，可自訂）</Label>
+                      <Input
+                        value={draft.productName}
+                        onChange={(e) =>
+                          setNewQuoteDraftItems((prev) =>
+                            prev.map((d) => (d.id === draft.id ? { ...d, productName: e.target.value } : d)),
+                          )
+                        }
+                        placeholder="例如：客製化禮盒、企業週年禮盒 A"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">從商品庫帶入（選填）</Label>
+                      <Popover
+                        open={popoverOpen}
+                        onOpenChange={(open) =>
+                          setNewQuoteDraftItemPopoverOpen((prev) => ({ ...prev, [draft.id]: open }))
+                        }
+                      >
+                        <PopoverTrigger asChild>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            role="combobox"
+                            aria-expanded={popoverOpen}
+                            className="w-full justify-between font-normal h-9 text-sm"
+                          >
+                            {selectedProduct ? `已選：${selectedProduct.name}` : "從商品庫選擇…"}
+                            <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-[min(100vw-2rem,320px)] p-0" align="start">
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder="輸入商品名稱搜尋…"
+                              value={draftSearch}
+                              onValueChange={(val) =>
+                                setNewQuoteDraftItemProductSearch((prev) => ({ ...prev, [draft.id]: val }))
+                              }
+                            />
+                            <CommandList>
+                              <CommandEmpty>
+                                {newQuoteProducts.length === 0 ? "商品載入中…" : "找不到商品"}
+                              </CommandEmpty>
+                              {Object.entries(filteredProductsForDraft).map(([category, prods]) => (
+                                <CommandGroup key={category} heading={category}>
+                                  {prods.map((p) => {
+                                    const notice = newQuoteProductNotices[p.id];
+                                    const displayPrice = notice?.price_min ?? p.price;
+                                    const minQty = notice?.min_order_qty;
+                                    return (
+                                      <CommandItem
+                                        key={p.id}
+                                        value={p.id}
+                                        onSelect={() => {
+                                          setNewQuoteDraftItems((prev) =>
+                                            prev.map((d) =>
+                                              d.id === draft.id
+                                                ? { ...d, productId: p.id, productName: p.name }
+                                                : d,
+                                            ),
+                                          );
+                                          setNewQuoteDraftItemPopoverOpen((prev) => ({ ...prev, [draft.id]: false }));
+                                          setNewQuoteDraftItemProductSearch((prev) => ({ ...prev, [draft.id]: "" }));
+                                        }}
+                                      >
+                                        <Check
+                                          className={cn(
+                                            "mr-2 h-4 w-4",
+                                            draft.productId === p.id ? "opacity-100" : "opacity-0",
+                                          )}
+                                        />
+                                        {[
+                                          p.name,
+                                          "（NT$ ",
+                                          String(displayPrice),
+                                          minQty != null ? `，最低${minQty}份` : "",
+                                          "）",
+                                        ].join("")}
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              ))}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">客製化說明（選填，留空則使用下方整體詢價說明）</Label>
+                      <Textarea
+                        value={draft.customization}
+                        onChange={(e) =>
+                          setNewQuoteDraftItems((prev) =>
+                            prev.map((d) => (d.id === draft.id ? { ...d, customization: e.target.value } : d)),
+                          )
+                        }
+                        placeholder="此品項專屬需求、數量、風格等"
+                        rows={2}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <Label className="text-xs">數量</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={draft.quantity || ""}
+                        onChange={(e) =>
+                          setNewQuoteDraftItems((prev) =>
+                            prev.map((d) =>
+                              d.id === draft.id
+                                ? { ...d, quantity: e.target.value ? Math.max(1, Number(e.target.value)) : 1 }
+                                : d,
+                            ),
+                          )
+                        }
+                        className="w-24"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+
               <div className="space-y-1">
                 <Label>詢價說明（必填）</Label>
                 <Textarea
                   value={newQForm.inquiryNotes}
                   onChange={(e) => setNewQForm((p) => ({ ...p, inquiryNotes: e.target.value }))}
-                  placeholder="需求、數量、參考風格、預算等，將顯示於後台「服務內容」與報價單訂購內容區塊。"
-                  rows={6}
+                  placeholder="整體需求、數量、參考風格、預算等，將顯示於後台「服務內容」與報價單訂購內容區塊；各品項若未填客製化說明則沿用此內容。"
+                  rows={4}
                 />
               </div>
               <div className="space-y-1">
