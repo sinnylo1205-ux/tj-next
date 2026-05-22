@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { SafeImage } from "@/components/SafeImage";
+import { trackLineClick } from "@/lib/track-line-click";
 
 export function RightSlideHint() {
   const [visible, setVisible] = useState(false);
@@ -42,7 +43,13 @@ export function RightSlideHint() {
         ${visible ? "translate-x-0" : "translate-x-full"}
       `}
     >
-      <a href="https://lin.ee/FJqAxNU" target="_blank" rel="noopener noreferrer" className="block">
+      <a
+        href="https://lin.ee/FJqAxNU"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block"
+        onClick={() => trackLineClick("customizer_slide_hint")}
+      >
         <SafeImage
           src="https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/hint2__1_-removebg-preview.png"
           alt="加入 T&J 官方 LINE"

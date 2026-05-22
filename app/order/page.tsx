@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Images } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QUERY_KEYS } from "@/lib/react-query-keys";
+import { trackLineClick } from "@/lib/track-line-click";
 
 interface ProductItem {
   id: string;
@@ -529,7 +530,12 @@ export default function OrderPage() {
               </a>
             </Button>
             <Button asChild className="w-full sm:w-auto">
-              <a href="https://lin.ee/Tp9U5bf" target="_blank" rel="noopener noreferrer">
+              <a
+                href="https://lin.ee/Tp9U5bf"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackLineClick("order_cake_dialog")}
+              >
                 LINE 官方客服
               </a>
             </Button>

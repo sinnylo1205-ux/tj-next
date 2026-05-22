@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import ProgressiveImage from "@/components/ProgressiveImage";
 import { HomeSection1Mobile } from "@/components/home/HomeSection1Mobile";
 import { DESKTOP_HERO_FALLBACK_URL } from "@/lib/home-lcp-urls";
+import { trackLineClick } from "@/lib/track-line-click";
 
 const HomePaymentResultDialog = dynamic(
   () => import("@/components/home/HomePaymentResultDialog").then((m) => m.HomePaymentResultDialog),
@@ -120,9 +121,7 @@ function HomePageContent() {
   }, [pathname, router]);
 
   const handleLineClick = () => {
-    if (typeof window !== "undefined" && (window as any).gtag) {
-      (window as any).gtag("event", "line_click", { source: "website", position: "homepage" });
-    }
+    trackLineClick("homepage");
   };
 
   useEffect(() => {

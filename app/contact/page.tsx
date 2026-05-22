@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { Mail, Phone, MapPin, Clock, MessageCircle } from "lucide-react";
 import { getFullUrl } from "@/lib/site";
 import type { Metadata } from "next";
+import { TrackedLineLink } from "@/components/TrackedLineLink";
 
 export const metadata: Metadata = {
   title: "聯絡我們｜T&J 客製化甜點",
@@ -38,14 +39,15 @@ export default function ContactPage() {
                   </div>
                   <div>
                     <p className="font-medium text-ink mb-1">官方 LINE</p>
-                    <a
+                    <TrackedLineLink
                       href="https://lin.ee/lFsTJ6G"
                       target="_blank"
                       rel="noopener noreferrer"
+                      position="contact"
                       className="text-brand-600 hover:underline break-all"
                     >
                       https://lin.ee/lFsTJ6G
-                    </a>
+                    </TrackedLineLink>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">

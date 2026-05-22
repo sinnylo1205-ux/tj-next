@@ -25,6 +25,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { CartItem } from "@/contexts/CartContext";
+import { trackLineClick } from "@/lib/track-line-click";
 
 const CHECKOUT_SELECTED_KEY = "tj_checkout_selected";
 
@@ -762,6 +763,7 @@ export default function CheckoutPage() {
             </Button>
             <Button
               onClick={() => {
+                trackLineClick("checkout_line_login");
                 const redirectUri = encodeURIComponent("https://akrxbdoxiopiubksgcrl.supabase.co/functions/v1/line-auth-callback");
                 const state = encodeURIComponent(`${user?.id || ""}|${createdOrderId || ""}`);
                 window.location.href = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=2008793012&redirect_uri=${redirectUri}&state=${state}&scope=profile%20openid`;

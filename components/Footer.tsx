@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Instagram, Facebook, Mail, MessageCircle, Settings } from "lucide-react";
 import { getSocialProfileUrls } from "@/lib/site";
+import { trackLineClick } from "@/lib/track-line-click";
 
 const { instagram: INSTAGRAM_URL, facebook: FACEBOOK_URL, line: LINE_URL } = getSocialProfileUrls();
 
@@ -97,6 +98,7 @@ const Footer = () => {
                 href={LINE_URL}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => trackLineClick("footer")}
                 className="w-10 h-10 bg-white/10 hover:bg-white/20 rounded-full flex items-center justify-center transition-colors"
                 aria-label="LINE 官方帳號"
               >

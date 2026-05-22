@@ -5,6 +5,7 @@ import { Suspense, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
+import { trackLineClick } from "@/lib/track-line-click";
 
 const packages = [
   {
@@ -94,7 +95,10 @@ function StylePackagesPageContent() {
                 className="w-full"
                 size="lg"
                 variant={pkg.popular ? "default" : "outline"}
-                onClick={() => window.open(LINE_URL)}
+                onClick={() => {
+                  trackLineClick("style_packages");
+                  window.open(LINE_URL);
+                }}
               >
                 加官方 LINE 聊聊方案
               </Button>

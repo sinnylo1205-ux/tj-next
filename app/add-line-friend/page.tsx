@@ -17,6 +17,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { trackLineClick } from "@/lib/track-line-click";
 
 const LINE_OFFICIAL_ACCOUNT_ID = "@krz3717h";
 const LINE_ADD_FRIEND_URL = `https://line.me/R/ti/p/${LINE_OFFICIAL_ACCOUNT_ID}`;
@@ -66,6 +67,7 @@ function AddLineFriendContent() {
 
   const handleConfirmRedirect = () => {
     setShowRedirectWarning(false);
+    trackLineClick("add_line_friend");
     window.open(LINE_ADD_FRIEND_URL, "_blank");
   };
 
