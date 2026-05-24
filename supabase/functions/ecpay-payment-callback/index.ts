@@ -148,6 +148,38 @@ serve(async (req) => {
       });
     }
 
+    const paidAmount = Number(params.TradeAmt);
+    const expectedAmount = Math.round(Number(order.total_amount || 0));
+    if (!Number.isFinite(paidAmount) || paidAmount !== expectedAmount) {
+      console.error("ECPay 付款金額與訂單金額不一致，拒絕驗證付款:", {
+        orderId,
+        paidAmount: params.TradeAmt,
+        expectedAmount,
+      });
+      await supabase.from("system_events").insert({
+        event_type: "payment_failed",
+        source: "ecpay-payment-callback",
+        ref_id: orderId,
+        payload: {
+          action_type: "credit_card_amount_mismatch",
+          status_message: "信用卡付款金額與訂單金額不一致，未驗證付款",
+          payment_method: "credit_card",
+          expected_amount: expectedAmount,
+          paid_amount: params.TradeAmt,
+          ecpay: {
+            TradeNo: params.TradeNo,
+            MerchantTradeNo: merchantTradeNo,
+            TradeAmt: params.TradeAmt,
+          },
+        },
+        sent_to_n8n: false,
+      });
+      return new Response("1|OK", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
     // ========== 冪等性檢查：防止重複處理 ==========
     if (order.payment_step === "verified") {
       console.log("⚠️ 訂單已完成付款，跳過重複處理:", orderId);
