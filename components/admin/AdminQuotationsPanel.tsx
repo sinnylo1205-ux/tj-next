@@ -824,6 +824,12 @@ const AdminQuotationsPanel = () => {
         rowEd != null && rowEd.shippingFee !== null && rowEd.shippingFee !== undefined
           ? rowEd.shippingFee
           : edits.shipping_fee;
+      const shouldRecalculateTotals = !isSpecialQuotation(q.all_requirement) && Boolean(qItemsLocal?.length);
+      const recalculatedSubtotal = shouldRecalculateTotals ? calcSubtotal(quotationId) : edits.subtotal;
+      const discountAmountForOrder = edits.discount_amount ?? 0;
+      const recalculatedTotal = shouldRecalculateTotals
+        ? (recalculatedSubtotal ?? 0) + (shippingFeeForOrder ?? 0) - discountAmountForOrder
+        : edits.total_amount;
 
       if (rowEd && qItemsLocal?.length) {
         for (const item of qItemsLocal) {
@@ -913,8 +919,8 @@ const AdminQuotationsPanel = () => {
         .from("quotation_orders")
         .update({
           shipping_fee: shippingFeeForOrder,
-          subtotal: edits.subtotal,
-          total_amount: edits.total_amount,
+          subtotal: recalculatedSubtotal,
+          total_amount: recalculatedTotal,
           notes: edits.notes,
           shipping_way: edits.shipping_way,
           discount_amount: edits.discount_amount,
@@ -1521,7 +1527,7 @@ const AdminQuotationsPanel = () => {
           payment_method: pd.paymentMethod,
           payment_step: pd.paymentStep ?? quotation.payment_step ?? "pending",
           order_status: pd.orderStatus || "processing",
-          auto_cancel_exempt: pd.autoCancelExempt ?? false,
+          auto_cancel_exempt: pd.autoCancelExempt ?? true,
           transfer_last5: pd.transferLast5 || null,
           user_id: userId || null,
           line_user_id: lineUserId || null,
@@ -2279,10 +2285,14 @@ const AdminQuotationsPanel = () => {
 
                                 <Button
                                   className="w-full"
-                                  onClick={() => handleConvertToOrder(q)}
-                                  disabled={actionLoading === q.id}
+                                  onClick={async () => {
+                                    const saved = await handleSaveQuotationEdits(q.id);
+                                    if (!saved) return;
+                                    handleConvertToOrder(q);
+                                  }}
+                                  disabled={actionLoading === q.id || savingQuotation === q.id}
                                 >
-                                  {actionLoading === q.id ? (
+                                  {actionLoading === q.id || savingQuotation === q.id ? (
                                     <>
                                       <Loader2 className="h-4 w-4 animate-spin mr-2" />
                                       處理中...
