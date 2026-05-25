@@ -162,7 +162,15 @@ function jsonResponse(payload: Record<string, unknown>, status: number): Respons
   });
 }
 
-async function rollbackCreatedOrders(supabase: any, orderIds: string[]) {
+type SupabaseOrderCleanupClient = {
+  from: (table: "order_items" | "orders") => {
+    delete: () => {
+      eq: (column: string, value: string) => Promise<unknown>;
+    };
+  };
+};
+
+async function rollbackCreatedOrders(supabase: SupabaseOrderCleanupClient, orderIds: string[]) {
   for (let i = orderIds.length - 1; i >= 0; i--) {
     const oid = orderIds[i];
     await supabase.from("order_items").delete().eq("order_id", oid);
@@ -688,8 +696,8 @@ async function handleConvertSpecialQuotationToOrders(
   const createdOrderIds: string[] = [];
   const deferredNotifications: Array<{
     orderId: string;
-    linePayload: Record<string, any>;
-    calendarPayload: Record<string, any>;
+    linePayload: Record<string, unknown>;
+    calendarPayload: Record<string, unknown>;
   }> = [];
 
   try {
@@ -774,7 +782,7 @@ async function handleConvertSpecialQuotationToOrders(
         .map((it: any) => `${it.product_name} x${it.quantity}`)
         .join("、");
 
-      const linePayload: Record<string, any> = {
+      const linePayload: Record<string, unknown> = {
         source: "system",
         event_type: "manual_order_created",
         ref_id: orderData.id,
@@ -858,7 +866,7 @@ async function handleConvertSpecialQuotationToOrders(
           source: "admin",
           event_type: "quotation_converted",
           ref_id: notification.orderId,
-          payload: notification.linePayload.payload,
+          payload: (notification.linePayload.payload ?? {}) as Record<string, unknown>,
           sent_to_n8n: true,
         });
       } catch (notifyError) {
