@@ -157,6 +157,41 @@ serve(async (req) => {
       });
     }
 
+    const paidAmount = Number(params.TradeAmt);
+    const expectedAmount = Math.round(Number(order.total_amount || 0));
+    if (!Number.isFinite(paidAmount) || paidAmount !== expectedAmount) {
+      console.error("付款金額與訂單金額不一致:", {
+        orderId,
+        paidAmount: params.TradeAmt,
+        expectedAmount,
+      });
+
+      await supabase.from("system_events").insert({
+        event_type: "payment_failed",
+        source: "ecpay-payment-callback",
+        ref_id: order.id,
+        payload: {
+          action_type: "credit_card_amount_mismatch",
+          status_message: `信用卡付款金額異常：綠界 ${params.TradeAmt}，訂單 ${expectedAmount}`,
+          payment_method: "credit_card",
+          ecpay: {
+            TradeNo: params.TradeNo,
+            MerchantTradeNo: merchantTradeNo,
+            RtnCode: rtnCode,
+            RtnMsg: params.RtnMsg,
+            TradeAmt: params.TradeAmt,
+            expected_amount: expectedAmount,
+          },
+        },
+        sent_to_n8n: false,
+      });
+
+      return new Response("1|OK", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
     // 記錄之前的狀態
     const previousStatus = order.order_status;
     const previousPaymentStep = order.payment_step;

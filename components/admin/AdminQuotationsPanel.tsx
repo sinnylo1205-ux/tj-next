@@ -824,6 +824,11 @@ const AdminQuotationsPanel = () => {
         rowEd != null && rowEd.shippingFee !== null && rowEd.shippingFee !== undefined
           ? rowEd.shippingFee
           : edits.shipping_fee;
+      const recalculatedSubtotal = qItemsLocal?.length ? calcSubtotal(quotationId) : edits.subtotal;
+      const recalculatedTotal =
+        qItemsLocal?.length
+          ? (Number(recalculatedSubtotal) || 0) + (Number(shippingFeeForOrder) || 0)
+          : edits.total_amount;
 
       if (rowEd && qItemsLocal?.length) {
         for (const item of qItemsLocal) {
@@ -913,8 +918,8 @@ const AdminQuotationsPanel = () => {
         .from("quotation_orders")
         .update({
           shipping_fee: shippingFeeForOrder,
-          subtotal: edits.subtotal,
-          total_amount: edits.total_amount,
+          subtotal: recalculatedSubtotal,
+          total_amount: recalculatedTotal,
           notes: edits.notes,
           shipping_way: edits.shipping_way,
           discount_amount: edits.discount_amount,
@@ -1511,6 +1516,8 @@ const AdminQuotationsPanel = () => {
     const qe = quotationEdits[quotation.id];
     const userId = (qe?.user_id && String(qe.user_id).trim()) ? String(qe.user_id).trim() : quotation.user_id;
     const lineUserId = qe?.line_user_id ?? quotation.line_user_id;
+    const saved = await handleSaveQuotationEdits(quotation.id);
+    if (!saved) return;
 
     setActionLoading(quotation.id);
     try {
@@ -1521,7 +1528,7 @@ const AdminQuotationsPanel = () => {
           payment_method: pd.paymentMethod,
           payment_step: pd.paymentStep ?? quotation.payment_step ?? "pending",
           order_status: pd.orderStatus || "processing",
-          auto_cancel_exempt: pd.autoCancelExempt ?? false,
+          auto_cancel_exempt: pd.autoCancelExempt ?? true,
           transfer_last5: pd.transferLast5 || null,
           user_id: userId || null,
           line_user_id: lineUserId || null,
