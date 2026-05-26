@@ -109,7 +109,7 @@ function MemberPageContent() {
       .from("orders")
       .select("*")
       .eq("user_id", user.id)
-      .eq("is_hide", false)
+      .or("is_hide.is.null,is_hide.eq.false")
       .order("created_at", { ascending: false });
     if (error) {
       toast({ title: "載入訂單失敗", description: error.message, variant: "destructive" });

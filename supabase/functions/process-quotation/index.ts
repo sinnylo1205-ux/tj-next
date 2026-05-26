@@ -19,6 +19,45 @@ const QUOTATION_KIND_SPECIAL = "special";
 
 const _DISABLED_PROCESS_QUOTATION = false;
 
+function jsonResponse(body: Record<string, unknown>, status: number) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
+type SupabaseDeleteClient = {
+  from: (table: string) => {
+    delete: () => {
+      eq: (column: string, value: string) => Promise<{ error: unknown | null }>;
+    };
+  };
+};
+
+type PendingOrderNotification = {
+  linePayload: {
+    source: string;
+    event_type: string;
+    ref_id: string;
+    payload: Record<string, unknown>;
+  };
+  calendarPayload: Record<string, unknown>;
+};
+
+async function rollbackCreatedOrders(supabase: SupabaseDeleteClient, orderIds: string[], context: string) {
+  for (let i = orderIds.length - 1; i >= 0; i--) {
+    const orderId = orderIds[i];
+    const { error: itemDeleteError } = await supabase.from("order_items").delete().eq("order_id", orderId);
+    if (itemDeleteError) {
+      console.error(`[${context}] rollback order_items failed:`, itemDeleteError);
+    }
+    const { error: orderDeleteError } = await supabase.from("orders").delete().eq("id", orderId);
+    if (orderDeleteError) {
+      console.error(`[${context}] rollback order failed:`, orderDeleteError);
+    }
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -639,6 +678,10 @@ async function handleConvertSpecialQuotationToOrders(
     });
   }
 
+  if (quotation.status === "order_created") {
+    return jsonResponse({ error: "此特殊報價單已轉過訂單，請勿重複操作" }, 400);
+  }
+
   const existingConverted = special.converted_order_ids;
   if (Array.isArray(existingConverted) && existingConverted.length > 0) {
     return new Response(JSON.stringify({ error: "此特殊報價單已轉過訂單，請勿重複操作" }), {
@@ -679,6 +722,7 @@ async function handleConvertSpecialQuotationToOrders(
   const contactEmail = quotation.email || special.contact?.email || null;
 
   const createdOrderIds: string[] = [];
+  const pendingNotifications: PendingOrderNotification[] = [];
 
   try {
     for (const [comboId, comboItems] of byCombo.entries()) {
@@ -762,8 +806,8 @@ async function handleConvertSpecialQuotationToOrders(
         .map((it: any) => `${it.product_name} x${it.quantity}`)
         .join("、");
 
-      try {
-        const linePayload: Record<string, any> = {
+      pendingNotifications.push({
+        linePayload: {
           source: "system",
           event_type: "manual_order_created",
           ref_id: orderData.id,
@@ -789,28 +833,8 @@ async function handleConvertSpecialQuotationToOrders(
             line_user_id: lineUserId || null,
             status_message: "特殊報價單已轉為正式訂單",
           },
-        };
-
-        const lineResponse = await fetch(N8N_LINE_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(linePayload),
-        });
-        console.log("[process-quotation/special_convert] LINE status:", lineResponse.status);
-
-        await supabase.from("system_events").insert({
-          source: "admin",
-          event_type: "quotation_converted",
-          ref_id: orderData.id,
-          payload: linePayload.payload,
-          sent_to_n8n: true,
-        });
-      } catch (notifyError) {
-        console.error("[process-quotation/special_convert] Notification error:", notifyError);
-      }
-
-      try {
-        const calendarPayload = {
+        },
+        calendarPayload: {
           order_id: orderData.id,
           order_status: "processing",
           member_name: ordererName,
@@ -818,16 +842,8 @@ async function handleConvertSpecialQuotationToOrders(
           pickup_date: meta.expected_pickup_date || null,
           order_items_text: productSummary,
           pickup_method: orderInsert.shipping_way,
-        };
-        const calendarResponse = await fetch(N8N_CALENDAR_WEBHOOK_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(calendarPayload),
-        });
-        console.log("[process-quotation/special_convert] Calendar status:", calendarResponse.status);
-      } catch (calendarError) {
-        console.error("[process-quotation/special_convert] Calendar error:", calendarError);
-      }
+        },
+      });
     }
 
     const nextAllReq = {
@@ -838,7 +854,7 @@ async function handleConvertSpecialQuotationToOrders(
       },
     };
 
-    const { error: statusError } = await supabase
+    const { data: updatedRows, error: statusError } = await supabase
       .from("quotation_orders")
       .update({
         status: "order_created",
@@ -850,10 +866,45 @@ async function handleConvertSpecialQuotationToOrders(
         all_requirement: nextAllReq,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", quotation_order_id);
+      .eq("id", quotation_order_id)
+      .neq("status", "order_created")
+      .select("id");
 
-    if (statusError) {
+    if (statusError || !updatedRows?.length) {
       console.error("[process-quotation/special_convert] quotation update failed:", statusError);
+      throw new Error(statusError?.message || "此特殊報價單已轉過訂單，請勿重複操作");
+    }
+
+    for (const notification of pendingNotifications) {
+      try {
+        const lineResponse = await fetch(N8N_LINE_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(notification.linePayload),
+        });
+        console.log("[process-quotation/special_convert] LINE status:", lineResponse.status);
+
+        await supabase.from("system_events").insert({
+          source: "admin",
+          event_type: "quotation_converted",
+          ref_id: notification.linePayload.ref_id,
+          payload: notification.linePayload.payload,
+          sent_to_n8n: true,
+        });
+      } catch (notifyError) {
+        console.error("[process-quotation/special_convert] Notification error:", notifyError);
+      }
+
+      try {
+        const calendarResponse = await fetch(N8N_CALENDAR_WEBHOOK_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(notification.calendarPayload),
+        });
+        console.log("[process-quotation/special_convert] Calendar status:", calendarResponse.status);
+      } catch (calendarError) {
+        console.error("[process-quotation/special_convert] Calendar error:", calendarError);
+      }
     }
 
     return new Response(
@@ -863,11 +914,7 @@ async function handleConvertSpecialQuotationToOrders(
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "轉單失敗";
     console.error("[process-quotation/special_convert] rollback:", msg);
-    for (let i = createdOrderIds.length - 1; i >= 0; i--) {
-      const oid = createdOrderIds[i];
-      await supabase.from("order_items").delete().eq("order_id", oid);
-      await supabase.from("orders").delete().eq("id", oid);
-    }
+    await rollbackCreatedOrders(supabase, createdOrderIds, "process-quotation/special_convert");
     return new Response(JSON.stringify({ error: msg }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -928,6 +975,14 @@ async function handleConvertToOrder(supabase: any, body: any) {
   const allReq = quotation.all_requirement || {};
   if (allReq.quotation_kind === QUOTATION_KIND_SPECIAL && allReq.special_quotation) {
     return await handleConvertSpecialQuotationToOrders(supabase, body, quotation, qItems || [], allReq);
+  }
+
+  if (quotation.status === "order_created") {
+    return jsonResponse({ error: "此報價單已轉過訂單，請勿重複操作" }, 400);
+  }
+
+  if (!qItems?.length) {
+    return jsonResponse({ error: "無品項可轉單" }, 400);
   }
 
   const delivery = allReq.delivery || {};
@@ -1004,6 +1059,8 @@ async function handleConvertToOrder(supabase: any, body: any) {
     ),
   );
 
+  const createdOrderIds = [orderData.id];
+
   // 4. Create order items
   for (const item of qItems || []) {
     const { error: itemError } = await supabase.from("order_items").insert({
@@ -1018,11 +1075,13 @@ async function handleConvertToOrder(supabase: any, body: any) {
 
     if (itemError) {
       console.error("[process-quotation/convert_to_order] Failed to create order item:", itemError);
+      await rollbackCreatedOrders(supabase, createdOrderIds, "process-quotation/convert_to_order");
+      return jsonResponse({ error: itemError.message || "建立訂單品項失敗" }, 500);
     }
   }
 
   // 5. Update quotation status（保留 user_id、line_user_id）
-  const { error: statusError } = await supabase
+  const { data: updatedRows, error: statusError } = await supabase
     .from("quotation_orders")
     .update({
       status: "order_created",
@@ -1033,10 +1092,17 @@ async function handleConvertToOrder(supabase: any, body: any) {
       line_user_id: bodyLineUserId || quotation.line_user_id || null,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", quotation_order_id);
+    .eq("id", quotation_order_id)
+    .neq("status", "order_created")
+    .select("id");
 
-  if (statusError) {
+  if (statusError || !updatedRows?.length) {
     console.error("[process-quotation/convert_to_order] Failed to update status:", statusError);
+    await rollbackCreatedOrders(supabase, createdOrderIds, "process-quotation/convert_to_order");
+    return jsonResponse(
+      { error: statusError?.message || "此報價單已轉過訂單，請勿重複操作" },
+      statusError ? 500 : 409,
+    );
   }
 
   // 6. Build product summary for notifications
