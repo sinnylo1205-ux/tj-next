@@ -104,19 +104,6 @@ function HomePageContent() {
       router.replace(pathname || "/");
       localStorage.removeItem("last_creditcard_order_id");
       localStorage.removeItem("last_creditcard_started_at");
-    } else {
-      const lastOrderId = localStorage.getItem("last_creditcard_order_id");
-      const startedAt = localStorage.getItem("last_creditcard_started_at");
-      if (lastOrderId && startedAt) {
-        const elapsed = Date.now() - parseInt(startedAt, 10);
-        if (elapsed < 30 * 60 * 1000) {
-          setPaymentSuccess(true);
-          setPaymentMessage("已完成信用卡付款流程");
-          setShowPaymentResult(true);
-        }
-        localStorage.removeItem("last_creditcard_order_id");
-        localStorage.removeItem("last_creditcard_started_at");
-      }
     }
   }, [pathname, router]);
 

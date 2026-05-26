@@ -824,6 +824,19 @@ const AdminQuotationsPanel = () => {
         rowEd != null && rowEd.shippingFee !== null && rowEd.shippingFee !== undefined
           ? rowEd.shippingFee
           : edits.shipping_fee;
+      const isSpecial = isSpecialQuotation(q.all_requirement);
+      const recalculatedSubtotal =
+        !isSpecial && rowEd && qItemsLocal?.length
+          ? qItemsLocal.reduce((sum, item) => {
+              const price = Number(rowEd.itemPrices?.[item.id] ?? item.unit_price ?? 0) || 0;
+              const qty = Math.max(1, Math.floor(Number(rowEd.itemQuantities?.[item.id] ?? item.quantity ?? 1)) || 1);
+              return sum + price * qty;
+            }, 0)
+          : edits.subtotal;
+      const recalculatedTotal =
+        !isSpecial && recalculatedSubtotal !== null && recalculatedSubtotal !== undefined
+          ? recalculatedSubtotal + (shippingFeeForOrder ?? 0)
+          : edits.total_amount;
 
       if (rowEd && qItemsLocal?.length) {
         for (const item of qItemsLocal) {
@@ -913,8 +926,8 @@ const AdminQuotationsPanel = () => {
         .from("quotation_orders")
         .update({
           shipping_fee: shippingFeeForOrder,
-          subtotal: edits.subtotal,
-          total_amount: edits.total_amount,
+          subtotal: recalculatedSubtotal,
+          total_amount: recalculatedTotal,
           notes: edits.notes,
           shipping_way: edits.shipping_way,
           discount_amount: edits.discount_amount,
@@ -1514,6 +1527,9 @@ const AdminQuotationsPanel = () => {
 
     setActionLoading(quotation.id);
     try {
+      const saved = await handleSaveQuotationEdits(quotation.id);
+      if (!saved) return;
+
       const { data, error } = await supabase.functions.invoke("process-quotation", {
         body: {
           action: "convert_to_order",
@@ -1521,7 +1537,7 @@ const AdminQuotationsPanel = () => {
           payment_method: pd.paymentMethod,
           payment_step: pd.paymentStep ?? quotation.payment_step ?? "pending",
           order_status: pd.orderStatus || "processing",
-          auto_cancel_exempt: pd.autoCancelExempt ?? false,
+          auto_cancel_exempt: pd.autoCancelExempt ?? true,
           transfer_last5: pd.transferLast5 || null,
           user_id: userId || null,
           line_user_id: lineUserId || null,
