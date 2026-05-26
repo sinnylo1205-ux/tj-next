@@ -26,7 +26,25 @@ function jsonResponse(body: Record<string, unknown>, status: number) {
   });
 }
 
-async function rollbackCreatedOrders(supabase: any, orderIds: string[], context: string) {
+type SupabaseDeleteClient = {
+  from: (table: string) => {
+    delete: () => {
+      eq: (column: string, value: string) => Promise<{ error: unknown | null }>;
+    };
+  };
+};
+
+type PendingOrderNotification = {
+  linePayload: {
+    source: string;
+    event_type: string;
+    ref_id: string;
+    payload: Record<string, unknown>;
+  };
+  calendarPayload: Record<string, unknown>;
+};
+
+async function rollbackCreatedOrders(supabase: SupabaseDeleteClient, orderIds: string[], context: string) {
   for (let i = orderIds.length - 1; i >= 0; i--) {
     const orderId = orderIds[i];
     const { error: itemDeleteError } = await supabase.from("order_items").delete().eq("order_id", orderId);
@@ -704,10 +722,7 @@ async function handleConvertSpecialQuotationToOrders(
   const contactEmail = quotation.email || special.contact?.email || null;
 
   const createdOrderIds: string[] = [];
-  const pendingNotifications: Array<{
-    linePayload: Record<string, any>;
-    calendarPayload: Record<string, any>;
-  }> = [];
+  const pendingNotifications: PendingOrderNotification[] = [];
 
   try {
     for (const [comboId, comboItems] of byCombo.entries()) {
