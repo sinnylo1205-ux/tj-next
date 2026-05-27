@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
     const { data: orderData, error: orderError } = await supabase
       .from("orders")
       .select(
-        "id, order_status, payment_step, subtotal, expected_pickup_date, notes, total_amount, shipping_fee, shipping_way, Email, shipping_address_text, is_manual_order, who_receive, phone, line_user_id",
+        "id, user_id, order_status, payment_step, subtotal, expected_pickup_date, notes, total_amount, shipping_fee, shipping_way, Email, shipping_address_text, is_manual_order, who_receive, phone, line_user_id",
       )
       .eq("id", order_id)
       .single();
@@ -91,6 +91,13 @@ Deno.serve(async (req) => {
       console.error("[notify-new-order] Failed to fetch order:", orderError);
       return new Response(JSON.stringify({ error: "Failed to fetch order" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (orderData.user_id !== authUser.id) {
+      return new Response(JSON.stringify({ error: "只能觸發本人訂單的通知" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
