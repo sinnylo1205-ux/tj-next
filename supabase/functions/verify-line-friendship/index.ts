@@ -7,6 +7,11 @@ const corsHeaders = {
 
 const N8N_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/line";
 
+interface ProductNameRow {
+  id?: string | null;
+  name?: string | null;
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -126,7 +131,7 @@ Deno.serve(async (req) => {
         console.error("[verify-line-friendship] Failed to fetch products:", productsError);
       }
 
-      (productsData ?? []).forEach((p: any) => {
+      ((productsData ?? []) as ProductNameRow[]).forEach((p) => {
         if (p?.id) productNameById.set(p.id, p.name ?? "");
       });
     }

@@ -15,6 +15,8 @@ const NotifyNewOrderRequestSchema = z.object({
   user_id: z.string().uuid("用戶 ID 格式錯誤"),
 });
 
+type SystemEventPayload = Record<string, string | number | boolean | null | undefined>;
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -147,7 +149,7 @@ Deno.serve(async (req) => {
     console.log("[notify-new-order] Is manual order:", isManualOrder);
 
     // Build system event payload
-    const systemEventPayload: Record<string, any> = {
+    const systemEventPayload: SystemEventPayload = {
       order_id: order_id,
       order_status: orderData.order_status || "awaiting_payment",
       payment_step: orderData.payment_step || "pending",
