@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { getFullUrl } from "@/lib/site";
+import { getFullUrl, SITE_CONFIG } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "甜點部落格｜T&J 客製化甜點知識庫",
@@ -11,9 +11,7 @@ export const metadata: Metadata = {
     description: "探索客製化甜點的世界！了解各種甜點的製作與客製化方式。",
     type: "website",
     url: getFullUrl("/blog"),
-    images: [
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/og.png",
-    ],
+    images: [{ url: SITE_CONFIG.OG_IMAGE }],
   },
 };
 

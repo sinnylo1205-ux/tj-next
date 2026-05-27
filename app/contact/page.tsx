@@ -1,6 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { Mail, Phone, MapPin, Clock, MessageCircle } from "lucide-react";
-import { getFullUrl } from "@/lib/site";
+import { getFullUrl, SITE_CONFIG } from "@/lib/site";
 import type { Metadata } from "next";
 import { TrackedLineLink } from "@/components/TrackedLineLink";
 
@@ -13,9 +13,7 @@ export const metadata: Metadata = {
     title: "聯絡我們｜T&J 客製化甜點",
     description: "聯繫 T&J 客製化甜點，週一至週五 09:00-18:00 採預約制。",
     url: getFullUrl("/contact"),
-    images: [
-      "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/og.png",
-    ],
+    images: [{ url: SITE_CONFIG.OG_IMAGE }],
   },
 };
 

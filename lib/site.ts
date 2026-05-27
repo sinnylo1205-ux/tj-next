@@ -16,7 +16,7 @@ export const SITE_CONFIG = {
   LOGO_URL:
     "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/brand_logo1.png",
   OG_IMAGE:
-    "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/og.png",
+    "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/SEO/OG(1).webp",
   CONTACT: {
     phone: "02-2918-3981",
     email: "tj.tjump@gmail.com",
