@@ -15,6 +15,8 @@ const NotifyNewOrderRequestSchema = z.object({
   user_id: z.string().uuid("用戶 ID 格式錯誤"),
 });
 
+type SystemEventPayload = Record<string, string | number | boolean | null | undefined>;
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -82,7 +84,7 @@ Deno.serve(async (req) => {
     const { data: orderData, error: orderError } = await supabase
       .from("orders")
       .select(
-        "id, order_status, payment_step, subtotal, expected_pickup_date, notes, total_amount, shipping_fee, shipping_way, Email, shipping_address_text, is_manual_order, who_receive, phone, line_user_id",
+        "id, user_id, order_status, payment_step, subtotal, expected_pickup_date, notes, total_amount, shipping_fee, shipping_way, Email, shipping_address_text, is_manual_order, who_receive, phone, line_user_id",
       )
       .eq("id", order_id)
       .single();
@@ -91,6 +93,13 @@ Deno.serve(async (req) => {
       console.error("[notify-new-order] Failed to fetch order:", orderError);
       return new Response(JSON.stringify({ error: "Failed to fetch order" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (orderData.user_id !== authUser.id) {
+      return new Response(JSON.stringify({ error: "只能觸發本人訂單的通知" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -140,7 +149,7 @@ Deno.serve(async (req) => {
     console.log("[notify-new-order] Is manual order:", isManualOrder);
 
     // Build system event payload
-    const systemEventPayload: Record<string, any> = {
+    const systemEventPayload: SystemEventPayload = {
       order_id: order_id,
       order_status: orderData.order_status || "awaiting_payment",
       payment_step: orderData.payment_step || "pending",
