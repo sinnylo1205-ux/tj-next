@@ -5,6 +5,11 @@ import { SafeImage } from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
+import {
+  buildOrderItemPreviewSlots,
+  collectPreviewUrlsFromSlots,
+  isLikelyImageUrl,
+} from "@/lib/order-item-preview-images";
 import { cn } from "@/lib/utils";
 
 export type AdminOrderDetailOrder = {
@@ -33,6 +38,8 @@ export type AdminOrderDetailItem = {
   preview_url: string | null;
   admin_media_url?: string | null;
   customizations_json: unknown[];
+  is_package_design?: boolean | null;
+  linked_item_id?: number | null;
 };
 
 type AdminOrderDetailPanelProps = {
@@ -155,18 +162,14 @@ export function AdminOrderDetailPanel({
         <h4 className="font-semibold mb-3">商品明細</h4>
         {!screenshotMode && showUpload && (
           <p className="text-xs text-muted-foreground mb-3">
-            左側可為每個品項上傳管理員附圖；若無附圖則顯示客製預覽圖。
+            左側可上傳管理員附圖；並顯示甜點與包裝預覽圖（含關聯品項與客製 JSON 內圖片）。
           </p>
         )}
         {items.map((item) => {
           const customizationRows = asOrderCustomizationsList(item.customizations_json);
+          const previewSlots = buildOrderItemPreviewSlots(item, items);
+          const previewUrlSet = collectPreviewUrlsFromSlots(previewSlots);
           const adminUrl = pickAdminMediaUrl(item);
-          const preview =
-            typeof item.preview_url === "string" && item.preview_url.trim() !== ""
-              ? item.preview_url.trim()
-              : null;
-          const thumbUrl = adminUrl || preview;
-          const thumbLabel = adminUrl ? "管理員附圖" : preview ? "客製預覽" : null;
           const itemKey = `${order.id}-${String(item.order_item_id)}`;
           const uploadingThis = uploadingItemKey === itemKey;
 
@@ -178,39 +181,52 @@ export function AdminOrderDetailPanel({
                 screenshotMode ? "space-y-3" : "flex flex-col md:flex-row gap-3 md:gap-4",
               )}
             >
-              {(thumbUrl || showUpload) && (
+              {(previewSlots.length > 0 || showUpload) && (
                 <div
                   className={cn(
                     "shrink-0",
                     screenshotMode
                       ? "flex flex-col items-center gap-2"
-                      : "flex flex-row md:flex-col items-start md:items-center gap-2 w-full md:w-[104px]",
+                      : "flex flex-row md:flex-col items-start md:items-center gap-2 w-full md:min-w-[104px] md:max-w-[220px]",
                   )}
                 >
-                  <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded border bg-muted/40 shrink-0">
-                    {thumbUrl ? (
-                      <a
-                        href={thumbUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="relative block h-full w-full"
-                        title="開啟圖片"
-                      >
-                        <SafeImage
-                          src={thumbUrl}
-                          alt={item.product_name}
-                          fill
-                          className="object-cover"
-                          sizes="96px"
-                        />
-                      </a>
+                  <div
+                    className={cn(
+                      "flex gap-2",
+                      screenshotMode ? "flex-col items-center" : "flex-row flex-wrap md:flex-col",
+                    )}
+                  >
+                    {previewSlots.length > 0 ? (
+                      previewSlots.map((slot) => (
+                        <div key={`${item.order_item_id}-${slot.url}`} className="flex flex-col items-center gap-1">
+                          <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded border bg-muted/40 shrink-0">
+                            <a
+                              href={slot.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="relative block h-full w-full"
+                              title={`開啟${slot.label}`}
+                            >
+                              <SafeImage
+                                src={slot.url}
+                                alt={`${item.product_name} ${slot.label}`}
+                                fill
+                                className="object-cover"
+                                sizes="96px"
+                              />
+                            </a>
+                          </div>
+                          <span className="text-[10px] text-muted-foreground text-center leading-tight max-w-[96px]">
+                            {slot.label}
+                          </span>
+                        </div>
+                      ))
                     ) : (
-                      <span className="text-[10px] text-muted-foreground px-1 text-center">無圖</span>
+                      <div className="relative flex h-24 w-24 items-center justify-center overflow-hidden rounded border bg-muted/40 shrink-0">
+                        <span className="text-[10px] text-muted-foreground px-1 text-center">無圖</span>
+                      </div>
                     )}
                   </div>
-                  {thumbLabel && (
-                    <span className="text-[10px] text-muted-foreground">{thumbLabel}</span>
-                  )}
                   {showUpload && onUploadItem && (
                     <Button
                       type="button"
@@ -258,14 +274,17 @@ export function AdminOrderDetailPanel({
                       <div key={idx} className="min-w-0 break-words">
                         <span className="font-medium">{custom.group_name_zh}：</span>
                         <span className="break-words">{custom.summary}</span>
-                        {custom.value?.url && (
+                        {custom.value?.url &&
+                          typeof custom.value.url === "string" &&
+                          !previewUrlSet.has(custom.value.url) && (
                           <a
                             href={custom.value.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="mt-1 block text-primary hover:underline break-all"
                           >
-                            查看 <ExternalLink className="ml-1 h-3 w-3 inline" />
+                            {isLikelyImageUrl(custom.value.url) ? "開啟圖片" : "開啟連結"}{" "}
+                            <ExternalLink className="ml-1 h-3 w-3 inline" />
                           </a>
                         )}
                       </div>

@@ -66,6 +66,7 @@ serve(async (req) => {
 
     const hashKey = Deno.env.get("ECPAY_HASH_KEY")!;
     const hashIV = Deno.env.get("ECPAY_HASH_IV")!;
+    const expectedMerchantId = Deno.env.get("ECPAY_MERCHANT_ID")!;
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -142,6 +143,61 @@ serve(async (req) => {
 
     if (findError || !order) {
       console.error("找不到訂單:", orderId, findError);
+      return new Response("1|OK", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    const callbackMerchantId = String(params.MerchantID || "");
+    if (callbackMerchantId !== expectedMerchantId) {
+      console.error("❌ MerchantID mismatch:", { orderId, callbackMerchantId, expectedMerchantId });
+      await supabase.from("system_events").insert({
+        event_type: "payment_mismatch",
+        source: "ecpay-payment-callback",
+        ref_id: order.id,
+        payload: {
+          action_type: "merchant_id_mismatch",
+          status_message: "綠界回傳 MerchantID 與系統設定不一致",
+          expected_merchant_id: expectedMerchantId,
+          callback_merchant_id: callbackMerchantId,
+          ecpay: {
+            TradeNo: params.TradeNo,
+            MerchantTradeNo: merchantTradeNo,
+            RtnCode: rtnCode,
+            RtnMsg: params.RtnMsg,
+          },
+        },
+        sent_to_n8n: false,
+      });
+      return new Response("1|OK", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    const callbackTradeAmt = Number(params.TradeAmt);
+    const orderTotal = Math.round(Number(order.total_amount));
+    if (!Number.isFinite(callbackTradeAmt) || callbackTradeAmt !== orderTotal) {
+      console.error("❌ TradeAmt mismatch:", { orderId, callbackTradeAmt, orderTotal });
+      await supabase.from("system_events").insert({
+        event_type: "payment_mismatch",
+        source: "ecpay-payment-callback",
+        ref_id: order.id,
+        payload: {
+          action_type: "trade_amount_mismatch",
+          status_message: "綠界回傳付款金額與訂單金額不一致",
+          callback_trade_amt: params.TradeAmt,
+          expected_trade_amt: orderTotal,
+          ecpay: {
+            TradeNo: params.TradeNo,
+            MerchantTradeNo: merchantTradeNo,
+            RtnCode: rtnCode,
+            RtnMsg: params.RtnMsg,
+          },
+        },
+        sent_to_n8n: false,
+      });
       return new Response("1|OK", {
         status: 200,
         headers: { "Content-Type": "text/plain" },

@@ -30,6 +30,7 @@ const CreatePaymentRequestSchema = z.object({
 
 // ECPay 正式環境
 const ECPAY_API_URL = "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5";
+const BLOCKED_ORDER_STATUS = new Set(["cancelled", "canceled", "closed", "completed", "refunded"]);
 
 // 非同步版本的 SHA256
 async function sha256(message: string): Promise<string> {
@@ -167,6 +168,24 @@ serve(async (req) => {
       });
     }
 
+    const roundedAmount = Math.round(Number(order.total_amount));
+    if (!Number.isFinite(roundedAmount) || roundedAmount <= 0) {
+      console.error("❌ 訂單金額異常，拒絕建立付款:", { order_id, total_amount: order.total_amount, user_id: user.id });
+      return new Response(JSON.stringify({ error: "訂單金額異常，無法建立付款" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const normalizedOrderStatus = String(order.order_status || "").toLowerCase();
+    if (BLOCKED_ORDER_STATUS.has(normalizedOrderStatus)) {
+      console.error("❌ 訂單狀態不可付款:", { order_id, order_status: order.order_status, user_id: user.id });
+      return new Response(JSON.stringify({ error: "訂單狀態不可付款" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // 取得訂單項目 + 產品中文名稱
     const { data: orderItems, error: itemsError } = await supabase
       .from("order_items")
@@ -227,7 +246,7 @@ serve(async (req) => {
       MerchantTradeNo: merchantTradeNo,
       MerchantTradeDate: tradeDate,
       PaymentType: "aio",
-      TotalAmount: String(Math.round(order.total_amount)),
+      TotalAmount: String(roundedAmount),
       TradeDesc: "T&J Dessert Order",
       ItemName: itemName,
       ReturnURL: returnUrl,

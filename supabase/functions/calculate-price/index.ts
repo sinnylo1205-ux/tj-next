@@ -10,6 +10,27 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 60;
+const ipRequestBuckets = new Map<string, number[]>();
+
+function getClientIp(req: Request): string {
+  const xForwardedFor = req.headers.get("x-forwarded-for");
+  if (xForwardedFor) {
+    return xForwardedFor.split(",")[0].trim();
+  }
+  return req.headers.get("cf-connecting-ip") || req.headers.get("x-real-ip") || "unknown";
+}
+
+function isRateLimited(ip: string): boolean {
+  const now = Date.now();
+  const windowStart = now - RATE_LIMIT_WINDOW_MS;
+  const currentRequests = (ipRequestBuckets.get(ip) || []).filter((ts) => ts >= windowStart);
+  currentRequests.push(now);
+  ipRequestBuckets.set(ip, currentRequests);
+  return currentRequests.length > RATE_LIMIT_MAX_REQUESTS;
+}
+
 // ========== Zod Schema 驗證 ==========
 const BoxConfigSchema = z.object({
   capacity_option_id: z.number().int().positive(),
@@ -18,15 +39,15 @@ const BoxConfigSchema = z.object({
 });
 
 const PriceRequestSchema = z.object({
-  product_id: z.string().min(1, "產品 ID 不能為空"),
+  product_id: z.string().min(1, "產品 ID 不能為空").max(120, "產品 ID 長度不可超過 120"),
   quantity: z.number().int().min(1, "數量至少為 1"),
-  selected_option_ids: z.array(z.number().int()).default([]),
+  selected_option_ids: z.array(z.number().int()).max(100, "選項不可超過 100 個").default([]),
   package_style_id: z.number().int().optional(),
-  box_configs: z.array(BoxConfigSchema).default([]),
-  package_decoration_ids: z.array(z.number().int()).default([]),
+  box_configs: z.array(BoxConfigSchema).max(50, "盒裝設定不可超過 50 筆").default([]),
+  package_decoration_ids: z.array(z.number().int()).max(50, "包裝裝飾不可超過 50 個").default([]),
   package_decoration_quantity: z.number().int().min(0).optional(),
   has_photo_uploaded: z.boolean().default(false),
-  decoration_option_ids: z.array(z.number().int()).default([]),
+  decoration_option_ids: z.array(z.number().int()).max(50, "甜點裝飾不可超過 50 個").default([]),
   text_input_price: z.number().min(0).default(0),
   // 馬卡龍專用：指定顏色模式
   macaron_custom_mode: z.boolean().default(false),
@@ -77,6 +98,22 @@ Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
+  }
+
+  if (req.method !== "POST") {
+    return new Response(JSON.stringify({ success: false, error: "Method Not Allowed" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 405,
+    });
+  }
+
+  const clientIp = getClientIp(req);
+  if (isRateLimited(clientIp)) {
+    console.error("❌ Rate limit exceeded:", clientIp);
+    return new Response(JSON.stringify({ success: false, error: "請求過於頻繁，請稍後再試" }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+      status: 429,
+    });
   }
 
   try {
@@ -311,11 +348,13 @@ Deno.serve(async (req) => {
 
       for (const config of box_configs) {
         const poCapacityPrice = poPriceMap.get(config.capacity_option_id);
-        const capacityPrice = (poCapacityPrice !== null && poCapacityPrice !== undefined) 
-          ? poCapacityPrice 
-          : (masterPriceMap.get(config.capacity_option_id) || 0);
-        
-        const colorPrice = masterPriceMap.get(config.color_option_id) || 0;
+        const capacityPrice = Number(
+          poCapacityPrice !== null && poCapacityPrice !== undefined
+            ? poCapacityPrice
+            : (masterPriceMap.get(config.capacity_option_id) || 0),
+        );
+
+        const colorPrice = Number(masterPriceMap.get(config.color_option_id) || 0);
         
         const boxUnitPrice = capacityPrice + colorPrice;
         const configTotal = boxUnitPrice * config.quantity;
