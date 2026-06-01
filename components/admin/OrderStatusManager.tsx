@@ -179,6 +179,16 @@ const OrderStatusManager = () => {
     loadOrders();
   }, [loadOrders]);
 
+  // 手機全螢幕詳情：鎖定背景捲動（不使用 Radix Dialog，避免黑色遮罩）
+  useEffect(() => {
+    if (!mobileDetailOrder) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [mobileDetailOrder]);
+
   // 當頁面重新獲得焦點時自動刷新訂單
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -1295,92 +1305,85 @@ const OrderStatusManager = () => {
       </CardContent>
     </Card>
 
-    {/* 手機：全螢幕訂單詳情（適合截圖） */}
-    <Dialog
-      open={!!mobileDetailOrder}
-      onOpenChange={(open) => {
-        if (!open) closeMobileDetail();
-      }}
-    >
-      <DialogContent
-        hideOverlay
-        className="md:hidden fixed inset-0 left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-0 bg-white p-0 sm:rounded-none [&>button.absolute]:hidden"
-      >
-        {mobileDetailOrder && (() => {
-          const order = mobileDetailOrder;
-          const items = orderItems[order.id] || [];
-          const userInfo = users[order.user_id];
-          return (
-            <>
-              <div className="flex shrink-0 items-center gap-2 border-b bg-white px-3 py-2.5 pr-4">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-9 shrink-0 px-2 -ml-1 text-foreground"
-                  onClick={closeMobileDetail}
-                  aria-label="返回訂單列表"
-                >
-                  <ChevronLeft className="h-5 w-5" />
-                  返回
-                </Button>
-                <div className="min-w-0 flex-1 text-left">
-                  <DialogTitle className="truncate text-base leading-tight">
-                    訂單 #{order.id.slice(0, 6).toUpperCase()}
-                  </DialogTitle>
-                  <p className="truncate text-xs text-muted-foreground">
-                    {order.expected_pickup_date || "未指定取件日"} ·{" "}
-                    {getMobileOrderListName(order, buyerDisplayName(userInfo))}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-9 w-9 shrink-0"
-                  onClick={closeMobileDetail}
-                  aria-label="關閉"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
-              </div>
-              <div className="flex-1 overflow-y-auto overscroll-contain px-3 py-4">
-                <AdminOrderDetailPanel
-                  order={order}
-                  items={items}
-                  buyerName={buyerDisplayName(userInfo)}
-                  screenshotMode
-                  uploadingItemKey={uploadingItemKey}
-                  onUploadItem={(orderItemId, file) =>
-                    void handleOrderItemAdminMediaUpload(order.id, orderItemId, file)
-                  }
-                  onClearItemMedia={(orderItemId) =>
-                    void clearOrderItemAdminMedia(order.id, orderItemId)
-                  }
-                />
-              </div>
-              <div className="shrink-0 border-t bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-3">
-                {renderOrderActions(order)}
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => {
-                    openEditOrder(order);
-                    closeMobileDetail();
-                  }}
-                >
-                  編輯訂單
-                </Button>
-                <Button type="button" variant="secondary" className="w-full" onClick={closeMobileDetail}>
-                  返回訂單列表
-                </Button>
-              </div>
-            </>
-          );
-        })()}
-      </DialogContent>
-    </Dialog>
+    {/* 手機：全螢幕訂單詳情（不用 Dialog，避免 Radix 黑色遮罩蓋住內容） */}
+    {mobileDetailOrder && (() => {
+      const order = mobileDetailOrder;
+      const items = orderItems[order.id] || [];
+      const userInfo = users[order.user_id];
+      return (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mobile-order-detail-title"
+          className="admin-font md:hidden fixed inset-x-0 top-14 bottom-0 z-[1001] flex flex-col bg-white"
+        >
+          <div className="flex shrink-0 items-center gap-2 border-b bg-white px-3 py-2.5 pr-4">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-9 shrink-0 px-2 -ml-1 text-foreground"
+              onClick={closeMobileDetail}
+              aria-label="返回訂單列表"
+            >
+              <ChevronLeft className="h-5 w-5" />
+              返回
+            </Button>
+            <div className="min-w-0 flex-1 text-left">
+              <h2 id="mobile-order-detail-title" className="truncate text-base font-semibold leading-tight">
+                訂單 #{order.id.slice(0, 6).toUpperCase()}
+              </h2>
+              <p className="truncate text-xs text-muted-foreground">
+                {order.expected_pickup_date || "未指定取件日"} ·{" "}
+                {getMobileOrderListName(order, buyerDisplayName(userInfo))}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={closeMobileDetail}
+              aria-label="關閉"
+            >
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-3 py-4">
+            <AdminOrderDetailPanel
+              order={order}
+              items={items}
+              buyerName={buyerDisplayName(userInfo)}
+              screenshotMode
+              uploadingItemKey={uploadingItemKey}
+              onUploadItem={(orderItemId, file) =>
+                void handleOrderItemAdminMediaUpload(order.id, orderItemId, file)
+              }
+              onClearItemMedia={(orderItemId) =>
+                void clearOrderItemAdminMedia(order.id, orderItemId)
+              }
+            />
+          </div>
+          <div className="shrink-0 border-t bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-3">
+            {renderOrderActions(order)}
+            <Button
+              type="button"
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                openEditOrder(order);
+                closeMobileDetail();
+              }}
+            >
+              編輯訂單
+            </Button>
+            <Button type="button" variant="secondary" className="w-full" onClick={closeMobileDetail}>
+              返回訂單列表
+            </Button>
+          </div>
+        </div>
+      );
+    })()}
 
     <Dialog open={!!editingOrder} onOpenChange={(open) => (!open ? setEditingOrder(null) : null)}>
       <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
