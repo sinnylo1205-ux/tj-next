@@ -1302,7 +1302,10 @@ const OrderStatusManager = () => {
         if (!open) closeMobileDetail();
       }}
     >
-      <DialogContent className="md:hidden fixed inset-0 left-0 top-0 z-50 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-0 bg-white p-0 sm:rounded-none [&>button.absolute]:hidden">
+      <DialogContent
+        hideOverlay
+        className="md:hidden fixed inset-0 left-0 top-0 flex h-[100dvh] w-screen max-w-none translate-x-0 translate-y-0 flex-col gap-0 rounded-none border-0 bg-white p-0 sm:rounded-none [&>button.absolute]:hidden"
+      >
         {mobileDetailOrder && (() => {
           const order = mobileDetailOrder;
           const items = orderItems[order.id] || [];

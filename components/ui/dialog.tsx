@@ -27,12 +27,17 @@ const DialogOverlay = React.forwardRef<
 ));
 DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
+type DialogContentProps = React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> & {
+  /** 全螢幕頁面式 Dialog 可關閉背景遮罩 */
+  hideOverlay?: boolean;
+};
+
 const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content>
->(({ className, children, ...props }, ref) => (
+  DialogContentProps
+>(({ className, children, hideOverlay = false, ...props }, ref) => (
   <DialogPortal>
-    <DialogOverlay />
+    {!hideOverlay && <DialogOverlay />}
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
