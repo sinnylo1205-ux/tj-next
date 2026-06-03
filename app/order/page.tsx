@@ -12,9 +12,10 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Images } from "lucide-react";
+import { ChevronLeft, ChevronRight, Images, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QUERY_KEYS } from "@/lib/react-query-keys";
 import { trackLineClick } from "@/lib/track-line-click";
@@ -431,10 +432,16 @@ export default function OrderPage() {
           className={cn(
             "!flex h-auto max-h-[min(92vh,900px)] w-[100vw] max-w-[100vw] flex-col gap-0 overflow-hidden rounded-none border-2 border-[hsl(var(--color-brand-300))] bg-white p-0 shadow-xl",
             "sm:left-[50%] sm:top-[50%] sm:max-h-[min(88vh,820px)] sm:max-w-[min(720px,92vw)] sm:w-full sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-lg",
-            "z-[100]",
+            "z-[100] [&>button.absolute]:hidden",
           )}
         >
-          <DialogHeader className="relative shrink-0 space-y-0 border-b-2 border-[hsl(var(--color-brand-300))] bg-[hsl(var(--color-brand-100))] px-4 py-3 pr-12 text-left sm:px-5 sm:py-3.5 sm:pr-14">
+          <DialogHeader className="relative shrink-0 space-y-0 border-b-2 border-[hsl(var(--color-brand-300))] bg-[hsl(var(--color-brand-100))] px-4 py-3 pr-16 text-left sm:px-5 sm:py-3.5 sm:pr-[4.5rem]">
+            <DialogClose
+              className="absolute right-2 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-red-600 text-white shadow-md transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 sm:right-3 sm:h-12 sm:w-12"
+              aria-label="關閉"
+            >
+              <X className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2.5} />
+            </DialogClose>
             <DialogTitle className="text-center text-sm font-semibold leading-snug text-[hsl(var(--color-ink))] sm:text-base">
               來看看其他人客製化了什麼！
             </DialogTitle>
