@@ -1287,6 +1287,7 @@ const OrderStatusManager = () => {
                                   onClearItemMedia={(orderItemId) =>
                                     void clearOrderItemAdminMedia(order.id, orderItemId)
                                   }
+                                  onLuckLayoutRefresh={() => void refreshOrderItemsForOrder(order.id)}
                                 />
                               </div>
                             </TableCell>
@@ -1362,6 +1363,7 @@ const OrderStatusManager = () => {
               onClearItemMedia={(orderItemId) =>
                 void clearOrderItemAdminMedia(order.id, orderItemId)
               }
+              onLuckLayoutRefresh={() => void refreshOrderItemsForOrder(order.id)}
             />
           </div>
           <div className="shrink-0 border-t bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-3">

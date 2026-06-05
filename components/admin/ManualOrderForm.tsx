@@ -327,6 +327,10 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
         // 不影響訂單建立
       }
 
+      void supabase.functions
+        .invoke("generate-luck-layout", { body: { order_id: orderData.id } })
+        .catch((err) => console.error("[ManualOrder] generate-luck-layout failed:", err));
+
       toast({ title: "✅ 手動訂單已建立" });
       onSuccess();
       onClose();

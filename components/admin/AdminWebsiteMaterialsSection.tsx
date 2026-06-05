@@ -145,12 +145,16 @@ const AdminWebsiteMaterialsSection = () => {
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">管理產品圖片、首頁／頁面用素材與批次上傳。</p>
 
-      <Tabs defaultValue="products">
+      <Tabs defaultValue="batch-upload">
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-md bg-secondary p-1 text-secondary-foreground">
+          <TabsTrigger value="batch-upload">IG 素材上傳</TabsTrigger>
           <TabsTrigger value="products">產品圖片與文字</TabsTrigger>
           <TabsTrigger value="materials">頁面素材</TabsTrigger>
-          <TabsTrigger value="batch-upload">照片上傳</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="batch-upload" className="mt-6">
+          <BatchUploadTab />
+        </TabsContent>
 
         <TabsContent value="products" className="mt-6">
           <div className="grid gap-6">
@@ -280,10 +284,6 @@ const AdminWebsiteMaterialsSection = () => {
               </div>
             ))}
           </div>
-        </TabsContent>
-
-        <TabsContent value="batch-upload" className="mt-6">
-          <BatchUploadTab />
         </TabsContent>
       </Tabs>
     </div>

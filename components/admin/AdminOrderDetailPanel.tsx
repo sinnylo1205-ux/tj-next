@@ -1,10 +1,13 @@
 "use client";
 
-import { ExternalLink, Upload } from "lucide-react";
+import { useState } from "react";
+import { Download, ExternalLink, Loader2, RefreshCw, Upload } from "lucide-react";
 import { SafeImage } from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { supabase } from "@/integrations/supabase/client";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
+import { isLuckTextCsvItem, type LuckLayoutStatus } from "@/lib/luck-layout";
 import {
   buildOrderItemPreviewSlots,
   collectPreviewUrlsFromSlots,
@@ -31,6 +34,7 @@ export type AdminOrderDetailOrder = {
 
 export type AdminOrderDetailItem = {
   order_item_id: number;
+  product_id?: string | null;
   product_name: string;
   quantity: number;
   quantity_description: string | null;
@@ -40,6 +44,8 @@ export type AdminOrderDetailItem = {
   customizations_json: unknown[];
   is_package_design?: boolean | null;
   linked_item_id?: number | null;
+  luck_layout_xlsx_url?: string | null;
+  luck_layout_status?: LuckLayoutStatus;
 };
 
 type AdminOrderDetailPanelProps = {
@@ -51,6 +57,8 @@ type AdminOrderDetailPanelProps = {
   uploadingItemKey?: string | null;
   onUploadItem?: (orderItemId: number, file: File) => void;
   onClearItemMedia?: (orderItemId: number) => void;
+  /** 籤文排版 Excel 重新生成後刷新品項 */
+  onLuckLayoutRefresh?: () => void;
 };
 
 function pickAdminMediaUrl(item: { admin_media_url?: unknown }): string | null {
@@ -66,8 +74,25 @@ export function AdminOrderDetailPanel({
   uploadingItemKey = null,
   onUploadItem,
   onClearItemMedia,
+  onLuckLayoutRefresh,
 }: AdminOrderDetailPanelProps) {
   const showUpload = Boolean(onUploadItem);
+  const [regeneratingLuckItemId, setRegeneratingLuckItemId] = useState<number | null>(null);
+
+  const handleRegenerateLuckLayout = async (orderItemId: number) => {
+    setRegeneratingLuckItemId(orderItemId);
+    try {
+      const { error } = await supabase.functions.invoke("generate-luck-layout", {
+        body: { order_id: order.id, order_item_id: orderItemId },
+      });
+      if (error) throw error;
+      onLuckLayoutRefresh?.();
+    } catch (err) {
+      console.error("[AdminOrderDetail] generate-luck-layout failed:", err);
+    } finally {
+      setRegeneratingLuckItemId(null);
+    }
+  };
 
   return (
     <div
@@ -302,6 +327,48 @@ export function AdminOrderDetailPanel({
                 <div className="text-sm font-semibold">
                   小計：NT$ {(item.unit_price * item.quantity).toLocaleString()}
                 </div>
+                {isLuckTextCsvItem(item) && (
+                  <div className="mt-2 space-y-2 border-t border-border/50 pt-2">
+                    {item.luck_layout_status === "ready" && item.luck_layout_xlsx_url ? (
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="destructive"
+                        className="h-9 gap-1.5 font-semibold"
+                      >
+                        <a
+                          href={item.luck_layout_xlsx_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          download
+                        >
+                          <Download className="h-4 w-4 shrink-0" />
+                          下載籤文排版 Excel
+                        </a>
+                      </Button>
+                    ) : item.luck_layout_status === "pending" || regeneratingLuckItemId === item.order_item_id ? (
+                      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                        籤文排版生成中…
+                      </p>
+                    ) : (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-9 gap-1.5 border-red-300 text-red-700 hover:bg-red-50 hover:text-red-800"
+                        disabled={regeneratingLuckItemId !== null}
+                        onClick={() => void handleRegenerateLuckLayout(item.order_item_id)}
+                      >
+                        <RefreshCw className="h-4 w-4 shrink-0" />
+                        {item.luck_layout_status === "failed" ? "重新生成排版" : "生成籤文排版 Excel"}
+                      </Button>
+                    )}
+                    {item.luck_layout_status === "failed" && (
+                      <p className="text-xs text-destructive">上次排版失敗，請按「重新生成排版」重試。</p>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );

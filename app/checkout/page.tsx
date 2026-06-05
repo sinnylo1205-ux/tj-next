@@ -379,6 +379,10 @@ export default function CheckoutPage() {
       const submittedItemIds = items.map((item) => item.id);
       removeItemsByIds(submittedItemIds);
 
+      void supabase.functions
+        .invoke("generate-luck-layout", { body: { order_id: orderData.id } })
+        .catch((err) => console.error("[Checkout] generate-luck-layout failed:", err));
+
       toast({ title: "✅ 訂單已建立成功", description: `訂單編號：${orderData.id}` });
       setCreatedOrderId(orderData.id);
 
