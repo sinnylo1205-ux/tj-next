@@ -280,7 +280,7 @@ Deno.serve(async (req) => {
     let freeShippingDiscount = 0;
 
     if (shipping_method !== "自取") {
-      if (subtotal >= FREE_SHIPPING_THRESHOLD) {
+      if (subtotal >= FREE_SHIPPING_THRESHOLD && shipping_method === "黑貓宅配") {
         freeShippingApplied = true;
         freeShippingDiscount = shippingFee;
         shippingFee = 0;

@@ -24,7 +24,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import AdminDashboard from "@/components/admin/AdminDashboard";
 import AdminOrdersPanel from "@/components/admin/AdminOrdersPanel";
 import AdminMediaPanel from "@/components/admin/AdminMediaPanel";
-import AdminCustomersPanel from "@/components/admin/AdminCustomersPanel";
+import AdminCrmPanel from "@/components/admin/AdminCrmPanel";
 import AdminSettingsPanel from "@/components/admin/AdminSettingsPanel";
 import AdminQuotationsPanel from "@/components/admin/AdminQuotationsPanel";
 import AdminEatReservationPanel from "@/components/admin/AdminEatReservationPanel";
@@ -171,7 +171,7 @@ export default function AdminPage() {
       case "media":
         return <AdminMediaPanel />;
       case "customers":
-        return <AdminCustomersPanel />;
+        return <AdminCrmPanel />;
       case "quotations":
         return <AdminQuotationsPanel />;
       case "eat_reservation":
