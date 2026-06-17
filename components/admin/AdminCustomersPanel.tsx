@@ -685,7 +685,7 @@ const AdminCustomersPanel = () => {
 
         <TabsContent value="line" className="mt-6">
           <p className="text-sm text-muted-foreground mb-4">
-            左側可為客人貼標籤（緊急／待處理／已下單）並篩選；開關 ON = AI 回覆、OFF = 人工。右側為對話與手動回覆。
+            左側可為客人貼標籤（緊急／待處理／已下單）並篩選；開關 ON = AI 、OFF = 人工。右側為對話與手動回覆。
           </p>
           {chatStateLoading ? (
             <div className="flex items-center justify-center py-12">
