@@ -3,7 +3,8 @@
 
 DROP VIEW IF EXISTS public.customer_360;
 
-CREATE VIEW public.customer_360 AS
+CREATE VIEW public.customer_360
+WITH (security_invoker = true) AS
 WITH order_base AS (
   SELECT
     COALESCE(o.line_user_id, u.line_user_id) AS line_user_id,
