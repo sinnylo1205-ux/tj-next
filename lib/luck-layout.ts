@@ -2,6 +2,7 @@ import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import { FORTUNE_COOKIE_IDS } from "@/lib/product-notice-url";
 
 const FORTUNE_COOKIE_ID_SET = new Set<string>(FORTUNE_COOKIE_IDS);
+const CUSTOMIZER_UPLOADS_PUBLIC_PREFIX = "/storage/v1/object/public/customizer_uploads/";
 
 export type LuckLayoutStatus = "pending" | "ready" | "failed" | "skipped" | null;
 
@@ -25,6 +26,24 @@ export function getLuckTextCsvUrl(customizationsJson: unknown): string | null {
   return null;
 }
 
+export function isAllowedLuckTextCsvUrl(
+  url: string,
+  supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL,
+): boolean {
+  if (!supabaseUrl) return false;
+  try {
+    const parsedUrl = new URL(url);
+    const allowedOrigin = new URL(supabaseUrl).origin;
+    return (
+      parsedUrl.origin === allowedOrigin &&
+      parsedUrl.pathname.startsWith(CUSTOMIZER_UPLOADS_PUBLIC_PREFIX) &&
+      parsedUrl.pathname.toLowerCase().endsWith(".csv")
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function isLuckTextCsvItem(item: {
   product_id?: string | null;
   customizations_json?: unknown;
@@ -32,6 +51,5 @@ export function isLuckTextCsvItem(item: {
   if (!isFortuneCookieProductId(item.product_id)) return false;
   const url = getLuckTextCsvUrl(item.customizations_json);
   if (!url) return false;
-  const lower = url.toLowerCase();
-  return lower.includes("customizer_uploads") || lower.endsWith(".csv") || lower.includes(".csv?");
+  return isAllowedLuckTextCsvUrl(url);
 }

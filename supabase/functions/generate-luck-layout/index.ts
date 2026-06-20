@@ -17,6 +17,7 @@ const ROWS_PER_PAGE = 26;
 const FORMAT_ROW_LIMIT = 2000;
 
 const FORTUNE_COOKIE_PRODUCT_IDS = new Set(["luck", "fortune_cookie"]);
+const CUSTOMIZER_UPLOADS_PUBLIC_PREFIX = "/storage/v1/object/public/customizer_uploads/";
 
 type LuckCsvRow = { text: string; qty: number };
 
@@ -176,12 +177,29 @@ function getLuckTextCsvUrl(customizationsJson: unknown): string | null {
   return null;
 }
 
-function isLuckTextCsvEligible(productId: string | null | undefined, customizationsJson: unknown): boolean {
+function isAllowedLuckTextCsvUrl(url: string, supabaseUrl: string): boolean {
+  try {
+    const parsedUrl = new URL(url);
+    const allowedOrigin = new URL(supabaseUrl).origin;
+    return (
+      parsedUrl.origin === allowedOrigin &&
+      parsedUrl.pathname.startsWith(CUSTOMIZER_UPLOADS_PUBLIC_PREFIX) &&
+      parsedUrl.pathname.toLowerCase().endsWith(".csv")
+    );
+  } catch {
+    return false;
+  }
+}
+
+function isLuckTextCsvEligible(
+  productId: string | null | undefined,
+  customizationsJson: unknown,
+  supabaseUrl: string,
+): boolean {
   if (!productId || !FORTUNE_COOKIE_PRODUCT_IDS.has(productId)) return false;
   const url = getLuckTextCsvUrl(customizationsJson);
   if (!url) return false;
-  const lower = url.toLowerCase();
-  return lower.includes("customizer_uploads") || lower.endsWith(".csv") || lower.includes(".csv?");
+  return isAllowedLuckTextCsvUrl(url, supabaseUrl);
 }
 
 async function buildLuckLayoutXlsxBuffer(rows: LuckCsvRow[]): Promise<Uint8Array> {
@@ -256,11 +274,12 @@ async function isAdmin(supabaseAdmin: ReturnType<typeof createClient>, userId: s
 
 async function processOrderItem(
   supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseUrl: string,
   item: OrderItemRow,
 ): Promise<{ order_item_id: number; status: string; url?: string; error?: string }> {
   const { order_item_id, order_id, product_id, customizations_json } = item;
 
-  if (!isLuckTextCsvEligible(product_id, customizations_json)) {
+  if (!isLuckTextCsvEligible(product_id, customizations_json, supabaseUrl)) {
     await supabaseAdmin
       .from("order_items")
       .update({ luck_layout_status: "skipped", luck_layout_error: null })
@@ -416,7 +435,7 @@ Deno.serve(async (req) => {
     const targets =
       order_item_id != null
         ? (items ?? []).filter((it) => it.order_item_id === order_item_id)
-        : (items ?? []).filter((it) => isLuckTextCsvEligible(it.product_id, it.customizations_json));
+        : (items ?? []).filter((it) => isLuckTextCsvEligible(it.product_id, it.customizations_json, supabaseUrl));
 
     if (targets.length === 0) {
       return new Response(JSON.stringify({ ok: true, results: [], message: "無需排版的幸運籤餅品項" }), {
@@ -427,7 +446,7 @@ Deno.serve(async (req) => {
 
     const results = [];
     for (const item of targets as OrderItemRow[]) {
-      results.push(await processOrderItem(supabaseAdmin, item));
+      results.push(await processOrderItem(supabaseAdmin, supabaseUrl, item));
     }
 
     return new Response(JSON.stringify({ ok: true, results }), {
