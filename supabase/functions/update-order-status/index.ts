@@ -164,6 +164,51 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action_type === "auto_cancel_expired") {
+      const createdAtMs = new Date(orderData.created_at).getTime();
+      const isExpired = Number.isFinite(createdAtMs) && createdAtMs < Date.now() - 24 * 60 * 60 * 1000;
+      const canAutoCancel =
+        new_status === "canceled" &&
+        orderData.order_status === "awaiting_payment" &&
+        orderData.payment_step === "pending" &&
+        orderData.is_manual_order === false &&
+        orderData.auto_cancel_exempt === false &&
+        isExpired;
+
+      if (!canAutoCancel) {
+        console.error("[update-order-status] Auto-cancel rejected for non-expired or ineligible order:", {
+          order_id,
+          order_status: orderData.order_status,
+          payment_step: orderData.payment_step,
+          is_manual_order: orderData.is_manual_order,
+          auto_cancel_exempt: orderData.auto_cancel_exempt,
+        });
+        return new Response(JSON.stringify({ error: "Order is not eligible for auto-cancel" }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (action_type === "user_payment_submitted") {
+      const canSubmitPayment =
+        new_status === "awaiting_payment" &&
+        orderData.order_status === "awaiting_payment" &&
+        orderData.payment_step === "pending";
+
+      if (!canSubmitPayment) {
+        console.error("[update-order-status] Payment submission rejected for ineligible order:", {
+          order_id,
+          order_status: orderData.order_status,
+          payment_step: orderData.payment_step,
+        });
+        return new Response(JSON.stringify({ error: "Order is not eligible for payment submission" }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Query order items
     const { data: orderItems, error: itemsError } = await supabaseAdmin
       .from("order_items")
@@ -255,13 +300,32 @@ Deno.serve(async (req) => {
         break;
     }
 
-    // Update order status
-    const { error: updateError } = await supabaseAdmin.from("orders").update(updateData).eq("id", order_id);
+    // Update order status with the same eligibility predicates used above to avoid races.
+    let updateQuery = supabaseAdmin.from("orders").update(updateData).eq("id", order_id);
+    if (action_type === "auto_cancel_expired") {
+      updateQuery = updateQuery
+        .eq("order_status", "awaiting_payment")
+        .eq("payment_step", "pending")
+        .eq("is_manual_order", false)
+        .eq("auto_cancel_exempt", false)
+        .lt("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
+    } else if (action_type === "user_payment_submitted") {
+      updateQuery = updateQuery.eq("order_status", "awaiting_payment").eq("payment_step", "pending");
+    }
+
+    const { data: updatedRows, error: updateError } = await updateQuery.select("id");
 
     if (updateError) {
       console.error("[update-order-status] Update failed:", updateError);
       return new Response(JSON.stringify({ error: "Failed to update order status" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      console.error("[update-order-status] Update matched no eligible rows:", { order_id, action_type });
+      return new Response(JSON.stringify({ error: "Order state changed; update was not applied" }), {
+        status: 409,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
