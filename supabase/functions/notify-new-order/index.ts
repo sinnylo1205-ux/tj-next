@@ -85,6 +85,7 @@ Deno.serve(async (req) => {
         "id, order_status, payment_step, subtotal, expected_pickup_date, notes, total_amount, shipping_fee, shipping_way, Email, shipping_address_text, is_manual_order, who_receive, phone, line_user_id",
       )
       .eq("id", order_id)
+      .eq("user_id", user_id)
       .single();
 
     if (orderError || !orderData) {
