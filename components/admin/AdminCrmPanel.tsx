@@ -18,6 +18,8 @@ import { cn } from "@/lib/utils";
 
 const LINE_LOG_POLL_MS = 12_000;
 
+const MOBILE_TABS = ["接線清單", "客戶詳情", "執行把關"] as const;
+
 type LineTagFilter = "all" | "none" | LineCustomerTag;
 type CustomerModeFilter = "ordered_only" | "all";
 
@@ -119,13 +121,28 @@ function lineLogToBubbles(rows: LineLogRow[]): ChatBubble[] {
 export default function AdminCrmPanel() {
   const { toast } = useToast();
   const chatScrollRef = useRef<HTMLDivElement>(null);
+  const carouselRef = useRef<HTMLDivElement>(null);
+  const [mobileTab, setMobileTab] = useState(0);
+
+  const goToTab = useCallback((index: number) => {
+    setMobileTab(index);
+    const el = carouselRef.current;
+    if (el) el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
+  }, []);
+
+  const handleCarouselScroll = useCallback(() => {
+    const el = carouselRef.current;
+    if (!el || el.clientWidth === 0) return;
+    const index = Math.round(el.scrollLeft / el.clientWidth);
+    setMobileTab((prev) => (prev === index ? prev : index));
+  }, []);
 
   // 左欄
   const [customerRows, setCustomerRows] = useState<Customer360Row[]>([]);
   const [leftLoading, setLeftLoading] = useState(false);
   const [lineSearch, setLineSearch] = useState("");
   const [lineTagFilter, setLineTagFilter] = useState<LineTagFilter>("all");
-  const [modeFilter, setModeFilter] = useState<CustomerModeFilter>("ordered_only");
+  const [modeFilter, setModeFilter] = useState<CustomerModeFilter>("all");
   const [selectedLineUserId, setSelectedLineUserId] = useState<string | null>(null);
   const [chatStateUpdating, setChatStateUpdating] = useState<string | null>(null);
   const [tagSavingId, setTagSavingId] = useState<string | null>(null);
@@ -484,8 +501,28 @@ export default function AdminCrmPanel() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_380px] gap-4 h-[calc(100vh-13rem)] min-h-[560px]">
-        <Card className="flex flex-col min-h-0">
+      <div className="xl:hidden mb-3 grid grid-cols-3 gap-1 rounded-lg border p-1 bg-muted/40">
+        {MOBILE_TABS.map((label, i) => (
+          <button
+            key={label}
+            type="button"
+            onClick={() => goToTab(i)}
+            className={cn(
+              "py-2 text-sm rounded-md transition-colors",
+              mobileTab === i ? "bg-background shadow font-medium" : "text-muted-foreground",
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div
+        ref={carouselRef}
+        onScroll={handleCarouselScroll}
+        className="flex xl:grid xl:grid-cols-[320px_minmax(0,1fr)_380px] gap-4 h-[calc(100vh-13rem)] min-h-[560px] overflow-x-auto xl:overflow-x-visible snap-x snap-mandatory scroll-smooth"
+      >
+        <Card className="shrink-0 w-full xl:w-auto snap-start flex flex-col min-h-0">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">接線清單</CardTitle>
           </CardHeader>
@@ -548,11 +585,15 @@ export default function AdminCrmPanel() {
                       key={row.line_user_id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => setSelectedLineUserId(row.line_user_id)}
+                      onClick={() => {
+                        setSelectedLineUserId(row.line_user_id);
+                        goToTab(1);
+                      }}
                       onKeyDown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
                           e.preventDefault();
                           setSelectedLineUserId(row.line_user_id);
+                          goToTab(1);
                         }
                       }}
                       className={cn("rounded-lg border p-2.5 space-y-2", isSelected ? "border-primary bg-primary/5" : "border-border")}
@@ -610,7 +651,7 @@ export default function AdminCrmPanel() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-rows-[auto_auto_minmax(0,1fr)] gap-4 min-h-0">
+        <div className="shrink-0 w-full xl:w-auto snap-start grid grid-rows-[auto_auto_minmax(0,1fr)] gap-4 min-h-0">
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">訂單事實</CardTitle>
@@ -720,7 +761,7 @@ export default function AdminCrmPanel() {
           </Card>
         </div>
 
-        <Card className="flex flex-col min-h-0">
+        <Card className="shrink-0 w-full xl:w-auto snap-start flex flex-col min-h-0">
           <CardHeader className="pb-3">
             <CardTitle className="text-base">執行把關</CardTitle>
           </CardHeader>
