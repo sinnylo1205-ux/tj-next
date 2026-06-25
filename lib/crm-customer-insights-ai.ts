@@ -1,15 +1,16 @@
 import { z } from "zod";
 
 export const crmInsightsSchema = z.object({
-  interested_products: z.array(z.string()).default([]),
-  last_ordered_products: z.array(z.string()).default([]),
-  purchase_motivation: z.string().default(""),
-  usage_occasion: z.string().default(""),
-  confidence: z.number().min(0).max(1).default(0.5),
-  rationale_zh: z.string().default(""),
-  suggested_tag: z.enum(["高意願", "中意願", "低意願"]).nullable().default(null),
-  recommended_products: z.array(z.string()).default([]),
-  suggested_send_window: z.string().default(""),
+  // 每個欄位都加 .catch()，避免 AI 偶爾回錯型別（例如 confidence 回字串）就讓整筆分析失敗
+  interested_products: z.array(z.string()).catch([]).default([]),
+  last_ordered_products: z.array(z.string()).catch([]).default([]),
+  purchase_motivation: z.string().catch("").default(""),
+  usage_occasion: z.string().catch("").default(""),
+  confidence: z.coerce.number().min(0).max(1).catch(0.5).default(0.5),
+  rationale_zh: z.string().catch("").default(""),
+  suggested_tag: z.enum(["高意願", "中意願", "低意願"]).nullable().catch(null).default(null),
+  recommended_products: z.array(z.string()).catch([]).default([]),
+  suggested_send_window: z.string().catch("").default(""),
 });
 
 export type CrmInsights = z.infer<typeof crmInsightsSchema>;
