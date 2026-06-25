@@ -692,7 +692,25 @@ export default function AdminCrmPanel() {
           </CardContent>
         </Card>
 
-        <div className="shrink-0 w-full xl:w-auto snap-start grid grid-rows-[auto_auto_minmax(0,1fr)] gap-4 min-h-0">
+        <div className="shrink-0 w-full xl:w-auto snap-start grid grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-4 min-h-0">
+          <div className="rounded-lg border bg-muted/40 px-3 py-2">
+            {selectedCustomer ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="text-sm font-semibold truncate">{selectedCustomer.display_name || "（未命名）"}</span>
+                {isLineCustomerTag(selectedCustomer.tag) ? (
+                  <span className={cn("shrink-0 px-1.5 py-0.5 rounded-full text-[10px] border", lineCustomerTagStyle(selectedCustomer.tag))}>
+                    {selectedCustomer.tag}
+                  </span>
+                ) : null}
+                <span className="ml-auto shrink-0 text-xs text-muted-foreground truncate max-w-[55%]">
+                  {selectedCustomer.primary_email || selectedCustomer.line_user_id}
+                </span>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">請先選擇客戶</p>
+            )}
+          </div>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-base">訂單事實</CardTitle>
@@ -764,7 +782,14 @@ export default function AdminCrmPanel() {
 
           <Card className="min-h-0 flex flex-col">
             <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">對話紀錄</CardTitle>
+              <CardTitle className="text-base flex items-center gap-2 min-w-0">
+                <span className="shrink-0">對話紀錄</span>
+                {selectedCustomer ? (
+                  <span className="text-sm font-normal text-muted-foreground truncate">
+                    · {selectedCustomer.display_name || "（未命名）"}
+                  </span>
+                ) : null}
+              </CardTitle>
               <Button type="button" size="sm" variant="outline" disabled={!selectedLineUserId || lineLogLoading} onClick={() => selectedLineUserId && void fetchLineLog(selectedLineUserId)}>
                 <RefreshCw className={cn("h-4 w-4", lineLogLoading && "animate-spin")} />
               </Button>
