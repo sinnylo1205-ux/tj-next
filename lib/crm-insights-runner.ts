@@ -118,7 +118,7 @@ export async function runAndStoreInsights(
   opts?: { writeTag?: boolean; minConfidenceForTag?: number },
 ): Promise<RunInsightsResult> {
   const writeTag = opts?.writeTag ?? false;
-  const minConfidence = opts?.minConfidenceForTag ?? 0.6;
+  const minConfidence = opts?.minConfidenceForTag ?? 0.5;
 
   const { orderFact, logs, sourceIds } = await gatherCustomerContext(supabase, lineUserId);
   const { insights, model } = await generateCrmInsights({ lineUserId, chatLogs: logs, orderFact });

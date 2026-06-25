@@ -94,6 +94,9 @@ export default function AdminCrmAnalysisPanel({
       // 第一階段：分批跑單客洞察 + 自動寫標籤
       let offset = 0;
       let guard = 0;
+      let totalProcessed = 0;
+      let totalFailed = 0;
+      let lastFailReason = "";
       for (;;) {
         guard += 1;
         if (guard > 1000) break; // 安全上限
@@ -107,13 +110,31 @@ export default function AdminCrmAnalysisPanel({
           total?: number;
           next_offset?: number;
           done?: boolean;
+          processed_count?: number;
+          failed_count?: number;
+          failed?: Array<{ line_user_id: string; error: string }>;
           error?: string;
           details?: string;
         };
         if (!res.ok || !json.ok) throw new Error(json.details || json.error || "批次分析失敗");
+        totalProcessed += json.processed_count ?? 0;
+        totalFailed += json.failed_count ?? 0;
+        if (json.failed?.length) lastFailReason = json.failed[0].error;
         offset = json.next_offset ?? offset;
         setProgress({ done: Math.min(offset, json.total ?? offset), total: json.total ?? offset });
         if (json.done) break;
+      }
+
+      // 全數失敗時，直接把 OpenAI 的原始錯誤拋出，避免「看似完成卻沒標籤」
+      if (totalProcessed === 0 && totalFailed > 0) {
+        throw new Error(`全部 ${totalFailed} 筆都失敗。原因：${lastFailReason || "未知"}`);
+      }
+      if (totalFailed > 0) {
+        toast({
+          title: "部分客戶分析失敗",
+          description: `成功 ${totalProcessed} 筆、失敗 ${totalFailed} 筆。最後一筆失敗原因：${lastFailReason || "未知"}`,
+          variant: "destructive",
+        });
       }
 
       // 第二階段：聚合 + AI 文字洞察
@@ -125,7 +146,7 @@ export default function AdminCrmAnalysisPanel({
       const aggJson = (await aggRes.json()) as { ok?: boolean; report?: ReportPayload; error?: string; details?: string };
       if (!aggRes.ok || !aggJson.report) throw new Error(aggJson.details || aggJson.error || "聚合分析失敗");
       setReport(aggJson.report);
-      toast({ title: "分析完成", description: `已分析近 ${SCOPE_DAYS} 天有互動的客戶` });
+      toast({ title: "分析完成", description: `成功分析 ${totalProcessed} 位（近 ${SCOPE_DAYS} 天有互動）` });
     } catch (error) {
       toast({
         title: "一鍵分析失敗",

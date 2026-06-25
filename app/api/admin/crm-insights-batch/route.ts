@@ -14,8 +14,34 @@ const bodySchema = z.object({
   days: z.coerce.number().int().min(1).max(3650).default(90),
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(25).default(10),
-  min_confidence: z.coerce.number().min(0).max(1).default(0.6),
+  min_confidence: z.coerce.number().min(0).max(1).default(0.5),
 });
+
+/** 同時打 OpenAI 的併發上限，避免一次 10 發觸發限流 */
+const OPENAI_CONCURRENCY = 4;
+
+async function runWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  worker: (item: T) => Promise<R>,
+): Promise<Array<PromiseSettledResult<R>>> {
+  const results: Array<PromiseSettledResult<R>> = new Array(items.length);
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    for (;;) {
+      const idx = cursor;
+      cursor += 1;
+      if (idx >= items.length) break;
+      try {
+        results[idx] = { status: "fulfilled", value: await worker(items[idx]) };
+      } catch (e) {
+        results[idx] = { status: "rejected", reason: e };
+      }
+    }
+  });
+  await Promise.all(runners);
+  return results;
+}
 
 export async function POST(req: Request) {
   const auth = await assertAdminQuotationApi(req);
@@ -53,8 +79,8 @@ export async function POST(req: Request) {
 
     const ids = (rows ?? []).map((r) => r.line_user_id as string).filter(Boolean);
 
-    const settled = await Promise.allSettled(
-      ids.map((id) => runAndStoreInsights(supabase, id, { writeTag: true, minConfidenceForTag: min_confidence })),
+    const settled = await runWithConcurrency(ids, OPENAI_CONCURRENCY, (id) =>
+      runAndStoreInsights(supabase, id, { writeTag: true, minConfidenceForTag: min_confidence }),
     );
 
     const processed: Array<{ line_user_id: string; suggested_tag: string | null; tag_written: boolean }> = [];

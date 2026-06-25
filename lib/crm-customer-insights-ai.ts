@@ -77,6 +77,13 @@ function fallbackInsights(chatLogs: ChatLogInput[], orderFact: OrderFactInput): 
   };
 }
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** 可重試的狀態碼：429 限流、5xx 暫時性錯誤 */
+function isRetryableStatus(status: number): boolean {
+  return status === 429 || (status >= 500 && status <= 599);
+}
+
 async function callOpenAiJson<T>({
   systemPrompt,
   userPrompt,
@@ -89,33 +96,49 @@ async function callOpenAiJson<T>({
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) throw new Error("缺少環境變數 OPENAI_API_KEY");
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.2,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-    }),
-  });
+  const maxAttempts = 4;
+  let lastErr = "";
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const res = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }),
+    });
 
-  const txt = await res.text();
-  if (!res.ok) {
-    throw new Error(`OpenAI 請求失敗: ${txt.slice(0, 500)}`);
+    const txt = await res.text();
+    if (res.ok) {
+      const parsed = JSON.parse(txt) as {
+        choices?: Array<{ message?: { content?: string | null } }>;
+      };
+      const content = parsed.choices?.[0]?.message?.content ?? "";
+      if (!content) throw new Error("OpenAI 回傳空內容");
+      return JSON.parse(content) as T;
+    }
+
+    lastErr = `OpenAI 請求失敗(${res.status}): ${txt.slice(0, 500)}`;
+    // 不可重試（401 key 錯、400 參數錯等）直接丟出
+    if (!isRetryableStatus(res.status) || attempt === maxAttempts) {
+      throw new Error(lastErr);
+    }
+    // 優先採用 Retry-After，否則指數退避 + 抖動
+    const retryAfterSec = Number(res.headers.get("retry-after"));
+    const backoffMs = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+      ? retryAfterSec * 1000
+      : 2 ** (attempt - 1) * 1000 + Math.floor(Math.random() * 400);
+    await sleep(backoffMs);
   }
-  const parsed = JSON.parse(txt) as {
-    choices?: Array<{ message?: { content?: string | null } }>;
-  };
-  const content = parsed.choices?.[0]?.message?.content ?? "";
-  if (!content) throw new Error("OpenAI 回傳空內容");
-  return JSON.parse(content) as T;
+  throw new Error(lastErr || "OpenAI 請求失敗");
 }
 
 export async function generateCrmInsights(params: {
