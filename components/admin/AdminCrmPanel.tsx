@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, RefreshCw, Search, Send, Sparkles } from "lucide-react";
+import { ChevronDown, Loader2, RefreshCw, Search, Send, Sparkles } from "lucide-react";
 import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
 import {
   LINE_CUSTOMER_TAGS,
@@ -166,6 +166,7 @@ export default function AdminCrmPanel() {
   const [orderFactsLoading, setOrderFactsLoading] = useState(false);
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insights, setInsights] = useState<CrmInsights | null>(null);
+  const [insightsOpen, setInsightsOpen] = useState(false);
 
   // 右欄
   const [optimisticMessages, setOptimisticMessages] = useState<OptimisticAdminMessage[]>([]);
@@ -692,24 +693,52 @@ export default function AdminCrmPanel() {
           </CardContent>
         </Card>
 
-        <div className="shrink-0 w-full xl:w-auto snap-start grid grid-rows-[auto_auto_auto_minmax(0,1fr)] gap-4 min-h-0">
-          <div className="rounded-lg border bg-muted/40 px-3 py-2">
-            {selectedCustomer ? (
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="text-sm font-semibold truncate">{selectedCustomer.display_name || "（未命名）"}</span>
-                {isLineCustomerTag(selectedCustomer.tag) ? (
-                  <span className={cn("shrink-0 px-1.5 py-0.5 rounded-full text-[10px] border", lineCustomerTagStyle(selectedCustomer.tag))}>
-                    {selectedCustomer.tag}
+        <div className="shrink-0 w-full xl:w-auto snap-start grid grid-rows-[minmax(0,1fr)_auto_auto] gap-4 min-h-0 min-w-0">
+          <Card className="min-h-0 min-w-0 flex flex-col">
+            <CardHeader className="pb-3 flex flex-row items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2 min-w-0">
+                <span className="shrink-0">對話紀錄</span>
+                {selectedCustomer ? (
+                  <span className="text-lg font-semibold text-foreground truncate">
+                    · {selectedCustomer.display_name || "（未命名）"}
                   </span>
                 ) : null}
-                <span className="ml-auto shrink-0 text-xs text-muted-foreground truncate max-w-[55%]">
-                  {selectedCustomer.primary_email || selectedCustomer.line_user_id}
-                </span>
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground">請先選擇客戶</p>
-            )}
-          </div>
+              </CardTitle>
+              <Button type="button" size="sm" variant="outline" disabled={!selectedLineUserId || lineLogLoading} onClick={() => selectedLineUserId && void fetchLineLog(selectedLineUserId)}>
+                <RefreshCw className={cn("h-4 w-4", lineLogLoading && "animate-spin")} />
+              </Button>
+            </CardHeader>
+            <CardContent ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-2">
+              {lineLogLoading && chatBubbles.length === 0 ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              ) : chatBubbles.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">尚無對話紀錄</p>
+              ) : (
+                chatBubbles.map((bubble) => {
+                  const outbound = bubble.role !== "user";
+                  const label = bubble.role === "user" ? "客人" : bubble.role === "admin" ? "管理員" : "AI";
+                  return (
+                    <div key={bubble.id} className={cn("flex", outbound ? "justify-end" : "justify-start")}>
+                      <div
+                        className={cn(
+                          "max-w-[82%] rounded-xl px-3 py-2 text-sm",
+                          bubble.role === "user" && "bg-white border border-border",
+                          bubble.role === "ai" && "bg-green-100 text-green-950",
+                          bubble.role === "admin" && "bg-primary text-primary-foreground",
+                        )}
+                      >
+                        <p className="text-[10px] opacity-70 mb-0.5">{label}</p>
+                        <p className="whitespace-pre-wrap break-words">{bubble.text}</p>
+                        <p className="text-[10px] opacity-65 mt-1 text-right">{formatDateTime(bubble.received_at)}</p>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader className="pb-3">
@@ -751,79 +780,43 @@ export default function AdminCrmPanel() {
           </Card>
 
           <Card>
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-base">AI 洞察</CardTitle>
+            <CardHeader className="pb-3 flex flex-row items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => setInsightsOpen((v) => !v)}
+                className="flex items-center gap-1.5 min-w-0"
+                aria-expanded={insightsOpen}
+              >
+                <ChevronDown className={cn("h-4 w-4 shrink-0 transition-transform", insightsOpen ? "rotate-0" : "-rotate-90")} />
+                <CardTitle className="text-base">AI 洞察</CardTitle>
+              </button>
               <Button type="button" size="sm" variant="outline" disabled={!selectedLineUserId || insightsLoading} onClick={() => void generateInsights()}>
                 {insightsLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 <span className="ml-1">更新洞察</span>
               </Button>
             </CardHeader>
-            <CardContent className="text-sm space-y-2">
-              {!insights ? (
-                <p className="text-muted-foreground">尚未產生洞察</p>
-              ) : (
-                <>
-                  <p><span className="text-muted-foreground">感興趣品項：</span>{insights.interested_products.join("、") || "—"}</p>
-                  <p><span className="text-muted-foreground">購買動機：</span>{insights.purchase_motivation || "—"}</p>
-                  <p><span className="text-muted-foreground">使用場合：</span>{insights.usage_occasion || "—"}</p>
-                  <p><span className="text-muted-foreground">建議時段：</span>{insights.suggested_send_window || "—"}</p>
-                  {insights.suggested_tag ? (
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">建議標籤：{insights.suggested_tag}</span>
-                      <Button type="button" size="sm" variant="outline" onClick={() => void handleApplySuggestedTag()}>
-                        一鍵套用
-                      </Button>
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </CardContent>
-          </Card>
-
-          <Card className="min-h-0 flex flex-col">
-            <CardHeader className="pb-3 flex flex-row items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2 min-w-0">
-                <span className="shrink-0">對話紀錄</span>
-                {selectedCustomer ? (
-                  <span className="text-sm font-normal text-muted-foreground truncate">
-                    · {selectedCustomer.display_name || "（未命名）"}
-                  </span>
-                ) : null}
-              </CardTitle>
-              <Button type="button" size="sm" variant="outline" disabled={!selectedLineUserId || lineLogLoading} onClick={() => selectedLineUserId && void fetchLineLog(selectedLineUserId)}>
-                <RefreshCw className={cn("h-4 w-4", lineLogLoading && "animate-spin")} />
-              </Button>
-            </CardHeader>
-            <CardContent ref={chatScrollRef} className="flex-1 min-h-0 overflow-y-auto space-y-2">
-              {lineLogLoading && chatBubbles.length === 0 ? (
-                <div className="flex items-center justify-center py-10">
-                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-                </div>
-              ) : chatBubbles.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-8">尚無對話紀錄</p>
-              ) : (
-                chatBubbles.map((bubble) => {
-                  const outbound = bubble.role !== "user";
-                  const label = bubble.role === "user" ? "客人" : bubble.role === "admin" ? "管理員" : "AI";
-                  return (
-                    <div key={bubble.id} className={cn("flex", outbound ? "justify-end" : "justify-start")}>
-                      <div
-                        className={cn(
-                          "max-w-[82%] rounded-xl px-3 py-2 text-sm",
-                          bubble.role === "user" && "bg-white border border-border",
-                          bubble.role === "ai" && "bg-green-100 text-green-950",
-                          bubble.role === "admin" && "bg-primary text-primary-foreground",
-                        )}
-                      >
-                        <p className="text-[10px] opacity-70 mb-0.5">{label}</p>
-                        <p className="whitespace-pre-wrap break-words">{bubble.text}</p>
-                        <p className="text-[10px] opacity-65 mt-1 text-right">{formatDateTime(bubble.received_at)}</p>
+            {insightsOpen ? (
+              <CardContent className="text-sm space-y-2">
+                {!insights ? (
+                  <p className="text-muted-foreground">尚未產生洞察</p>
+                ) : (
+                  <>
+                    <p><span className="text-muted-foreground">感興趣品項：</span>{insights.interested_products.join("、") || "—"}</p>
+                    <p><span className="text-muted-foreground">購買動機：</span>{insights.purchase_motivation || "—"}</p>
+                    <p><span className="text-muted-foreground">使用場合：</span>{insights.usage_occasion || "—"}</p>
+                    <p><span className="text-muted-foreground">建議時段：</span>{insights.suggested_send_window || "—"}</p>
+                    {insights.suggested_tag ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">建議標籤：{insights.suggested_tag}</span>
+                        <Button type="button" size="sm" variant="outline" onClick={() => void handleApplySuggestedTag()}>
+                          一鍵套用
+                        </Button>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </CardContent>
+                    ) : null}
+                  </>
+                )}
+              </CardContent>
+            ) : null}
           </Card>
         </div>
 
