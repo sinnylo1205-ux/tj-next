@@ -1,8 +1,9 @@
-/** LINE 後台客戶標籤（與 chat_state.tag 及 DB check 一致） */
+/** LINE 後台客戶「下單意願」標籤（與 chat_state.tag 及 DB check 一致）。
+ *  已成交、沉睡由系統自動計算，不在此清單。 */
 export const LINE_CUSTOMER_TAGS = [
-  { value: "緊急", label: "緊急", badgeClass: "bg-red-100 text-red-800 border-red-200 hover:bg-red-200/80" },
-  { value: "待處理", label: "待處理", badgeClass: "bg-amber-100 text-amber-900 border-amber-200 hover:bg-amber-200/80" },
-  { value: "已下單", label: "已下單", badgeClass: "bg-emerald-100 text-emerald-900 border-emerald-200 hover:bg-emerald-200/80" },
+  { value: "高意願", label: "🔥 高意願", badgeClass: "bg-red-100 text-red-800 border-red-200 hover:bg-red-200/80" },
+  { value: "中意願", label: "🌤 中意願", badgeClass: "bg-amber-100 text-amber-900 border-amber-200 hover:bg-amber-200/80" },
+  { value: "低意願", label: "❄️ 低意願", badgeClass: "bg-sky-100 text-sky-800 border-sky-200 hover:bg-sky-200/80" },
 ] as const;
 
 export type LineCustomerTag = (typeof LINE_CUSTOMER_TAGS)[number]["value"];

@@ -7,7 +7,7 @@ export const crmInsightsSchema = z.object({
   usage_occasion: z.string().default(""),
   confidence: z.number().min(0).max(1).default(0.5),
   rationale_zh: z.string().default(""),
-  suggested_tag: z.enum(["緊急", "待處理", "已下單"]).nullable().default(null),
+  suggested_tag: z.enum(["高意願", "中意願", "低意願"]).nullable().default(null),
   recommended_products: z.array(z.string()).default([]),
   suggested_send_window: z.string().default(""),
 });
@@ -21,6 +21,14 @@ export const crmMessageDraftSchema = z.object({
 });
 
 export type CrmMessageDraft = z.infer<typeof crmMessageDraftSchema>;
+
+export const crmAggregateSummarySchema = z.object({
+  common_questions: z.array(z.string()).default([]),
+  best_lead_profile: z.string().default(""),
+  weekly_actions: z.array(z.string()).default([]),
+});
+
+export type CrmAggregateSummary = z.infer<typeof crmAggregateSummarySchema>;
 
 type ChatLogInput = {
   received_at: string | null;
@@ -41,15 +49,20 @@ function fallbackInsights(chatLogs: ChatLogInput[], orderFact: OrderFactInput): 
     .map((r) => r.user_text?.trim())
     .filter((v): v is string => Boolean(v));
   const latestText = userTexts[userTexts.length - 1] || "";
-  const hasUrgent =
-    /急|趕|今天|明天|最快|立刻|馬上|deadline|截止/i.test(latestText) ||
-    /急|趕|今天|明天|最快|立刻|馬上|deadline|截止/i.test(userTexts.join(" "));
+  const allText = userTexts.join(" ");
+  // 高意願訊號：談到價格/數量/交期/付款/客製細節/明確想訂
+  const highIntent =
+    /價格|多少錢|報價|數量|幾個|幾盒|交期|什麼時候|何時|急|趕|付款|匯款|訂購|下單|想訂|怎麼買|客製|訂做/i.test(
+      allText,
+    );
+  // 中意願訊號：在比較、詢問通用問題、表達興趣但未談細節
+  const midIntent = /可以客製|有沒有|可不可以|想問|請問|介紹|口味|款式|參考/i.test(allText);
 
-  const suggested_tag: CrmInsights["suggested_tag"] = hasUrgent
-    ? "緊急"
-    : orderFact.order_count > 0
-      ? "已下單"
-      : "待處理";
+  const suggested_tag: CrmInsights["suggested_tag"] = highIntent
+    ? "高意願"
+    : midIntent
+      ? "中意願"
+      : "低意願";
 
   return {
     interested_products: orderFact.recent_products.slice(0, 3),
@@ -117,10 +130,13 @@ export async function generateCrmInsights(params: {
   }
 
   const systemPrompt =
-    "你是電商 CRM 助理。請只回傳 JSON 物件，不要 markdown。語言使用繁體中文。";
+    "你是電商 CRM 助理。請只回傳 JSON 物件，不要 markdown。語言使用繁體中文。" +
+    "suggested_tag 代表『下單意願』：高意願=已談到價格/數量/交期/付款/客製細節或明確想訂；" +
+    "中意願=有興趣、在比較或詢問通用問題但未談細節；低意願=隨口詢問、離購買很遠。" +
+    "請只依對話內容判斷意願，不要把『是否已成交』當成意願標籤。";
   const userPrompt = JSON.stringify(
     {
-      task: "分析單一客戶，萃取有用 CRM 洞察",
+      task: "分析單一客戶，萃取有用 CRM 洞察，並判斷其下單意願",
       required_keys: [
         "interested_products",
         "last_ordered_products",
@@ -132,7 +148,7 @@ export async function generateCrmInsights(params: {
         "recommended_products",
         "suggested_send_window",
       ],
-      allowed_tags: ["緊急", "待處理", "已下單", null],
+      allowed_tags: ["高意願", "中意願", "低意願", null],
       line_user_id: params.lineUserId,
       chat_logs: params.chatLogs,
       order_fact: params.orderFact,
@@ -183,4 +199,34 @@ export async function generateCrmMessageDraft(params: {
   );
   const raw = await callOpenAiJson<Record<string, unknown>>({ systemPrompt, userPrompt, model });
   return { draft: crmMessageDraftSchema.parse(raw), model };
+}
+
+/**
+ * 將「全店聚合統計」交給 AI 做文字總結（常見問題、最可能下單客特徵、本週建議行動）。
+ * stats 應為已在程式端算好的精簡統計，避免丟入大量原始對話，控成本。
+ */
+export async function generateCrmAggregateSummary(params: {
+  stats: Record<string, unknown>;
+}): Promise<{ summary: CrmAggregateSummary; model: string }> {
+  const model = process.env.OPENAI_CRM_MODEL?.trim() || "gpt-4o-mini";
+  const hasKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+  if (!hasKey) {
+    return {
+      model: "fallback-rule",
+      summary: {
+        common_questions: ["（未啟用 OpenAI，無法產生文字洞察）"],
+        best_lead_profile: "請設定 OPENAI_API_KEY 後重新分析。",
+        weekly_actions: ["優先聯繫『高意願未成交』名單"],
+      },
+    };
+  }
+
+  const systemPrompt =
+    "你是電商 CRM 分析師。根據提供的『全店聚合統計』，用繁體中文輸出 JSON：" +
+    "common_questions(最常見的問題/需求類型，最多5項字串)、" +
+    "best_lead_profile(最可能下單客戶的共同特徵，2-3 句)、" +
+    "weekly_actions(本週建議行動，最多5項字串)。只回傳 JSON，不要 markdown。";
+  const userPrompt = JSON.stringify({ task: "全店 CRM 聚合洞察", stats: params.stats }, null, 2);
+  const raw = await callOpenAiJson<Record<string, unknown>>({ systemPrompt, userPrompt, model });
+  return { summary: crmAggregateSummarySchema.parse(raw), model };
 }

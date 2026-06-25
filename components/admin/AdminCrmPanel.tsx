@@ -15,6 +15,7 @@ import {
   type LineCustomerTag,
 } from "@/lib/line-customer-tags";
 import { cn } from "@/lib/utils";
+import AdminCrmAnalysisPanel from "./AdminCrmAnalysisPanel";
 
 const LINE_LOG_POLL_MS = 12_000;
 
@@ -123,12 +124,22 @@ export default function AdminCrmPanel() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
   const [mobileTab, setMobileTab] = useState(0);
+  const [crmView, setCrmView] = useState<"crm" | "analysis">("crm");
 
   const goToTab = useCallback((index: number) => {
     setMobileTab(index);
     const el = carouselRef.current;
     if (el) el.scrollTo({ left: index * el.clientWidth, behavior: "smooth" });
   }, []);
+
+  const handleSelectFromAnalysis = useCallback(
+    (lineUserId: string) => {
+      setSelectedLineUserId(lineUserId);
+      setCrmView("crm");
+      goToTab(1);
+    },
+    [goToTab],
+  );
 
   const handleCarouselScroll = useCallback(() => {
     const el = carouselRef.current;
@@ -361,7 +372,10 @@ export default function AdminCrmPanel() {
     async (lineUserId: string, nextTag: LineCustomerTag | null) => {
       setTagSavingId(lineUserId);
       try {
-        const { error } = await supabase.from("chat_state").update({ tag: nextTag }).eq("line_user_id", lineUserId);
+        const { error } = await supabase
+          .from("chat_state")
+          .update({ tag: nextTag, tag_source: "manual" })
+          .eq("line_user_id", lineUserId);
         if (error) throw error;
         setCustomerRows((prev) => prev.map((r) => (r.line_user_id === lineUserId ? { ...r, tag: nextTag } : r)));
       } catch (error) {
@@ -494,13 +508,40 @@ export default function AdminCrmPanel() {
 
   return (
     <div className="p-4 md:p-8">
-      <div className="mb-6">
+      <div className="mb-4">
         <h1 className="text-xl md:text-3xl font-bold">客戶 CRM</h1>
         <p className="text-sm text-muted-foreground mt-1">
           左欄接線效率、中欄內容品質、右欄執行把關（LINE 優先）。
         </p>
       </div>
 
+      <div className="mb-4 inline-flex gap-1 rounded-lg border p-1 bg-muted/40">
+        <button
+          type="button"
+          onClick={() => setCrmView("crm")}
+          className={cn(
+            "px-3 py-1.5 text-sm rounded-md transition-colors",
+            crmView === "crm" ? "bg-background shadow font-medium" : "text-muted-foreground",
+          )}
+        >
+          客戶經營
+        </button>
+        <button
+          type="button"
+          onClick={() => setCrmView("analysis")}
+          className={cn(
+            "px-3 py-1.5 text-sm rounded-md transition-colors",
+            crmView === "analysis" ? "bg-background shadow font-medium" : "text-muted-foreground",
+          )}
+        >
+          整體分析
+        </button>
+      </div>
+
+      {crmView === "analysis" ? (
+        <AdminCrmAnalysisPanel onSelectCustomer={handleSelectFromAnalysis} />
+      ) : (
+        <>
       <div className="xl:hidden mb-3 grid grid-cols-3 gap-1 rounded-lg border p-1 bg-muted/40">
         {MOBILE_TABS.map((label, i) => (
           <button
@@ -800,6 +841,8 @@ export default function AdminCrmPanel() {
           </CardContent>
         </Card>
       </div>
+        </>
+      )}
     </div>
   );
 }

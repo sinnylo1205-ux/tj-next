@@ -116,6 +116,23 @@ interface User {
   id: string;
   email: string;
   name: string;
+  line_user_id?: string | null;
+}
+
+/**
+ * 回溯訂單對應的 LINE user id。
+ * orders 優先（手動單為收件人的 LINE，即使會員端也有也以此為準），
+ * 否則 fallback 到會員 user_log_in.line_user_id（會員自助結帳的訂單）。
+ */
+function resolveLineUserId(
+  orderLineUserId: string | null | undefined,
+  userInfo: User | undefined,
+): { id: string | null; source: "order" | "member" | null } {
+  const fromOrder = orderLineUserId?.trim();
+  if (fromOrder) return { id: fromOrder, source: "order" };
+  const fromMember = userInfo?.line_user_id?.trim();
+  if (fromMember) return { id: fromMember, source: "member" };
+  return { id: null, source: null };
 }
 
 const OrderStatusManager = () => {
@@ -214,7 +231,7 @@ const OrderStatusManager = () => {
     if (userIds.length === 0) return;
     const { data, error } = await supabase
       .from("user_log_in")
-      .select("id, email, name")
+      .select("id, email, name, line_user_id")
       .in("id", userIds);
 
     if (!error && data) {
@@ -1424,6 +1441,22 @@ const OrderStatusManager = () => {
               onChange={(e) => setEditDraft((p) => ({ ...p, line_user_id: e.target.value }))}
               placeholder="Uxxxxxxxx..."
             />
+            {(() => {
+              const resolved = resolveLineUserId(editDraft.line_user_id, users[editDraft.user_id ?? ""]);
+              if (resolved.id) {
+                return (
+                  <p className="text-xs text-emerald-700">
+                    ✅ 已綁定 LINE（{resolved.source === "order" ? "訂單指定" : "會員資料"}）：
+                    <code className="ml-1 text-[11px] font-mono text-emerald-800 break-all">{resolved.id}</code>
+                  </p>
+                );
+              }
+              return (
+                <p className="text-xs text-muted-foreground">
+                  ❌ 此訂單尚未綁定 LINE（orders 與會員資料皆無）
+                </p>
+              );
+            })()}
           </div>
           <div className="space-y-1">
             <span className="text-sm text-muted-foreground">聯絡信箱</span>
