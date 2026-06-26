@@ -874,6 +874,13 @@ const AdminDashboard = () => {
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {monthlyReport.revenue_ntd.toLocaleString()}
                     </p>
+                    <p className="mt-2 text-sm md:text-base font-medium text-muted-foreground border-t border-border/60 pt-2">
+                      未收款項+已收款項=總營收：共計{" "}
+                      <span className="font-semibold text-foreground/80 tabular-nums">
+                        NT$ {monthlyReport.revenue_incl_unpaid_ntd.toLocaleString()}
+                      </span>{" "}
+                      元
+                    </p>
                   </div>
                   <div
                     className={cn(
@@ -944,6 +951,13 @@ const AdminDashboard = () => {
                     <p className="mt-1 text-xs text-muted-foreground">實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸屬該年各月後加總</p>
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {yearlyReport.revenue_ntd.toLocaleString()}
+                    </p>
+                    <p className="mt-2 text-sm md:text-base font-medium text-muted-foreground border-t border-border/60 pt-2">
+                      未收款項＋已收款項=總營收：共計{" "}
+                      <span className="font-semibold text-foreground/80 tabular-nums">
+                        NT$ {yearlyReport.revenue_incl_unpaid_ntd.toLocaleString()}
+                      </span>{" "}
+                      元
                     </p>
                   </div>
                   <div

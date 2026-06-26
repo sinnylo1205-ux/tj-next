@@ -47,7 +47,10 @@ export interface MonthlyReportPayload {
   report_type: "monthly";
   year: number;
   month: number;
+  /** 實收：已確認到帳（payment_step=verified） */
   revenue_ntd: number;
+  /** 含未收款：同訂單狀態集合，不限付款狀態（＝長條圖「總營收」） */
+  revenue_incl_unpaid_ntd: number;
   order_count: number;
   customer_type_breakdown: CustomerTypeCountRow[];
   top_product_name: string | null;
@@ -57,7 +60,10 @@ export interface MonthlyReportPayload {
 export interface YearlyReportPayload {
   report_type: "yearly";
   year: number;
+  /** 實收：已確認到帳（payment_step=verified） */
   revenue_ntd: number;
+  /** 含未收款：同訂單狀態集合，不限付款狀態（＝長條圖「總營收」） */
+  revenue_incl_unpaid_ntd: number;
   order_count: number;
   customer_type_breakdown: CustomerTypeCountRow[];
   top_products: { name: string; count: number }[];
@@ -81,21 +87,32 @@ async function fetchOrderIdsInRange(
   return (data ?? []).map((r) => r.id as string);
 }
 
-async function sumRevenueInRange(
+/**
+ * 同訂單狀態集合下，一次算出「實收（已確認到帳）」與「含未收款的總額」。
+ * paid＝payment_step=verified 的加總；gross＝全部（不限付款狀態）的加總。
+ */
+async function sumRevenueBreakdownInRange(
   client: SupabaseClient,
   rangeStart: Date,
   rangeEnd: Date,
-): Promise<number> {
+): Promise<{ paid: number; gross: number }> {
   const { data, error } = await client
     .from("orders")
-    .select("total_amount")
+    .select("total_amount, payment_step")
     .in("order_status", [...REVENUE_ORDER_STATUSES])
-    .eq("payment_step", REVENUE_PAYMENT_STEP)
     .gte("created_at", rangeStart.toISOString())
     .lte("created_at", rangeEnd.toISOString());
 
   if (error) throw new Error(error.message);
-  return (data ?? []).reduce((s, r) => s + Number((r as { total_amount?: number }).total_amount ?? 0), 0);
+
+  let paid = 0;
+  let gross = 0;
+  (data ?? []).forEach((r) => {
+    const amt = Number((r as { total_amount?: number }).total_amount ?? 0);
+    gross += amt;
+    if ((r as { payment_step?: string }).payment_step === REVENUE_PAYMENT_STEP) paid += amt;
+  });
+  return { paid, gross };
 }
 
 async function fetchAnalyticsOrdersInRange(
@@ -169,8 +186,8 @@ export async function buildMonthlyReportPayload(
   const rangeStart = startOfMonth(d);
   const rangeEnd = endOfMonth(d);
 
-  const [revenue_ntd, analyticsRows, orderIds] = await Promise.all([
-    sumRevenueInRange(client, rangeStart, rangeEnd),
+  const [revenue, analyticsRows, orderIds] = await Promise.all([
+    sumRevenueBreakdownInRange(client, rangeStart, rangeEnd),
     fetchAnalyticsOrdersInRange(client, rangeStart, rangeEnd),
     fetchOrderIdsInRange(client, rangeStart, rangeEnd),
   ]);
@@ -184,7 +201,8 @@ export async function buildMonthlyReportPayload(
     report_type: "monthly",
     year,
     month,
-    revenue_ntd,
+    revenue_ntd: revenue.paid,
+    revenue_incl_unpaid_ntd: revenue.gross,
     order_count,
     customer_type_breakdown,
     top_product_name,
@@ -199,8 +217,8 @@ export async function buildYearlyReportPayload(
   const rangeStart = startOfYear(new Date(year, 0, 1));
   const rangeEnd = endOfYear(new Date(year, 0, 1));
 
-  const [revenue_ntd, analyticsRows, orderIds] = await Promise.all([
-    sumRevenueInRange(client, rangeStart, rangeEnd),
+  const [revenue, analyticsRows, orderIds] = await Promise.all([
+    sumRevenueBreakdownInRange(client, rangeStart, rangeEnd),
     fetchAnalyticsOrdersInRange(client, rangeStart, rangeEnd),
     fetchOrderIdsInRange(client, rangeStart, rangeEnd),
   ]);
@@ -212,7 +230,8 @@ export async function buildYearlyReportPayload(
   return {
     report_type: "yearly",
     year,
-    revenue_ntd,
+    revenue_ntd: revenue.paid,
+    revenue_incl_unpaid_ntd: revenue.gross,
     order_count,
     customer_type_breakdown,
     top_products,
