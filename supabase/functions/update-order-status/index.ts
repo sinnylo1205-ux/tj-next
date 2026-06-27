@@ -15,6 +15,7 @@ const corsHeaders = {
 const N8N_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/line";
 const N8N_CALENDAR_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/order-processing-to-calendar";
 const N8N_TAX_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/TAX_id";
+const AUTO_CANCEL_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 // ========== 中文大寫金額轉換 ==========
 function toChineseUppercase(num: number): string {
@@ -164,6 +165,59 @@ Deno.serve(async (req) => {
       });
     }
 
+    let autoCancelCutoff: string | null = null;
+    const currentOrderStatus = String(orderData.order_status || "");
+    const currentPaymentStep = String(orderData.payment_step || "");
+
+    if (isAutoCancel) {
+      autoCancelCutoff = new Date(Date.now() - AUTO_CANCEL_WINDOW_MS).toISOString();
+      const createdAtMs = new Date(orderData.created_at).getTime();
+      const isExpired = Number.isFinite(createdAtMs) && createdAtMs <= Date.parse(autoCancelCutoff);
+      const canAutoCancel =
+        new_status === "canceled" &&
+        currentOrderStatus === "awaiting_payment" &&
+        currentPaymentStep === "pending" &&
+        !orderData.is_manual_order &&
+        !orderData.auto_cancel_exempt &&
+        isExpired;
+
+      if (!canAutoCancel) {
+        console.error("[update-order-status] Invalid auto-cancel request:", {
+          order_id,
+          order_status: orderData.order_status,
+          payment_step: orderData.payment_step,
+          is_manual_order: orderData.is_manual_order,
+          auto_cancel_exempt: orderData.auto_cancel_exempt,
+          created_at: orderData.created_at,
+          new_status,
+        });
+        return new Response(JSON.stringify({ error: "此訂單目前不可由用戶逾時取消" }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (isUserPaymentSubmitted) {
+      const canSubmitPayment =
+        new_status === "awaiting_payment" &&
+        currentOrderStatus === "awaiting_payment" &&
+        (currentPaymentStep === "pending" || currentPaymentStep === "submitted");
+
+      if (!canSubmitPayment) {
+        console.error("[update-order-status] Invalid user payment submission:", {
+          order_id,
+          order_status: orderData.order_status,
+          payment_step: orderData.payment_step,
+          new_status,
+        });
+        return new Response(JSON.stringify({ error: "此訂單目前不可由用戶更新匯款狀態" }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Query order items
     const { data: orderItems, error: itemsError } = await supabaseAdmin
       .from("order_items")
@@ -255,13 +309,37 @@ Deno.serve(async (req) => {
         break;
     }
 
-    // Update order status
-    const { error: updateError } = await supabaseAdmin.from("orders").update(updateData).eq("id", order_id);
+    // Update order status. Repeat user-action predicates in the UPDATE to
+    // avoid racing a payment verification or admin edit that happened after
+    // the order was read above.
+    let updateQuery = supabaseAdmin.from("orders").update(updateData).eq("id", order_id);
+    if (action_type === "auto_cancel_expired") {
+      updateQuery = updateQuery
+        .eq("payment_step", "pending")
+        .eq("order_status", "awaiting_payment")
+        .eq("is_manual_order", false)
+        .eq("auto_cancel_exempt", false)
+        .lt("created_at", autoCancelCutoff!);
+    } else if (action_type === "user_payment_submitted") {
+      updateQuery = updateQuery
+        .eq("order_status", "awaiting_payment")
+        .in("payment_step", ["pending", "submitted"]);
+    }
+
+    const { data: updatedRows, error: updateError } = await updateQuery.select("id");
 
     if (updateError) {
       console.error("[update-order-status] Update failed:", updateError);
       return new Response(JSON.stringify({ error: "Failed to update order status" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (!updatedRows || updatedRows.length === 0) {
+      console.error("[update-order-status] Update matched no rows after state predicates:", { order_id, action_type });
+      return new Response(JSON.stringify({ error: "訂單狀態已變更，請重新整理後再試" }), {
+        status: 409,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }

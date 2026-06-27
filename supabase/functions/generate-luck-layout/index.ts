@@ -176,12 +176,35 @@ function getLuckTextCsvUrl(customizationsJson: unknown): string | null {
   return null;
 }
 
-function isLuckTextCsvEligible(productId: string | null | undefined, customizationsJson: unknown): boolean {
+function getTrustedCustomizerUploadPath(csvUrl: string, supabaseUrl: string): string | null {
+  try {
+    const parsedUrl = new URL(csvUrl);
+    const expectedOrigin = new URL(supabaseUrl).origin;
+    if (parsedUrl.origin !== expectedOrigin) return null;
+
+    const publicPrefix = `/storage/v1/object/public/${CUSTOMIZER_UPLOAD_BUCKET}/`;
+    if (!parsedUrl.pathname.startsWith(publicPrefix)) return null;
+
+    const objectPath = decodeURIComponent(parsedUrl.pathname.slice(publicPrefix.length));
+    const pathSegments = objectPath.split("/");
+    if (!objectPath || objectPath.includes("\0") || pathSegments.includes("..")) return null;
+    if (!objectPath.toLowerCase().endsWith(".csv")) return null;
+
+    return objectPath;
+  } catch {
+    return null;
+  }
+}
+
+function isLuckTextCsvEligible(
+  productId: string | null | undefined,
+  customizationsJson: unknown,
+  supabaseUrl: string,
+): boolean {
   if (!productId || !FORTUNE_COOKIE_PRODUCT_IDS.has(productId)) return false;
   const url = getLuckTextCsvUrl(customizationsJson);
   if (!url) return false;
-  const lower = url.toLowerCase();
-  return lower.includes("customizer_uploads") || lower.endsWith(".csv") || lower.includes(".csv?");
+  return getTrustedCustomizerUploadPath(url, supabaseUrl) !== null;
 }
 
 async function buildLuckLayoutXlsxBuffer(rows: LuckCsvRow[]): Promise<Uint8Array> {
@@ -228,6 +251,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const CUSTOMIZER_UPLOAD_BUCKET = "customizer_uploads";
 const LUCK_LAYOUT_PREFIX = "website_img/luck_layouts";
 
 const RequestSchema = z.object({
@@ -257,10 +281,11 @@ async function isAdmin(supabaseAdmin: ReturnType<typeof createClient>, userId: s
 async function processOrderItem(
   supabaseAdmin: ReturnType<typeof createClient>,
   item: OrderItemRow,
+  supabaseUrl: string,
 ): Promise<{ order_item_id: number; status: string; url?: string; error?: string }> {
   const { order_item_id, order_id, product_id, customizations_json } = item;
 
-  if (!isLuckTextCsvEligible(product_id, customizations_json)) {
+  if (!isLuckTextCsvEligible(product_id, customizations_json, supabaseUrl)) {
     await supabaseAdmin
       .from("order_items")
       .update({ luck_layout_status: "skipped", luck_layout_error: null })
@@ -277,17 +302,28 @@ async function processOrderItem(
     return { order_item_id, status: "skipped" };
   }
 
+  const csvPath = getTrustedCustomizerUploadPath(csvUrl, supabaseUrl);
+  if (!csvPath) {
+    await supabaseAdmin
+      .from("order_items")
+      .update({ luck_layout_status: "failed", luck_layout_error: "CSV URL 不受信任" })
+      .eq("order_item_id", order_item_id);
+    return { order_item_id, status: "failed", error: "CSV URL 不受信任" };
+  }
+
   await supabaseAdmin
     .from("order_items")
     .update({ luck_layout_status: "pending", luck_layout_error: null })
     .eq("order_item_id", order_item_id);
 
   try {
-    const csvRes = await fetch(csvUrl);
-    if (!csvRes.ok) {
-      throw new Error(`下載 CSV 失敗 (${csvRes.status})`);
+    const { data: csvBlob, error: csvDownloadError } = await supabaseAdmin.storage
+      .from(CUSTOMIZER_UPLOAD_BUCKET)
+      .download(csvPath);
+    if (csvDownloadError || !csvBlob) {
+      throw new Error(`下載 CSV 失敗 (${csvDownloadError?.message || "無檔案內容"})`);
     }
-    const csvText = await csvRes.text();
+    const csvText = await csvBlob.text();
     const rows = parseLuckCsvText(csvText);
     if (rows.length === 0) {
       throw new Error("CSV 無有效簽文資料");
@@ -416,7 +452,7 @@ Deno.serve(async (req) => {
     const targets =
       order_item_id != null
         ? (items ?? []).filter((it) => it.order_item_id === order_item_id)
-        : (items ?? []).filter((it) => isLuckTextCsvEligible(it.product_id, it.customizations_json));
+        : (items ?? []).filter((it) => isLuckTextCsvEligible(it.product_id, it.customizations_json, supabaseUrl));
 
     if (targets.length === 0) {
       return new Response(JSON.stringify({ ok: true, results: [], message: "無需排版的幸運籤餅品項" }), {
@@ -427,7 +463,7 @@ Deno.serve(async (req) => {
 
     const results = [];
     for (const item of targets as OrderItemRow[]) {
-      results.push(await processOrderItem(supabaseAdmin, item));
+      results.push(await processOrderItem(supabaseAdmin, item, supabaseUrl));
     }
 
     return new Response(JSON.stringify({ ok: true, results }), {
