@@ -15,6 +15,10 @@ const FONT_SIZE = 8;
 const BORDER_COLOR = "FFAAAAAA";
 const ROWS_PER_PAGE = 26;
 const FORMAT_ROW_LIMIT = 2000;
+const MAX_CSV_BYTES = 512 * 1024;
+const MAX_CSV_ROWS = 1000;
+const MAX_LUCK_TEXTS = 5000;
+const MAX_LUCK_TEXT_LENGTH = 500;
 
 const FORTUNE_COOKIE_PRODUCT_IDS = new Set(["luck", "fortune_cookie"]);
 
@@ -67,6 +71,9 @@ function parseLuckCsvText(csvContent: string): LuckCsvRow[] {
   const sample = normalized.slice(0, 2048);
   const delimiter = detectDelimiter(sample);
   const lines = normalized.split("\n").filter((l) => l.trim() !== "");
+  if (lines.length > MAX_CSV_ROWS) {
+    throw new Error(`CSV 筆數不可超過 ${MAX_CSV_ROWS} 列`);
+  }
   const rows: LuckCsvRow[] = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -79,6 +86,9 @@ function parseLuckCsvText(csvContent: string): LuckCsvRow[] {
     if (i === 0 && /^text$/i.test(col0) && /^quantity$/i.test(col1)) continue;
 
     if (!col0) continue;
+    if (col0.length > MAX_LUCK_TEXT_LENGTH) {
+      throw new Error(`CSV 第 ${i + 1} 列簽文不可超過 ${MAX_LUCK_TEXT_LENGTH} 字`);
+    }
     const qty = Number.parseInt(col1, 10);
     rows.push({ text: col0, qty: Number.isFinite(qty) && qty > 0 ? qty : 1 });
   }
@@ -89,6 +99,9 @@ function parseLuckCsvText(csvContent: string): LuckCsvRow[] {
 function expandLuckTexts(rows: LuckCsvRow[]): string[] {
   const texts: string[] = [];
   for (const { text, qty } of rows) {
+    if (qty > MAX_LUCK_TEXTS || texts.length + qty > MAX_LUCK_TEXTS) {
+      throw new Error(`CSV 展開後簽文不可超過 ${MAX_LUCK_TEXTS} 筆`);
+    }
     for (let i = 0; i < qty; i++) texts.push(text);
   }
   return texts;
@@ -228,11 +241,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const CUSTOM_ASSET_BUCKET = "custom_asset";
+const CUSTOMIZER_UPLOADS_BUCKET = "customizer_uploads";
 const LUCK_LAYOUT_PREFIX = "website_img/luck_layouts";
+const SIGNED_URL_EXPIRES_IN_SECONDS = 5 * 60;
 
 const RequestSchema = z.object({
   order_id: z.string().uuid("訂單 ID 格式錯誤"),
   order_item_id: z.number().int().positive().optional(),
+  action: z.enum(["generate", "download"]).optional().default("generate"),
 });
 
 type OrderItemRow = {
@@ -254,10 +271,99 @@ async function isAdmin(supabaseAdmin: ReturnType<typeof createClient>, userId: s
   return Boolean(data);
 }
 
-async function processOrderItem(
+function getCustomizerCsvStoragePath(rawUrl: string, supabaseUrl: string): string | null {
+  try {
+    const url = new URL(rawUrl);
+    const expectedOrigin = new URL(supabaseUrl).origin;
+    if (url.origin !== expectedOrigin) return null;
+
+    const prefix = `/storage/v1/object/public/${CUSTOMIZER_UPLOADS_BUCKET}/`;
+    if (!url.pathname.startsWith(prefix)) return null;
+
+    const objectPath = decodeURIComponent(url.pathname.slice(prefix.length));
+    if (
+      !objectPath ||
+      objectPath.startsWith("/") ||
+      objectPath.includes("..") ||
+      !objectPath.toLowerCase().endsWith(".csv")
+    ) {
+      return null;
+    }
+    return objectPath;
+  } catch {
+    return null;
+  }
+}
+
+async function downloadLuckCsvText(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  csvUrl: string,
+): Promise<string> {
+  const objectPath = getCustomizerCsvStoragePath(csvUrl, supabaseUrl);
+  if (!objectPath) {
+    throw new Error("CSV 必須是本站 customizer_uploads 的公開 CSV 檔案");
+  }
+
+  const { data, error } = await supabaseAdmin.storage.from(CUSTOMIZER_UPLOADS_BUCKET).download(objectPath);
+  if (error || !data) {
+    throw new Error(error?.message || "下載 CSV 失敗");
+  }
+  if (data.size > MAX_CSV_BYTES) {
+    throw new Error(`CSV 檔案不可超過 ${Math.round(MAX_CSV_BYTES / 1024)}KB`);
+  }
+  return await data.text();
+}
+
+function getLuckLayoutStoragePath(rawValue: string | null | undefined): string | null {
+  if (!rawValue) return null;
+  const value = rawValue.trim();
+  if (!value) return null;
+
+  if (!value.startsWith("http://") && !value.startsWith("https://")) {
+    return value.startsWith(`${LUCK_LAYOUT_PREFIX}/`) ? value : null;
+  }
+
+  try {
+    const url = new URL(value);
+    const markers = [
+      `/storage/v1/object/public/${CUSTOM_ASSET_BUCKET}/`,
+      `/storage/v1/object/sign/${CUSTOM_ASSET_BUCKET}/`,
+    ];
+    const marker = markers.find((m) => url.pathname.startsWith(m));
+    if (!marker) return null;
+    const objectPath = decodeURIComponent(url.pathname.slice(marker.length));
+    return objectPath.startsWith(`${LUCK_LAYOUT_PREFIX}/`) ? objectPath : null;
+  } catch {
+    return null;
+  }
+}
+
+async function createLuckLayoutSignedUrl(
   supabaseAdmin: ReturnType<typeof createClient>,
   item: OrderItemRow,
-): Promise<{ order_item_id: number; status: string; url?: string; error?: string }> {
+): Promise<string> {
+  const storagePath =
+    getLuckLayoutStoragePath(item.luck_layout_xlsx_url) ||
+    `${LUCK_LAYOUT_PREFIX}/${item.order_id}/${item.order_item_id}.xlsx`;
+
+  const { data, error } = await supabaseAdmin.storage
+    .from(CUSTOM_ASSET_BUCKET)
+    .createSignedUrl(storagePath, SIGNED_URL_EXPIRES_IN_SECONDS, {
+      download: `${item.order_id}-${item.order_item_id}-luck-layout.xlsx`,
+    });
+
+  if (error || !data?.signedUrl) {
+    throw new Error(error?.message || "建立下載連結失敗");
+  }
+  return data.signedUrl;
+}
+
+async function processOrderItem(
+  supabaseAdmin: ReturnType<typeof createClient>,
+  supabaseUrl: string,
+  item: OrderItemRow,
+): Promise<{ order_item_id: number; status: string; storage_path?: string; download_url?: string; error?: string }> {
   const { order_item_id, order_id, product_id, customizations_json } = item;
 
   if (!isLuckTextCsvEligible(product_id, customizations_json)) {
@@ -283,11 +389,7 @@ async function processOrderItem(
     .eq("order_item_id", order_item_id);
 
   try {
-    const csvRes = await fetch(csvUrl);
-    if (!csvRes.ok) {
-      throw new Error(`下載 CSV 失敗 (${csvRes.status})`);
-    }
-    const csvText = await csvRes.text();
+    const csvText = await downloadLuckCsvText(supabaseAdmin, supabaseUrl, csvUrl);
     const rows = parseLuckCsvText(csvText);
     if (rows.length === 0) {
       throw new Error("CSV 無有效簽文資料");
@@ -296,26 +398,28 @@ async function processOrderItem(
     const xlsxBytes = await buildLuckLayoutXlsxBuffer(rows);
     const storagePath = `${LUCK_LAYOUT_PREFIX}/${order_id}/${order_item_id}.xlsx`;
 
-    const { error: uploadError } = await supabaseAdmin.storage.from("custom_asset").upload(storagePath, xlsxBytes, {
+    const { error: uploadError } = await supabaseAdmin.storage.from(CUSTOM_ASSET_BUCKET).upload(storagePath, xlsxBytes, {
       upsert: true,
       contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       cacheControl: "3600",
     });
     if (uploadError) throw new Error(uploadError.message);
 
-    const { data: pub } = supabaseAdmin.storage.from("custom_asset").getPublicUrl(storagePath);
-    const publicUrl = pub.publicUrl;
-
     await supabaseAdmin
       .from("order_items")
       .update({
-        luck_layout_xlsx_url: publicUrl,
+        luck_layout_xlsx_url: storagePath,
         luck_layout_status: "ready",
         luck_layout_error: null,
       })
       .eq("order_item_id", order_item_id);
 
-    return { order_item_id, status: "ready", url: publicUrl };
+    const downloadUrl = await createLuckLayoutSignedUrl(supabaseAdmin, {
+      ...item,
+      luck_layout_xlsx_url: storagePath,
+      luck_layout_status: "ready",
+    });
+    return { order_item_id, status: "ready", storage_path: storagePath, download_url: downloadUrl };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error(`[generate-luck-layout] item ${order_item_id} failed:`, message);
@@ -373,7 +477,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { order_id, order_item_id } = parseResult.data;
+    const { order_id, order_item_id, action } = parseResult.data;
 
     const { data: orderRow, error: orderError } = await supabaseAdmin
       .from("orders")
@@ -413,6 +517,27 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (action === "download") {
+      if (order_item_id == null) {
+        return new Response(JSON.stringify({ error: "下載需指定訂單品項" }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const item = (items ?? [])[0] as OrderItemRow | undefined;
+      if (!item || item.luck_layout_status !== "ready" || !item.luck_layout_xlsx_url) {
+        return new Response(JSON.stringify({ error: "籤文排版尚未生成" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const signedUrl = await createLuckLayoutSignedUrl(supabaseAdmin, item);
+      return new Response(JSON.stringify({ ok: true, signed_url: signedUrl, expires_in: SIGNED_URL_EXPIRES_IN_SECONDS }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const targets =
       order_item_id != null
         ? (items ?? []).filter((it) => it.order_item_id === order_item_id)
@@ -427,7 +552,7 @@ Deno.serve(async (req) => {
 
     const results = [];
     for (const item of targets as OrderItemRow[]) {
-      results.push(await processOrderItem(supabaseAdmin, item));
+      results.push(await processOrderItem(supabaseAdmin, supabaseUrl, item));
     }
 
     return new Response(JSON.stringify({ ok: true, results }), {

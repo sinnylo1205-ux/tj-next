@@ -78,6 +78,7 @@ export function AdminOrderDetailPanel({
 }: AdminOrderDetailPanelProps) {
   const showUpload = Boolean(onUploadItem);
   const [regeneratingLuckItemId, setRegeneratingLuckItemId] = useState<number | null>(null);
+  const [downloadingLuckItemId, setDownloadingLuckItemId] = useState<number | null>(null);
 
   const handleRegenerateLuckLayout = async (orderItemId: number) => {
     setRegeneratingLuckItemId(orderItemId);
@@ -91,6 +92,23 @@ export function AdminOrderDetailPanel({
       console.error("[AdminOrderDetail] generate-luck-layout failed:", err);
     } finally {
       setRegeneratingLuckItemId(null);
+    }
+  };
+
+  const handleDownloadLuckLayout = async (orderItemId: number) => {
+    setDownloadingLuckItemId(orderItemId);
+    try {
+      const { data, error } = await supabase.functions.invoke("generate-luck-layout", {
+        body: { order_id: order.id, order_item_id: orderItemId, action: "download" },
+      });
+      if (error) throw error;
+      const signedUrl = (data as { signed_url?: string } | null)?.signed_url;
+      if (!signedUrl) throw new Error("下載連結建立失敗");
+      window.open(signedUrl, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      console.error("[AdminOrderDetail] download luck layout failed:", err);
+    } finally {
+      setDownloadingLuckItemId(null);
     }
   };
 
@@ -331,20 +349,19 @@ export function AdminOrderDetailPanel({
                   <div className="mt-2 space-y-2 border-t border-border/50 pt-2">
                     {item.luck_layout_status === "ready" && item.luck_layout_xlsx_url ? (
                       <Button
-                        asChild
+                        type="button"
                         size="sm"
                         variant="destructive"
                         className="h-9 gap-1.5 font-semibold"
+                        disabled={downloadingLuckItemId === item.order_item_id}
+                        onClick={() => void handleDownloadLuckLayout(item.order_item_id)}
                       >
-                        <a
-                          href={item.luck_layout_xlsx_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          download
-                        >
+                        {downloadingLuckItemId === item.order_item_id ? (
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                        ) : (
                           <Download className="h-4 w-4 shrink-0" />
-                          下載籤文排版 Excel
-                        </a>
+                        )}
+                        下載籤文排版 Excel
                       </Button>
                     ) : item.luck_layout_status === "pending" || regeneratingLuckItemId === item.order_item_id ? (
                       <p className="flex items-center gap-2 text-sm text-muted-foreground">
