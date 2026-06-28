@@ -2,6 +2,7 @@ import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import { FORTUNE_COOKIE_IDS } from "@/lib/product-notice-url";
 
 const FORTUNE_COOKIE_ID_SET = new Set<string>(FORTUNE_COOKIE_IDS);
+const CUSTOMIZER_UPLOADS_BUCKET = "customizer_uploads";
 
 export type LuckLayoutStatus = "pending" | "ready" | "failed" | "skipped" | null;
 
@@ -32,6 +33,15 @@ export function isLuckTextCsvItem(item: {
   if (!isFortuneCookieProductId(item.product_id)) return false;
   const url = getLuckTextCsvUrl(item.customizations_json);
   if (!url) return false;
-  const lower = url.toLowerCase();
-  return lower.includes("customizer_uploads") || lower.endsWith(".csv") || lower.includes(".csv?");
+  try {
+    const parsed = new URL(url);
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (supabaseUrl && parsed.origin !== new URL(supabaseUrl).origin) return false;
+    const prefix = `/storage/v1/object/public/${CUSTOMIZER_UPLOADS_BUCKET}/`;
+    if (!parsed.pathname.startsWith(prefix)) return false;
+    const objectPath = decodeURIComponent(parsed.pathname.slice(prefix.length));
+    return Boolean(objectPath && !objectPath.includes("..") && objectPath.toLowerCase().endsWith(".csv"));
+  } catch {
+    return false;
+  }
 }
