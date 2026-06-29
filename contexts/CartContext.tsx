@@ -3,6 +3,8 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { trackAddToCart } from "@/lib/meta-pixel";
+import { ga4AddToCart } from "@/lib/ga4";
 
 const DISABLE_SUPABASE = false;
 
@@ -255,6 +257,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     (item: Omit<CartItem, "id"> & { id?: string }) => {
       const tempId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `cart-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
       const newItem = { ...item, id: tempId } as CartItem;
+
+      trackAddToCart(newItem);
+      ga4AddToCart(newItem);
 
       setItems((prev) => {
         const updated = [...prev, newItem];

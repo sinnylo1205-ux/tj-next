@@ -11,6 +11,8 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const rtnCode = (formData.get("RtnCode") ?? formData.get("rtnCode"))?.toString() ?? "";
     const rtnMsg = (formData.get("RtnMsg") ?? formData.get("rtnMsg"))?.toString() ?? "";
+    const tradeAmt = (formData.get("TradeAmt") ?? formData.get("tradeAmt"))?.toString() ?? "";
+    const merchantTradeNo = (formData.get("MerchantTradeNo") ?? formData.get("merchantTradeNo"))?.toString() ?? "";
 
     const origin = request.headers.get("x-forwarded-host")
       ? `${request.headers.get("x-forwarded-proto") || "https"}://${request.headers.get("x-forwarded-host")}`
@@ -20,6 +22,8 @@ export async function POST(request: NextRequest) {
     const params = new URLSearchParams();
     if (rtnCode) params.set("RtnCode", rtnCode);
     if (rtnMsg) params.set("RtnMsg", rtnMsg);
+    if (tradeAmt) params.set("TradeAmt", tradeAmt);
+    if (merchantTradeNo) params.set("MerchantTradeNo", merchantTradeNo);
 
     const redirectUrl = params.toString() ? `${baseUrl}/?${params.toString()}` : baseUrl;
 

@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import { CREDIT_CARD_ENABLED_FOR_ALL } from "@/lib/site";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
+import { savePurchaseSnapshot } from "@/lib/purchase-snapshot";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Order {
@@ -234,6 +235,33 @@ function MemberPageContent() {
     }
   };
 
+  const savePurchaseSnapshotForOrder = async (order: Order) => {
+    try {
+      const { data } = await supabase
+        .from("order_items")
+        .select("product_id, product_name, quantity, unit_price")
+        .eq("order_id", order.id);
+      const rows = (data ?? []) as Array<{
+        product_id: string | null;
+        product_name: string | null;
+        quantity: number | null;
+        unit_price: number | null;
+      }>;
+      savePurchaseSnapshot(order.id, {
+        value: order.total_amount,
+        contentIds: [...new Set(rows.map((r) => r.product_id ?? "").filter(Boolean))],
+        items: rows.map((r) => ({
+          item_id: r.product_id ?? "",
+          item_name: r.product_name ?? "",
+          quantity: r.quantity ?? 1,
+          price: r.unit_price ?? 0,
+        })),
+      });
+    } catch (err) {
+      console.error("[Member] 建立 purchase 快照失敗:", err);
+    }
+  };
+
   const handleCreditCardPayment = async () => {
     if (!selectedOrder || !user) return;
     setCreditCardLoading(true);
@@ -245,6 +273,7 @@ function MemberPageContent() {
         toast({ title: "付款初始化失敗", description: error?.message || "無法建立付款連結", variant: "destructive" });
         return;
       }
+      await savePurchaseSnapshotForOrder(selectedOrder);
       localStorage.setItem("last_creditcard_order_id", selectedOrder.id);
       localStorage.setItem("last_creditcard_started_at", String(Date.now()));
       const container = document.createElement("div");

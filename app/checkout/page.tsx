@@ -26,6 +26,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { CartItem } from "@/contexts/CartContext";
 import { trackLineClick } from "@/lib/track-line-click";
+import { trackInitiateCheckout } from "@/lib/meta-pixel";
+import { ga4BeginCheckout } from "@/lib/ga4";
 
 const CHECKOUT_SELECTED_KEY = "tj_checkout_selected";
 
@@ -98,6 +100,15 @@ export default function CheckoutPage() {
   const [couponMessage, setCouponMessage] = useState("");
   const [isRecalculating, setIsRecalculating] = useState(false);
   const [minOrderError, setMinOrderError] = useState("");
+
+  const initiateCheckoutFired = useRef(false);
+  useEffect(() => {
+    if (!itemsReady || items.length === 0 || initiateCheckoutFired.current) return;
+    initiateCheckoutFired.current = true;
+    const value = items.reduce((sum, item) => sum + (item.total_price || 0), 0);
+    trackInitiateCheckout(items, value);
+    ga4BeginCheckout(items, value);
+  }, [itemsReady, items]);
 
   const subtotal = checkoutData?.subtotal ?? items.reduce((sum, item) => sum + (item.total_price || 0), 0);
   const shippingFee =

@@ -11,6 +11,7 @@ import { SITE_CONFIG, getFullUrl, getJsonLdBusinessId, getJsonLdWebsiteId, getSa
 import { productNoticeUrl } from "@/lib/product-notice-url";
 import { DESKTOP_HERO_FALLBACK_URL, MOBILE_HERO_URL } from "@/lib/home-lcp-urls";
 import { DeferredSpeedInsights } from "@/components/DeferredSpeedInsights";
+import { MetaPixelPurchaseTracker } from "@/components/MetaPixelPurchaseTracker";
 
 const notoSerifTC = Noto_Serif_TC({
   variable: "--font-noto-serif-tc",
@@ -29,6 +30,7 @@ const notoSansTC = Noto_Sans_TC({
 });
 
 const GA4_ID = "G-N9Q3MSMYG5";
+const META_PIXEL_ID = "3936828553285127";
 
 export const metadata: Metadata = {
   title: "T&J 客製化甜點 - 客製化手作甜點",
@@ -155,6 +157,30 @@ export default function RootLayout({
             gtag('config', '${GA4_ID}');
           `}
         </Script>
+        {/* Meta（Facebook）像素，全站僅在此處初始化，勿重複埋碼 */}
+        <Script id="meta-pixel" strategy="afterInteractive">
+          {`
+            !function(f,b,e,v,n,t,s)
+            {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+            n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+            if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+            n.queue=[];t=b.createElement(e);t.async=!0;
+            t.src=v;s=b.getElementsByTagName(e)[0];
+            s.parentNode.insertBefore(t,s)}(window, document,'script',
+            'https://connect.facebook.net/en_US/fbevents.js');
+            fbq('init', '${META_PIXEL_ID}');
+            fbq('track', 'PageView');
+          `}
+        </Script>
+        <noscript>
+          <img
+            height="1"
+            width="1"
+            style={{ display: "none" }}
+            src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
+            alt=""
+          />
+        </noscript>
         <Providers>
           <AuthProvider>
             <CartProvider>
@@ -162,6 +188,7 @@ export default function RootLayout({
               {children}
               <Footer />
               <DeferredSpeedInsights />
+              <MetaPixelPurchaseTracker />
             </CartProvider>
           </AuthProvider>
         </Providers>
