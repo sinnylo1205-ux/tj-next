@@ -1,48 +1,91 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, XCircle, ArrowLeft } from "lucide-react";
+import { CheckCircle, Clock, XCircle, ArrowLeft } from "lucide-react";
+import {
+  clearPendingCreditCardPayment,
+  getCreditCardReturnSignal,
+  readPendingCreditCardPayment,
+  waitForCreditCardOrderVerification,
+} from "@/lib/credit-card-payment-status";
 
 function PaymentResultPageContent() {
   const searchParams = useSearchParams();
-  const rtnCode = searchParams.get("RtnCode");
-  const rtnMsg = searchParams.get("RtnMsg");
-  const merchantTradeNo = searchParams.get("MerchantTradeNo");
-  const isSuccess = rtnCode === "1";
+  const [paymentStatus, setPaymentStatus] = useState<"checking" | "success" | "failed">("checking");
+  const [paymentMessage, setPaymentMessage] = useState("正在確認信用卡付款狀態。");
+  const isSuccess = paymentStatus === "success";
+
+  useEffect(() => {
+    let cancelled = false;
+    const returnSignal = getCreditCardReturnSignal(searchParams);
+
+    const confirmPayment = async () => {
+      if (returnSignal === "failed") {
+        setPaymentStatus("failed");
+        setPaymentMessage("信用卡付款未完成，訂單尚未進入處理中。");
+        clearPendingCreditCardPayment();
+        return;
+      }
+
+      if (returnSignal !== "success") {
+        setPaymentStatus("checking");
+        setPaymentMessage("請至會員中心確認最新訂單狀態。");
+        return;
+      }
+
+      const pendingPayment = readPendingCreditCardPayment();
+      if (!pendingPayment?.isFresh) {
+        setPaymentStatus("checking");
+        setPaymentMessage("已收到付款平台回傳，請至會員中心確認訂單狀態。");
+        clearPendingCreditCardPayment();
+        return;
+      }
+
+      const isVerified = await waitForCreditCardOrderVerification(pendingPayment.orderId);
+      if (cancelled) return;
+      clearPendingCreditCardPayment();
+      if (isVerified) {
+        setPaymentStatus("success");
+        setPaymentMessage("付款已確認，感謝您的訂購。");
+      } else {
+        setPaymentStatus("checking");
+        setPaymentMessage("付款結果尚未完成系統確認，請稍後至會員中心查看訂單狀態。");
+      }
+    };
+
+    confirmPayment();
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams]);
 
   return (
     <div className="min-h-[calc(100vh-64px)] py-12 bg-gradient-to-b from-background to-brand-50 flex items-center justify-center">
       <div className="container max-w-md">
         <Card className="text-center">
           <CardHeader className="pb-4">
-            {isSuccess ? (
+            {paymentStatus === "checking" ? (
+              <Clock className="mx-auto h-16 w-16 text-amber-500 mb-4" />
+            ) : isSuccess ? (
               <CheckCircle className="mx-auto h-16 w-16 text-green-500 mb-4" />
             ) : (
               <XCircle className="mx-auto h-16 w-16 text-destructive mb-4" />
             )}
             <CardTitle className="text-2xl">
-              {isSuccess ? "付款成功" : "付款失敗"}
+              {paymentStatus === "checking" ? "付款確認中" : isSuccess ? "付款成功" : "付款未完成"}
             </CardTitle>
             <CardDescription className="text-base">
-              {isSuccess
-                ? "感謝您的訂購，我們將盡快為您處理訂單"
-                : rtnMsg || "付款過程中發生錯誤，請稍後再試"}
+              {paymentMessage}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {merchantTradeNo && (
-              <div className="bg-muted/50 rounded-lg p-4">
-                <p className="text-sm text-muted-foreground">訂單編號</p>
-                <p className="text-lg font-mono font-semibold">#{merchantTradeNo.slice(0, 8).toUpperCase()}</p>
-              </div>
-            )}
             <div className="space-y-3">
               <Button className="w-full" asChild>
-                <Link href="/member?tab=processing">查看訂單</Link>
+                <Link href={isSuccess ? "/member?tab=processing" : "/member?tab=pending"}>查看訂單</Link>
               </Button>
               <Button variant="outline" className="w-full" asChild>
                 <Link href="/">
