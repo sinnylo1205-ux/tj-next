@@ -61,6 +61,11 @@ export function trackInitiateCheckout(items: CartLikeItem[], value: number) {
   });
 }
 
+/** 名單／詢問（LINE 加好友、洽詢點擊） */
+export function trackLead(params?: { content_name?: string }) {
+  trackMetaEvent("Lead", params);
+}
+
 /** 完成購買 */
 export function trackPurchase(params: { value: number; orderId?: string; contentIds?: string[] }) {
   trackMetaEvent("Purchase", {

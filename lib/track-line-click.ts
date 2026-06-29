@@ -1,3 +1,5 @@
+import { trackLead } from "@/lib/meta-pixel";
+
 /** GA4 自訂事件：全站 LINE 連結／按鈕點擊位置識別 */
 export type LineClickPosition =
   | "homepage"
@@ -15,11 +17,12 @@ declare global {
   }
 }
 
-/** 送出 GA4 `line_click` 事件（gtag 未載入時靜默略過） */
+/** 送出 GA4 `line_click` 與 Meta 像素 `Lead` 事件（追蹤工具未載入時靜默略過） */
 export function trackLineClick(position: LineClickPosition | string) {
   if (typeof window === "undefined") return;
   window.gtag?.("event", "line_click", {
     source: "website",
     position,
   });
+  trackLead({ content_name: position });
 }
