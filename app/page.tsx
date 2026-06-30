@@ -9,6 +9,12 @@ import ProgressiveImage from "@/components/ProgressiveImage";
 import { HomeSection1Mobile } from "@/components/home/HomeSection1Mobile";
 import { DESKTOP_HERO_FALLBACK_URL } from "@/lib/home-lcp-urls";
 import { trackLineClick } from "@/lib/track-line-click";
+import {
+  clearPendingCreditCardPayment,
+  getCreditCardReturnSignal,
+  readPendingCreditCardPayment,
+  waitForCreditCardOrderVerification,
+} from "@/lib/credit-card-payment-status";
 
 const HomePaymentResultDialog = dynamic(
   () => import("@/components/home/HomePaymentResultDialog").then((m) => m.HomePaymentResultDialog),
@@ -83,7 +89,7 @@ function HomePageContent() {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [showPaymentResult, setShowPaymentResult] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentStatus, setPaymentStatus] = useState<"checking" | "success" | "failed">("checking");
   const [paymentMessage, setPaymentMessage] = useState("");
 
   const DESIGN_WIDTH = 1680;
@@ -92,32 +98,57 @@ function HomePageContent() {
   /** 勿用 useSearchParams：會迫使外層 Suspense 長時間顯示 fallback，行動 LCP 變成「載入中…」 */
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let cancelled = false;
     const params = new URLSearchParams(window.location.search);
-    const rtnCode = params.get("RtnCode");
-    const rtnMsg = params.get("RtnMsg");
+    const returnSignal = getCreditCardReturnSignal(params);
 
-    if (rtnCode) {
-      const isSuccess = rtnCode === "1";
-      setPaymentSuccess(isSuccess);
-      setPaymentMessage(rtnMsg || (isSuccess ? "付款成功" : "付款失敗"));
-      setShowPaymentResult(true);
-      router.replace(pathname || "/");
-      localStorage.removeItem("last_creditcard_order_id");
-      localStorage.removeItem("last_creditcard_started_at");
-    } else {
-      const lastOrderId = localStorage.getItem("last_creditcard_order_id");
-      const startedAt = localStorage.getItem("last_creditcard_started_at");
-      if (lastOrderId && startedAt) {
-        const elapsed = Date.now() - parseInt(startedAt, 10);
-        if (elapsed < 30 * 60 * 1000) {
-          setPaymentSuccess(true);
-          setPaymentMessage("已完成信用卡付款流程");
-          setShowPaymentResult(true);
-        }
-        localStorage.removeItem("last_creditcard_order_id");
-        localStorage.removeItem("last_creditcard_started_at");
+    const confirmCreditCardReturn = async () => {
+      if (!returnSignal) {
+        const pendingPayment = readPendingCreditCardPayment();
+        if (pendingPayment && !pendingPayment.isFresh) clearPendingCreditCardPayment();
+        return;
       }
-    }
+
+      router.replace(pathname || "/");
+
+      if (returnSignal === "failed") {
+        setPaymentStatus("failed");
+        setPaymentMessage("信用卡付款未完成，訂單尚未進入處理中。");
+        setShowPaymentResult(true);
+        clearPendingCreditCardPayment();
+        return;
+      }
+
+      setPaymentStatus("checking");
+      setPaymentMessage("已收到付款平台回傳，正在確認訂單付款狀態。");
+      setShowPaymentResult(true);
+
+      const pendingPayment = readPendingCreditCardPayment();
+      if (!pendingPayment?.isFresh) {
+        if (!cancelled) {
+          setPaymentStatus("checking");
+          setPaymentMessage("已收到付款平台回傳，請至會員中心確認訂單狀態。");
+        }
+        clearPendingCreditCardPayment();
+        return;
+      }
+
+      const isVerified = await waitForCreditCardOrderVerification(pendingPayment.orderId);
+      if (cancelled) return;
+      clearPendingCreditCardPayment();
+      if (isVerified) {
+        setPaymentStatus("success");
+        setPaymentMessage("付款已確認，感謝您的訂購。");
+      } else {
+        setPaymentStatus("checking");
+        setPaymentMessage("付款結果尚未完成系統確認，請稍後至會員中心查看訂單狀態。");
+      }
+    };
+
+    confirmCreditCardReturn();
+    return () => {
+      cancelled = true;
+    };
   }, [pathname, router]);
 
   const handleLineClick = () => {
@@ -264,7 +295,7 @@ function HomePageContent() {
       <HomePaymentResultDialog
         open={showPaymentResult}
         onOpenChange={setShowPaymentResult}
-        paymentSuccess={paymentSuccess}
+        paymentStatus={paymentStatus}
         paymentMessage={paymentMessage}
       />
 
