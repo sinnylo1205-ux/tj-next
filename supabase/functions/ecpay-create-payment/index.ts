@@ -234,7 +234,7 @@ serve(async (req) => {
     const merchantTradeNo = orderIdClean + timestamp;
 
     // 從 request header 取得 origin（已驗證為白名單內）
-    // OrderResultURL 必須接受 POST（綠界以 POST 導回），改為專用 API 再由該 API 302 導向首頁帶 RtnCode/RtnMsg
+    // OrderResultURL 必須接受 POST（綠界以 POST 導回），專用 API 只帶返回訊號到首頁，前端再查訂單確認付款。
     const orderResultUrl = `${origin}/api/ecpay-order-result`;
     const clientBackUrl = `${origin}/`;
 
