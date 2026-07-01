@@ -14,6 +14,7 @@ import {
   isLikelyImageUrl,
 } from "@/lib/order-item-preview-images";
 import { cn } from "@/lib/utils";
+import { getCustomerSourceLabel } from "@/lib/customer-source";
 
 export type AdminOrderDetailOrder = {
   id: string;
@@ -30,6 +31,7 @@ export type AdminOrderDetailOrder = {
   total_amount: number;
   TAX_title?: string | null;
   TAX_id?: number | null;
+  customer_source?: string | null;
 };
 
 export type AdminOrderDetailItem = {
@@ -149,6 +151,10 @@ export function AdminOrderDetailPanel({
           <div>
             <span className="font-medium">配送方式：</span>
             {order.shipping_way || "未指定"}
+          </div>
+          <div>
+            <span className="font-medium">客戶來源：</span>
+            {getCustomerSourceLabel(order.customer_source)}
           </div>
           {order.transfer_last5 ? (
             <div>

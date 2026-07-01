@@ -524,6 +524,9 @@ export default function OrderPage() {
             <DialogDescription className="pt-4 space-y-3">
               <p>此品項目前沒有線上編輯器。</p>
               <p>請直接填寫報價單，或聯絡 LINE 官方客服，由專人為您服務。</p>
+              <p>報價範圍：六寸：* 寫字簡單 3000～4000元起，* 擬真模仿 6000 起，＊食品原料也可調整。</p>
+              <p>八寸：* 寫字簡單 5000～6000元起，* 擬真模仿 8000 起，＊食品原料也可調整。</p>
+              <p>如果預算可接受，歡迎點擊Line 選單的報價單，並附上您希望我們製作的蛋糕參考圖。</p>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4">

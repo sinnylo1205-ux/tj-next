@@ -28,6 +28,7 @@ import type { CartItem } from "@/contexts/CartContext";
 import { trackLineClick } from "@/lib/track-line-click";
 import { trackInitiateCheckout } from "@/lib/meta-pixel";
 import { ga4BeginCheckout } from "@/lib/ga4";
+import { CUSTOMER_SOURCE_OPTIONS, type CustomerSource } from "@/lib/customer-source";
 
 const CHECKOUT_SELECTED_KEY = "tj_checkout_selected";
 
@@ -84,6 +85,8 @@ export default function CheckoutPage() {
   const [phoneError, setPhoneError] = useState("");
   const [addressError, setAddressError] = useState("");
   const [shippingMethodError, setShippingMethodError] = useState("");
+  const [customerSource, setCustomerSource] = useState<CustomerSource | "">("");
+  const [customerSourceError, setCustomerSourceError] = useState("");
   const [checkoutData, setCheckoutData] = useState<{
     subtotal: number;
     shipping_fee: number;
@@ -292,6 +295,10 @@ export default function CheckoutPage() {
       setShippingMethodError("此日期不支援該配送方式");
       hasError = true;
     } else setShippingMethodError("");
+    if (!customerSource) {
+      setCustomerSourceError("請選擇您是如何認識我們的");
+      hasError = true;
+    } else setCustomerSourceError("");
     if (hasError) {
       toast({ title: "❌ 請填寫完整資訊", description: "請確認所有必填欄位已正確填寫", variant: "destructive" });
       return;
@@ -316,6 +323,7 @@ export default function CheckoutPage() {
           Email: email || null,
           TAX_title: taxTitle || null,
           TAX_id: taxId ? parseInt(taxId) : null,
+          customer_source: customerSource,
         })
         .select()
         .single();
@@ -613,6 +621,29 @@ export default function CheckoutPage() {
                   )}
                 </RadioGroup>
                 {shippingMethodError && <p className="text-sm text-destructive mt-2">{shippingMethodError}</p>}
+              </CardContent>
+            </Card>
+
+            <Card className={customerSourceError ? "border-destructive" : ""}>
+              <CardHeader>
+                <CardTitle>如何認識我們？ *</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <RadioGroup
+                  value={customerSource}
+                  onValueChange={(value) => {
+                    setCustomerSource(value as CustomerSource);
+                    setCustomerSourceError("");
+                  }}
+                >
+                  {CUSTOMER_SOURCE_OPTIONS.map((option) => (
+                    <div key={option.value} className="flex items-center space-x-2">
+                      <RadioGroupItem value={option.value} id={`source-${option.value}`} />
+                      <Label htmlFor={`source-${option.value}`}>{option.label}</Label>
+                    </div>
+                  ))}
+                </RadioGroup>
+                {customerSourceError && <p className="text-sm text-destructive mt-2">{customerSourceError}</p>}
               </CardContent>
             </Card>
 

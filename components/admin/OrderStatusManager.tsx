@@ -66,6 +66,8 @@ interface Order {
   payment_status?: string | null;
   /** 客戶類型：general | flash_ip | pr_agent | company_self */
   customer_type?: string | null;
+  /** 結帳頁客戶來源調查 */
+  customer_source?: string | null;
   /** 歷史／手動單可能寫入；後台「訂購人」顯示一律依 user_id 查 user_log_in.name */
   orderer_name?: string | null;
   /** 管理員補傳之訂單／合成圖 URL 陣列 */
