@@ -36,6 +36,12 @@ import {
 import { CREDIT_CARD_ENABLED_FOR_ALL } from "@/lib/site";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import { savePurchaseSnapshot } from "@/lib/purchase-snapshot";
+import {
+  clearPendingCreditCardPayment,
+  readPendingCreditCardPayment,
+  savePendingCreditCardPayment,
+  waitForCreditCardOrderVerification,
+} from "@/lib/credit-card-payment-status";
 import { Skeleton } from "@/components/ui/skeleton";
 
 interface Order {
@@ -94,6 +100,7 @@ function MemberPageContent() {
   const [productNames, setProductNames] = useState<Record<string, string>>({});
   const [countdowns, setCountdowns] = useState<Record<string, number>>({});
   const hasScheduledExpiredRefetch = useRef(false);
+  const creditCardCheckInFlightRef = useRef(false);
 
   const formatCountdown = (ms: number) => {
     if (!ms || ms <= 0) return "已逾時";
@@ -274,8 +281,7 @@ function MemberPageContent() {
         return;
       }
       await savePurchaseSnapshotForOrder(selectedOrder);
-      localStorage.setItem("last_creditcard_order_id", selectedOrder.id);
-      localStorage.setItem("last_creditcard_started_at", String(Date.now()));
+      savePendingCreditCardPayment(selectedOrder.id);
       const container = document.createElement("div");
       container.innerHTML = data.html;
       document.body.appendChild(container);
@@ -290,36 +296,45 @@ function MemberPageContent() {
     }
   };
 
+  const refreshAfterPossibleCreditCardReturn = useCallback(async () => {
+    if (!user || creditCardCheckInFlightRef.current) return;
+    const pendingPayment = readPendingCreditCardPayment();
+    if (!pendingPayment) {
+      loadOrders();
+      return;
+    }
+
+    creditCardCheckInFlightRef.current = true;
+    try {
+      if (!pendingPayment.isFresh) {
+        clearPendingCreditCardPayment();
+        await loadOrders();
+        return;
+      }
+
+      const isVerified = await waitForCreditCardOrderVerification(pendingPayment.orderId, {
+        attempts: 3,
+        delayMs: 1000,
+      });
+      await loadOrders();
+      clearPendingCreditCardPayment();
+      if (isVerified) {
+        setActiveTab("processing");
+        toast({ title: "訂單狀態已更新", description: "請查看「處理中」分頁確認訂單" });
+      }
+    } finally {
+      creditCardCheckInFlightRef.current = false;
+    }
+  }, [user, toast, loadOrders]);
+
   useEffect(() => {
-    const handleVisibilityChange = async () => {
-      if (document.visibilityState === "visible" && user) {
-        const lastOrderId = localStorage.getItem("last_creditcard_order_id");
-        const lastStartedAt = localStorage.getItem("last_creditcard_started_at");
-        if (lastOrderId && lastStartedAt && Date.now() - Number(lastStartedAt) < 30 * 60 * 1000) {
-          await loadOrders();
-          setActiveTab("processing");
-          toast({ title: "訂單狀態已更新", description: "請查看「處理中」分頁確認訂單" });
-          localStorage.removeItem("last_creditcard_order_id");
-          localStorage.removeItem("last_creditcard_started_at");
-          return;
-        }
-        loadOrders();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        refreshAfterPossibleCreditCardReturn();
       }
     };
-    const handleFocus = async () => {
-      if (user) {
-        const lastOrderId = localStorage.getItem("last_creditcard_order_id");
-        const lastStartedAt = localStorage.getItem("last_creditcard_started_at");
-        if (lastOrderId && lastStartedAt && Date.now() - Number(lastStartedAt) < 30 * 60 * 1000) {
-          await loadOrders();
-          setActiveTab("processing");
-          toast({ title: "訂單狀態已更新", description: "請查看「處理中」分頁確認訂單" });
-          localStorage.removeItem("last_creditcard_order_id");
-          localStorage.removeItem("last_creditcard_started_at");
-          return;
-        }
-        loadOrders();
-      }
+    const handleFocus = () => {
+      refreshAfterPossibleCreditCardReturn();
     };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     window.addEventListener("focus", handleFocus);
@@ -327,7 +342,7 @@ function MemberPageContent() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleFocus);
     };
-  }, [user, toast, loadOrders]);
+  }, [refreshAfterPossibleCreditCardReturn]);
 
   const getFilteredOrders = () => {
     switch (activeTab) {
