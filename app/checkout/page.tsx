@@ -29,6 +29,7 @@ import { trackLineClick } from "@/lib/track-line-click";
 import { trackInitiateCheckout } from "@/lib/meta-pixel";
 import { ga4BeginCheckout } from "@/lib/ga4";
 import { CUSTOMER_SOURCE_OPTIONS, type CustomerSource } from "@/lib/customer-source";
+import { cn } from "@/lib/utils";
 
 const CHECKOUT_SELECTED_KEY = "tj_checkout_selected";
 
@@ -624,29 +625,6 @@ export default function CheckoutPage() {
               </CardContent>
             </Card>
 
-            <Card className={customerSourceError ? "border-destructive" : ""}>
-              <CardHeader>
-                <CardTitle>如何認識我們？ *</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <RadioGroup
-                  value={customerSource}
-                  onValueChange={(value) => {
-                    setCustomerSource(value as CustomerSource);
-                    setCustomerSourceError("");
-                  }}
-                >
-                  {CUSTOMER_SOURCE_OPTIONS.map((option) => (
-                    <div key={option.value} className="flex items-center space-x-2">
-                      <RadioGroupItem value={option.value} id={`source-${option.value}`} />
-                      <Label htmlFor={`source-${option.value}`}>{option.label}</Label>
-                    </div>
-                  ))}
-                </RadioGroup>
-                {customerSourceError && <p className="text-sm text-destructive mt-2">{customerSourceError}</p>}
-              </CardContent>
-            </Card>
-
             <Card>
               <CardHeader>
                 <CardTitle>備註</CardTitle>
@@ -732,6 +710,40 @@ export default function CheckoutPage() {
                   </div>
                 </div>
                 {minOrderError && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded">{minOrderError}</div>}
+              </CardContent>
+            </Card>
+
+            <Card className={customerSourceError ? "border-destructive" : ""}>
+              <CardHeader>
+                <CardTitle>如何認識我們？ *</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-3" role="radiogroup" aria-label="如何認識我們">
+                  {CUSTOMER_SOURCE_OPTIONS.map((option) => {
+                    const selected = customerSource === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => {
+                          setCustomerSource(option.value);
+                          setCustomerSourceError("");
+                        }}
+                        className={cn(
+                          "min-h-[3.5rem] rounded-lg border-2 px-3 py-3 text-base font-medium leading-snug transition-colors",
+                          selected
+                            ? "border-[hsl(var(--color-brand-500))] bg-[hsl(var(--color-brand-50))] text-foreground shadow-sm"
+                            : "border-border bg-background text-foreground hover:border-[hsl(var(--color-brand-300))] hover:bg-[hsl(var(--color-brand-100))]",
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {customerSourceError && <p className="text-sm text-destructive mt-3">{customerSourceError}</p>}
               </CardContent>
             </Card>
 
