@@ -30,7 +30,7 @@ import {
   buildMonthlyReportPayload,
   buildYearlyReportPayload,
   canonicalPopularProductName,
-  customerTypeDisplayLabel as labelForCustomerType,
+  customerTypeDisplayLabel,
   REVENUE_PAYMENT_STEP,
   type MonthlyReportPayload,
   type YearlyReportPayload,
@@ -102,8 +102,13 @@ const CUSTOMER_TYPE_PIE_FILL: Record<string, string> = {
   "公關公司／福委會": "hsl(var(--color-brand-500))",
 };
 
+const ORDER_CHANNEL_PIE_FILL: Record<string, string> = {
+  網站自行下單: "hsl(var(--primary))",
+  手動建立: "hsl(var(--color-brand-500))",
+};
+
 function pieColorForName(name: string): string {
-  const fill = CUSTOMER_TYPE_PIE_FILL[name];
+  const fill = CUSTOMER_TYPE_PIE_FILL[name] ?? ORDER_CHANNEL_PIE_FILL[name];
   if (fill) return fill;
   let h = 0;
   for (let i = 0; i < name.length; i++) h = (h + name.charCodeAt(i)) % BRAND_SLICE_FALLBACK_FILLS.length;
@@ -131,8 +136,13 @@ const AdminDashboard = () => {
   const [popularPeriod, setPopularPeriod] = useState<"month" | "year">("year");
   const [popularMonth, setPopularMonth] = useState(() => new Date().getMonth() + 1);
   const [customerTypePieData, setCustomerTypePieData] = useState<CustomerTypePieSlice[]>([]);
+  const [orderChannelPieData, setOrderChannelPieData] = useState<CustomerTypePieSlice[]>([]);
   const [monthlyReport, setMonthlyReport] = useState<MonthlyReportPayload | null>(null);
   const [yearlyReport, setYearlyReport] = useState<YearlyReportPayload | null>(null);
+  const [monthlyReportYear, setMonthlyReportYear] = useState(() => new Date().getFullYear());
+  const [monthlyReportMonth, setMonthlyReportMonth] = useState(() => new Date().getMonth() + 1);
+  const [yearlyReportYear, setYearlyReportYear] = useState(() => new Date().getFullYear());
+  const [reportLoading, setReportLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [revenueDetailOpen, setRevenueDetailOpen] = useState(false);
@@ -147,8 +157,17 @@ const AdminDashboard = () => {
   }, [selectedYear, tagPeriod, tagMonth, popularPeriod, popularMonth]);
 
   useEffect(() => {
+    void loadReportSummaries();
+  }, [monthlyReportYear, monthlyReportMonth, yearlyReportYear]);
+
+  useEffect(() => {
     setRevenueHalfYear(1);
   }, [selectedYear]);
+
+  const reportYearOptions = useMemo(() => {
+    const y = new Date().getFullYear();
+    return Array.from({ length: y - 2019 }, (_, i) => y - i);
+  }, []);
 
   const loadDashboardData = async () => {
     setLoading(true);
@@ -157,20 +176,16 @@ const AdminDashboard = () => {
       loadPopularProducts(),
       loadOrderCountData(),
       loadCustomerTypeCharts(),
-      loadReportSummaries(),
     ]);
     setLoading(false);
   };
 
-  /** 月度＝行事曆當月；年度＝上方選擇之年份（與 cron JSON 結構一致） */
   const loadReportSummaries = async () => {
+    setReportLoading(true);
     try {
-      const cal = new Date();
-      const cy = cal.getFullYear();
-      const cm = cal.getMonth() + 1;
       const [monthly, yearly] = await Promise.all([
-        buildMonthlyReportPayload(supabase, cy, cm),
-        buildYearlyReportPayload(supabase, selectedYear),
+        buildMonthlyReportPayload(supabase, monthlyReportYear, monthlyReportMonth),
+        buildYearlyReportPayload(supabase, yearlyReportYear),
       ]);
       setMonthlyReport(monthly);
       setYearlyReport(yearly);
@@ -178,6 +193,8 @@ const AdminDashboard = () => {
       console.error("loadReportSummaries:", err);
       setMonthlyReport(null);
       setYearlyReport(null);
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -195,7 +212,7 @@ const AdminDashboard = () => {
 
     const { data: orders, error } = await supabase
       .from("orders")
-      .select("customer_type, total_amount, payment_step")
+      .select("customer_type, total_amount, payment_step, is_manual_order")
       .in("order_status", [...CUSTOMER_TYPE_PIE_STATUSES])
       .gte("created_at", rangeStart.toISOString())
       .lte("created_at", rangeEnd.toISOString());
@@ -203,6 +220,7 @@ const AdminDashboard = () => {
     if (error) {
       console.error("Error loading customer type stats:", error);
       setCustomerTypePieData([]);
+      setOrderChannelPieData([]);
       return;
     }
 
@@ -212,7 +230,7 @@ const AdminDashboard = () => {
 
     (orders || []).forEach((row) => {
       const key = row.customer_type?.trim() || "";
-      const label = labelForCustomerType(key || null);
+      const label = customerTypeDisplayLabel(key || null);
 
       countMap.set(label, (countMap.get(label) ?? 0) + 1);
 
@@ -232,6 +250,51 @@ const AdminDashboard = () => {
 
     slices.sort((a, b) => b.value - a.value);
     setCustomerTypePieData(slices);
+
+    let manualCount = 0;
+    let websiteCount = 0;
+    let manualRevenue = 0;
+    let websiteRevenue = 0;
+    let manualVerified = 0;
+    let websiteVerified = 0;
+
+    (orders || []).forEach((row) => {
+      const isManual = Boolean(row.is_manual_order);
+      const amt = Number(row.total_amount ?? 0);
+      const verified = row.payment_step === REVENUE_PAYMENT_STEP;
+      if (isManual) {
+        manualCount += 1;
+        if (verified) {
+          manualRevenue += amt;
+          manualVerified += 1;
+        }
+      } else {
+        websiteCount += 1;
+        if (verified) {
+          websiteRevenue += amt;
+          websiteVerified += 1;
+        }
+      }
+    });
+
+    const channelSlices: CustomerTypePieSlice[] = [
+      {
+        name: "網站自行下單",
+        value: websiteCount,
+        revenue: websiteRevenue,
+        aov: websiteVerified > 0 ? Math.round(websiteRevenue / websiteVerified) : 0,
+        key: "website",
+      },
+      {
+        name: "手動建立",
+        value: manualCount,
+        revenue: manualRevenue,
+        aov: manualVerified > 0 ? Math.round(manualRevenue / manualVerified) : 0,
+        key: "manual",
+      },
+    ];
+
+    setOrderChannelPieData(manualCount + websiteCount > 0 ? channelSlices : []);
   };
 
   // 月營收長條：同 cohort（處理中／出貨中／已送達）拆成總額、已確認到帳、尚未確認金額
@@ -693,15 +756,15 @@ const AdminDashboard = () => {
         </Card>
       </div>
 
-      {/* 第三列：客戶類型分析（單獨一列，避免圓餅與標籤被裁切） */}
-      <div className="grid grid-cols-1 gap-6">
+      {/* 第三列：客戶類型 + 下單管道圓餅 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card className="min-w-0 overflow-visible">
           <CardHeader className="space-y-3 pb-2">
             <CardTitle className="text-lg leading-snug">
               {tagPeriod === "month" ? "當月客戶類型分析" : "當年客戶類型分析"}
             </CardTitle>
             <p className="text-xs text-muted-foreground font-normal">
-              扇形依各類型訂單筆數；% 為筆數占比。標籤上的「營收」僅計已確認到帳之訂單；「客單價」＝該類型實收營收 ÷ 已確認到帳筆數。訂單狀態含待付款／處理中／已出貨／已送達（不含已取消、退貨）
+              扇形依各類型（customer_type）訂單筆數；% 為筆數占比。手動／網站占比請看右側「下單管道」。標籤「營收」僅計已確認到帳；「客單價」＝該類型實收 ÷ 已確認到帳筆數。狀態含待付款／處理中／已出貨／已送達（不含已取消、退貨）
               {tagPeriod === "month"
                 ? ` · ${selectedYear}年${tagMonth}月`
                 : ` · ${selectedYear}年`}
@@ -752,7 +815,7 @@ const AdminDashboard = () => {
                 此期間尚無符合條件之訂單（請確認年月、或訂單是否為待付款／處理中／已出貨／已送達）
               </p>
             ) : (
-              <div className="h-[min(560px,82vh)] min-h-[440px] w-full max-w-5xl mx-auto">
+              <div className="h-[min(560px,82vh)] min-h-[440px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart margin={{ top: 28, right: 36, bottom: 80, left: 36 }}>
                     <Pie
@@ -843,23 +906,170 @@ const AdminDashboard = () => {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="min-w-0 overflow-visible">
+          <CardHeader className="space-y-3 pb-2">
+            <CardTitle className="text-lg leading-snug">
+              {tagPeriod === "month" ? "當月下單管道" : "當年下單管道"}
+            </CardTitle>
+            <p className="text-xs text-muted-foreground font-normal">
+              手動建立（後台建單）vs 網站會員自行下單。統計範圍與左側客戶類型圓餅相同
+              {tagPeriod === "month"
+                ? ` · ${selectedYear}年${tagMonth}月`
+                : ` · ${selectedYear}年`}
+            </p>
+          </CardHeader>
+          <CardContent className="overflow-visible pb-8">
+            {orderChannelPieData.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-12 text-center px-2">
+                此期間尚無符合條件之訂單
+              </p>
+            ) : (
+              <div className="h-[min(560px,82vh)] min-h-[440px] w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart margin={{ top: 28, right: 36, bottom: 80, left: 36 }}>
+                    <Pie
+                      data={orderChannelPieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="47%"
+                      innerRadius="16%"
+                      outerRadius="58%"
+                      paddingAngle={2}
+                      labelLine={false}
+                      label={(props: {
+                        x?: number;
+                        y?: number;
+                        textAnchor?: string;
+                        payload?: CustomerTypePieSlice;
+                        percent?: number;
+                      }) => {
+                        const p = props.payload as CustomerTypePieSlice;
+                        const pct = ((props.percent ?? 0) * 100).toFixed(0);
+                        const x = props.x ?? 0;
+                        const y = props.y ?? 0;
+                        const anchor = (props.textAnchor as "start" | "end" | "middle") ?? "middle";
+                        const line1 = `${p.name} ${pct}%`;
+                        const line2 = `營收 NT$${p.revenue.toLocaleString()}`;
+                        const line3 = `客單 NT$${p.aov.toLocaleString()}`;
+                        const cPrimary = "hsl(var(--primary))";
+                        const cDeep = "hsl(var(--color-brand-600))";
+                        const cMid = "hsl(var(--color-brand-500))";
+                        return (
+                          <text
+                            x={x}
+                            y={y}
+                            textAnchor={anchor}
+                            dominantBaseline="central"
+                            fontSize={14}
+                            fontWeight={500}
+                          >
+                            <tspan x={x} dy="-1.05em" fill={cPrimary}>
+                              {line1}
+                            </tspan>
+                            <tspan x={x} dy="1.15em" fill={cDeep}>
+                              {line2}
+                            </tspan>
+                            <tspan x={x} dy="1.15em" fill={cMid}>
+                              {line3}
+                            </tspan>
+                          </text>
+                        );
+                      }}
+                    >
+                      {orderChannelPieData.map((entry) => (
+                        <Cell key={entry.key} fill={pieColorForName(entry.name)} />
+                      ))}
+                    </Pie>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.length) return null;
+                        const p = payload[0].payload as CustomerTypePieSlice;
+                        return (
+                          <div className="rounded-md border border-border bg-card px-3 py-2 text-sm shadow-md">
+                            <div className="font-semibold mb-1 text-[hsl(var(--primary))]">{p.name}</div>
+                            <div className="text-[hsl(var(--color-brand-600))]">訂單 {p.value} 筆</div>
+                            <div className="text-[hsl(var(--color-brand-600))]">營收 NT$ {p.revenue.toLocaleString()}</div>
+                            <div className="text-[hsl(var(--color-brand-500))]">
+                              客單價 NT$ {p.aov.toLocaleString()}（實收營收 ÷ 已確認到帳筆數）
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
+                    <Legend
+                      layout="horizontal"
+                      verticalAlign="bottom"
+                      align="center"
+                      wrapperStyle={{
+                        fontSize: 13,
+                        paddingTop: 12,
+                        color: "hsl(var(--primary))",
+                        fontWeight: 500,
+                      }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card
             className={cn(
               "overflow-hidden border-2 shadow-sm",
               "border-[hsl(var(--primary)/0.35)] bg-card",
             )}
           >
-            <CardHeader className="space-y-1 border-b border-[hsl(var(--primary)/0.2)] bg-[hsl(var(--primary)/0.06)] pb-4">
+            <CardHeader className="space-y-3 border-b border-[hsl(var(--primary)/0.2)] bg-[hsl(var(--primary)/0.06)] pb-4">
               <CardTitle className="text-xl md:text-2xl font-semibold tracking-tight text-[hsl(var(--primary))]">
                 月度報告
+                {monthlyReport ? (
+                  <span className="text-base font-medium text-muted-foreground ml-2">
+                    {monthlyReport.year}年{monthlyReport.month}月
+                  </span>
+                ) : null}
               </CardTitle>
               <p className="text-sm text-muted-foreground font-normal leading-relaxed">
-                統計區間為行事曆當月（與排程 webhook 月度 JSON 欄位一致）
+                依所選年月統計（與排程 webhook 月度 JSON 欄位一致）
               </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <select
+                  className={cn(
+                    "h-9 rounded-md border border-input bg-background px-2 text-sm min-w-[6rem]",
+                  )}
+                  value={monthlyReportYear}
+                  onChange={(e) => setMonthlyReportYear(Number(e.target.value))}
+                  aria-label="月度報告年份"
+                >
+                  {reportYearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y} 年
+                    </option>
+                  ))}
+                </select>
+                <select
+                  className={cn(
+                    "h-9 rounded-md border border-input bg-background px-2 text-sm min-w-[5rem]",
+                  )}
+                  value={monthlyReportMonth}
+                  onChange={(e) => setMonthlyReportMonth(Number(e.target.value))}
+                  aria-label="月度報告月份"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                    <option key={m} value={m}>
+                      {m} 月
+                    </option>
+                  ))}
+                </select>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 p-5 md:p-6">
-              {!monthlyReport ? (
+              {reportLoading ? (
+                <p className="text-muted-foreground text-base py-8 text-center">載入中…</p>
+              ) : !monthlyReport ? (
                 <p className="text-muted-foreground text-base">無法載入（請確認權限或稍後再試）</p>
               ) : (
                 <>
@@ -869,8 +1079,10 @@ const AdminDashboard = () => {
                       "p-4 shadow-[inset_0_1px_0_0_hsl(var(--primary)/0.08)]",
                     )}
                   >
-                    <div className="text-sm md:text-base font-medium text-foreground/80">1. 當月收入（NT$）</div>
-                    <p className="mt-1 text-xs text-muted-foreground">實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸月（與上方營收長條邏輯一致）</p>
+                    <div className="text-sm md:text-base font-medium text-foreground/80">1. 月收入（NT$）</div>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {monthlyReport.year}年{monthlyReport.month}月 · 實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸月
+                    </p>
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {monthlyReport.revenue_ntd.toLocaleString()}
                     </p>
@@ -881,6 +1093,15 @@ const AdminDashboard = () => {
                       </span>{" "}
                       元
                     </p>
+                    <p className="mt-2 text-sm md:text-base text-muted-foreground">
+                      客單價（已確認到帳）：{" "}
+                      <span className="font-semibold text-foreground/80 tabular-nums">
+                        NT$ {monthlyReport.aov_verified_ntd.toLocaleString()}
+                      </span>
+                      <span className="text-xs ml-1">
+                        （實收 ÷ {monthlyReport.verified_order_count} 筆；處理中／出貨中／已送達且已確認到帳）
+                      </span>
+                    </p>
                   </div>
                   <div
                     className={cn(
@@ -888,7 +1109,7 @@ const AdminDashboard = () => {
                       "p-4 shadow-[inset_0_1px_0_0_hsl(var(--primary)/0.08)]",
                     )}
                   >
-                    <div className="text-sm md:text-base font-medium text-foreground/80">2. 當月訂單筆數</div>
+                    <div className="text-sm md:text-base font-medium text-foreground/80">2. 訂單筆數</div>
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {monthlyReport.order_count}
                       <span className="text-lg md:text-xl font-semibold ml-1.5">筆</span>
@@ -912,7 +1133,7 @@ const AdminDashboard = () => {
                       "p-4 shadow-[inset_0_1px_0_0_hsl(var(--primary)/0.08)]",
                     )}
                   >
-                    <div className="text-sm md:text-base font-medium text-foreground/80">3. 當月商品熱銷第一名</div>
+                    <div className="text-sm md:text-base font-medium text-foreground/80">3. 商品熱銷第一名</div>
                     <p className="mt-2 text-lg md:text-xl font-bold leading-snug text-[hsl(var(--primary))]">
                       {monthlyReport.top_product_name ?? "—"}
                     </p>
@@ -928,16 +1149,37 @@ const AdminDashboard = () => {
               "border-[hsl(var(--primary)/0.35)] bg-card",
             )}
           >
-            <CardHeader className="space-y-1 border-b border-[hsl(var(--primary)/0.2)] bg-[hsl(var(--primary)/0.06)] pb-4">
+            <CardHeader className="space-y-3 border-b border-[hsl(var(--primary)/0.2)] bg-[hsl(var(--primary)/0.06)] pb-4">
               <CardTitle className="text-xl md:text-2xl font-semibold tracking-tight text-[hsl(var(--primary))]">
                 年度報告
+                {yearlyReport ? (
+                  <span className="text-base font-medium text-muted-foreground ml-2">{yearlyReport.year} 年</span>
+                ) : null}
               </CardTitle>
               <p className="text-sm text-muted-foreground font-normal leading-relaxed">
-                統計區間為上方選擇之 {selectedYear} 年（與排程 webhook 年度 JSON 一致）
+                依所選年份統計（與排程 webhook 年度 JSON 一致）
               </p>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <select
+                  className={cn(
+                    "h-9 rounded-md border border-input bg-background px-2 text-sm min-w-[6rem]",
+                  )}
+                  value={yearlyReportYear}
+                  onChange={(e) => setYearlyReportYear(Number(e.target.value))}
+                  aria-label="年度報告年份"
+                >
+                  {reportYearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y} 年
+                    </option>
+                  ))}
+                </select>
+              </div>
             </CardHeader>
             <CardContent className="space-y-4 p-5 md:p-6">
-              {!yearlyReport ? (
+              {reportLoading ? (
+                <p className="text-muted-foreground text-base py-8 text-center">載入中…</p>
+              ) : !yearlyReport ? (
                 <p className="text-muted-foreground text-base">無法載入（請確認權限或稍後再試）</p>
               ) : (
                 <>
@@ -948,7 +1190,9 @@ const AdminDashboard = () => {
                     )}
                   >
                     <div className="text-sm md:text-base font-medium text-foreground/80">1. 全年收入（NT$）</div>
-                    <p className="mt-1 text-xs text-muted-foreground">實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸屬該年各月後加總</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {yearlyReport.year}年 · 實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸屬該年
+                    </p>
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {yearlyReport.revenue_ntd.toLocaleString()}
                     </p>
@@ -958,6 +1202,15 @@ const AdminDashboard = () => {
                         NT$ {yearlyReport.revenue_incl_unpaid_ntd.toLocaleString()}
                       </span>{" "}
                       元
+                    </p>
+                    <p className="mt-2 text-sm md:text-base text-muted-foreground">
+                      客單價（已確認到帳）：{" "}
+                      <span className="font-semibold text-foreground/80 tabular-nums">
+                        NT$ {yearlyReport.aov_verified_ntd.toLocaleString()}
+                      </span>
+                      <span className="text-xs ml-1">
+                        （實收 ÷ {yearlyReport.verified_order_count} 筆；處理中／出貨中／已送達且已確認到帳）
+                      </span>
                     </p>
                   </div>
                   <div
@@ -1009,7 +1262,6 @@ const AdminDashboard = () => {
             </CardContent>
           </Card>
         </div>
-      </div>
 
       <Dialog open={revenueDetailOpen} onOpenChange={setRevenueDetailOpen}>
         <DialogContent className="flex max-h-[88vh] max-w-lg flex-col gap-0 overflow-hidden border-[hsl(var(--primary)/0.35)] p-0 sm:max-w-lg">

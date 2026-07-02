@@ -1,16 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateCrmInsights, type CrmInsights } from "./crm-customer-insights-ai";
+import { fetchCrmOrdersForLineUser } from "./crm-order-attribution";
 
 /** 視為「有效訂單」的狀態（與 customer_360 / 單人洞察一致） */
 const VALID_ORDER_STATUSES = ["processing", "shipped", "delivered"];
-
-type OrderRow = {
-  id: string;
-  total_amount: number | null;
-  expected_pickup_date: string | null;
-  order_status: string | null;
-  payment_step: string | null;
-};
 
 type LogRow = {
   id: string;
@@ -36,24 +29,8 @@ export async function gatherCustomerContext(
   supabase: SupabaseClient,
   lineUserId: string,
 ): Promise<CustomerContext> {
-  const { data: userRows } = await supabase.from("user_log_in").select("id").eq("line_user_id", lineUserId);
-  const userIds = (userRows ?? []).map((r) => r.id as string);
-
-  const [ordersByLineRes, ordersByUserRes, logsRes] = await Promise.all([
-    supabase
-      .from("orders")
-      .select("id,total_amount,expected_pickup_date,order_status,payment_step")
-      .eq("line_user_id", lineUserId)
-      .order("created_at", { ascending: false })
-      .limit(120),
-    userIds.length > 0
-      ? supabase
-          .from("orders")
-          .select("id,total_amount,expected_pickup_date,order_status,payment_step")
-          .in("user_id", userIds)
-          .order("created_at", { ascending: false })
-          .limit(120)
-      : Promise.resolve({ data: [] as OrderRow[], error: null }),
+  const [mergedOrders, logsRes] = await Promise.all([
+    fetchCrmOrdersForLineUser(supabase, lineUserId, { limit: 120 }),
     supabase
       .from("line_log")
       .select("id,received_at,user_text,ai_reply,admin_reply")
@@ -62,11 +39,7 @@ export async function gatherCustomerContext(
       .limit(80),
   ]);
 
-  const dedup = new Map<string, OrderRow>();
-  [...((ordersByLineRes.data as OrderRow[]) ?? []), ...((ordersByUserRes.data as OrderRow[]) ?? [])].forEach((o) =>
-    dedup.set(o.id, o),
-  );
-  const validOrders = Array.from(dedup.values()).filter(
+  const validOrders = mergedOrders.filter(
     (o) =>
       VALID_ORDER_STATUSES.includes(String(o.order_status ?? "")) && String(o.payment_step ?? "") === "verified",
   );

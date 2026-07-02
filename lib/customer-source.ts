@@ -2,6 +2,8 @@
 export const CUSTOMER_SOURCE_OPTIONS = [
   { value: "facebook", label: "Facebook" },
   { value: "instagram", label: "Instagram" },
+  { value: "facebook_ads", label: "FB廣告" },
+  { value: "instagram_ads", label: "IG廣告" },
   { value: "threads", label: "Threads" },
   { value: "google", label: "Google 搜尋" },
   { value: "referral", label: "親友介紹" },

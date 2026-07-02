@@ -16,6 +16,10 @@ import {
 } from "@/lib/line-customer-tags";
 import { cn } from "@/lib/utils";
 import AdminCrmAnalysisPanel from "./AdminCrmAnalysisPanel";
+import AdminOrderCustomersPanel from "./AdminOrderCustomersPanel";
+import { fetchCrmOrdersForLineUser } from "@/lib/crm-order-attribution";
+
+type CrmView = "line-crm" | "line-analysis" | "order-customers";
 
 const LINE_LOG_POLL_MS = 12_000;
 
@@ -124,7 +128,7 @@ export default function AdminCrmPanel() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
   const [mobileTab, setMobileTab] = useState(0);
-  const [crmView, setCrmView] = useState<"crm" | "analysis">("crm");
+  const [crmView, setCrmView] = useState<CrmView>("line-crm");
 
   const goToTab = useCallback((index: number) => {
     setMobileTab(index);
@@ -135,7 +139,16 @@ export default function AdminCrmPanel() {
   const handleSelectFromAnalysis = useCallback(
     (lineUserId: string) => {
       setSelectedLineUserId(lineUserId);
-      setCrmView("crm");
+      setCrmView("line-crm");
+      goToTab(1);
+    },
+    [goToTab],
+  );
+
+  const handleOpenLineCustomer = useCallback(
+    (lineUserId: string) => {
+      setSelectedLineUserId(lineUserId);
+      setCrmView("line-crm");
       goToTab(1);
     },
     [goToTab],
@@ -238,28 +251,7 @@ export default function AdminCrmPanel() {
     async (lineUserId: string) => {
       setOrderFactsLoading(true);
       try {
-        const { data: users } = await supabase.from("user_log_in").select("id").eq("line_user_id", lineUserId);
-        const userIds = (users ?? []).map((u) => u.id);
-
-        const byLine = await supabase
-          .from("orders")
-          .select("id,created_at,expected_pickup_date,total_amount,order_status,payment_step")
-          .eq("line_user_id", lineUserId)
-          .order("created_at", { ascending: false })
-          .limit(60);
-        const byUser =
-          userIds.length > 0
-            ? await supabase
-                .from("orders")
-                .select("id,created_at,expected_pickup_date,total_amount,order_status,payment_step")
-                .in("user_id", userIds)
-                .order("created_at", { ascending: false })
-                .limit(60)
-            : { data: [] as CrmOrder[], error: null };
-        if (byLine.error || byUser.error) throw new Error(byLine.error?.message || byUser.error?.message);
-        const map = new Map<string, CrmOrder>();
-        [...((byLine.data as CrmOrder[]) || []), ...((byUser.data as CrmOrder[]) || [])].forEach((o) => map.set(o.id, o));
-        const merged = Array.from(map.values()).sort((a, b) => b.created_at.localeCompare(a.created_at));
+        const merged = await fetchCrmOrdersForLineUser(supabase, lineUserId, { limit: 60 });
         setOrders(merged);
 
         const orderIds = merged.map((o) => o.id);
@@ -512,35 +504,47 @@ export default function AdminCrmPanel() {
       <div className="mb-4">
         <h1 className="text-xl md:text-3xl font-bold">客戶 CRM</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          左欄接線效率、中欄內容品質、右欄執行把關（LINE 優先）。
+          LINE 接線經營、LINE 整體分析，以及全訂單客戶名冊。
         </p>
       </div>
 
-      <div className="mb-4 inline-flex gap-1 rounded-lg border p-1 bg-muted/40">
+      <div className="mb-4 inline-flex flex-wrap gap-1 rounded-lg border p-1 bg-muted/40">
         <button
           type="button"
-          onClick={() => setCrmView("crm")}
+          onClick={() => setCrmView("line-crm")}
           className={cn(
             "px-3 py-1.5 text-sm rounded-md transition-colors",
-            crmView === "crm" ? "bg-background shadow font-medium" : "text-muted-foreground",
+            crmView === "line-crm" ? "bg-background shadow font-medium" : "text-muted-foreground",
           )}
         >
-          客戶經營
+          LINE 客戶經營
         </button>
         <button
           type="button"
-          onClick={() => setCrmView("analysis")}
+          onClick={() => setCrmView("line-analysis")}
           className={cn(
             "px-3 py-1.5 text-sm rounded-md transition-colors",
-            crmView === "analysis" ? "bg-background shadow font-medium" : "text-muted-foreground",
+            crmView === "line-analysis" ? "bg-background shadow font-medium" : "text-muted-foreground",
           )}
         >
-          整體分析
+          LINE 整體分析
+        </button>
+        <button
+          type="button"
+          onClick={() => setCrmView("order-customers")}
+          className={cn(
+            "px-3 py-1.5 text-sm rounded-md transition-colors",
+            crmView === "order-customers" ? "bg-background shadow font-medium" : "text-muted-foreground",
+          )}
+        >
+          訂單客戶總覽
         </button>
       </div>
 
-      {crmView === "analysis" ? (
+      {crmView === "line-analysis" ? (
         <AdminCrmAnalysisPanel onSelectCustomer={handleSelectFromAnalysis} />
+      ) : crmView === "order-customers" ? (
+        <AdminOrderCustomersPanel onOpenLineCustomer={handleOpenLineCustomer} />
       ) : (
         <>
       <div className="xl:hidden mb-3 grid grid-cols-3 gap-1 rounded-lg border p-1 bg-muted/40">

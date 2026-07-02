@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Download, ExternalLink, Loader2, RefreshCw, Upload } from "lucide-react";
 import { SafeImage } from "@/components/SafeImage";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/integrations/supabase/client";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/order-item-preview-images";
 import { cn } from "@/lib/utils";
 import { getCustomerSourceLabel } from "@/lib/customer-source";
+import { getManualOrderDisplayName } from "@/lib/order-display";
 
 export type AdminOrderDetailOrder = {
   id: string;
@@ -32,6 +34,8 @@ export type AdminOrderDetailOrder = {
   TAX_title?: string | null;
   TAX_id?: number | null;
   customer_source?: string | null;
+  is_manual_order?: boolean;
+  orderer_name?: string | null;
 };
 
 export type AdminOrderDetailItem = {
@@ -116,9 +120,14 @@ export function AdminOrderDetailPanel({
       )}
 
       <div className="grid grid-cols-1 gap-2 text-sm bg-white rounded-md p-3 border border-border">
-        <div>
+        <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">收件人：</span>
-          {order.who_receive || "未填寫"}
+          <span>{getManualOrderDisplayName(order)}</span>
+          {order.is_manual_order ? (
+            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-amber-50 text-amber-700 border-amber-300">
+              手動
+            </Badge>
+          ) : null}
         </div>
         <div>
           <span className="font-semibold">電話：</span>
@@ -137,8 +146,11 @@ export function AdminOrderDetailPanel({
       <div className={cn("grid gap-4 text-sm", screenshotMode ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2 md:gap-6")}>
         <div className="space-y-2.5 min-w-0">
           <div>
-            <span className="font-medium">會員名（訂購人）：</span>
-            {buyerName || "—"}
+            <span className="font-medium">訂購人：</span>
+            {order.is_manual_order ? buyerName || "未填寫" : buyerName || "—"}
+            {order.is_manual_order ? (
+              <span className="ml-1 text-xs text-muted-foreground">（手動單）</span>
+            ) : null}
           </div>
           <div>
             <span className="font-medium">預計取件日：</span>
@@ -384,20 +396,4 @@ export function AdminOrderDetailPanel({
   );
 }
 
-/** 手機列表用：取件日 + 姓名 */
-export function getMobileOrderListName(
-  order: {
-    is_from_quotation?: boolean;
-    who_receive: string | null;
-    is_manual_order?: boolean;
-  },
-  buyerName: string,
-): string {
-  if (order.is_from_quotation) {
-    return order.who_receive?.trim() || "（報價單）";
-  }
-  if (order.who_receive?.trim()) {
-    return order.who_receive.trim();
-  }
-  return buyerName || "未填寫";
-}
+export { getMobileOrderListName } from "@/lib/order-display";

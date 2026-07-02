@@ -18,6 +18,11 @@ import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
 import { buildReceiptHtml, ntdIntegerToChineseCapital, triggerDownloadHtmlFile } from "@/lib/receipt-html";
 import ManualOrderForm from "./ManualOrderForm";
 import { AdminOrderDetailPanel, getMobileOrderListName } from "./AdminOrderDetailPanel";
+import {
+  formatManualOrderFullText,
+  getManualOrderDisplayName,
+  getOrderBuyerNameForDetail,
+} from "@/lib/order-display";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -317,6 +322,7 @@ const OrderStatusManager = () => {
       total_amount: order.total_amount ?? 0,
       admin_note: order.admin_note ?? "",
       is_manual_order: !!order.is_manual_order,
+      orderer_name: order.orderer_name ?? "",
       is_from_quotation: !!order.is_from_quotation,
       is_from_special_quotation: !!order.is_from_special_quotation,
       auto_cancel_exempt: !!order.auto_cancel_exempt,
@@ -480,9 +486,7 @@ const OrderStatusManager = () => {
       return `${order.who_receive || "未填寫"}（報價單）\n非網站會員`;
     }
     if (order.is_manual_order) {
-      const b = buyerDisplayName(userInfo) || "—";
-      const w = order.who_receive?.trim();
-      return w ? `訂購：${b}\n收件：${w}\n（手動）` : `訂購：${b}\n（手動）`;
+      return formatManualOrderFullText(order);
     }
     return `${userInfo?.name || "載入中..."}\n${userInfo?.email || ""}`;
   };
@@ -821,6 +825,11 @@ const OrderStatusManager = () => {
       filtered = filtered.filter((order) => order.expected_pickup_date === targetDate);
     }
 
+    // 4. 歷史訂單：依建立時間由近到遠（其餘分頁維持預計取件日由近到遠）
+    if (activeTab === "history") {
+      return filtered.slice().sort((a, b) => b.created_at.localeCompare(a.created_at));
+    }
+
     return filtered;
   };
 
@@ -1098,15 +1107,21 @@ const OrderStatusManager = () => {
                                 </>
                               ) : order.is_manual_order ? (
                                 <>
-                                  <span className="font-medium">訂購：{buyerDisplayName(userInfo) || "—"}</span>
-                                  {order.who_receive?.trim() && (
-                                    <>
-                                      <br />
-                                      <span className="text-sm text-muted-foreground">收件：{order.who_receive}</span>
-                                    </>
-                                  )}
+                                  <span className="font-medium">{getManualOrderDisplayName(order)}</span>
+                                  {order.orderer_name?.trim() &&
+                                    order.who_receive?.trim() &&
+                                    order.orderer_name.trim() !== order.who_receive.trim() && (
+                                      <>
+                                        <br />
+                                        <span className="text-sm text-muted-foreground">
+                                          訂購：{order.orderer_name.trim()}
+                                        </span>
+                                      </>
+                                    )}
                                   <br />
-                                  <span className="text-xs text-muted-foreground">（手動）</span>
+                                  <Badge variant="outline" className="mt-0.5 text-[10px] px-1.5 py-0 h-5 bg-amber-50 text-amber-700 border-amber-300">
+                                    手動
+                                  </Badge>
                                 </>
                               ) : (
                                 <>
@@ -1298,7 +1313,7 @@ const OrderStatusManager = () => {
                                 <AdminOrderDetailPanel
                                   order={order}
                                   items={items}
-                                  buyerName={buyerDisplayName(userInfo)}
+                                  buyerName={getOrderBuyerNameForDetail(order, buyerDisplayName(userInfo))}
                                   uploadingItemKey={uploadingItemKey}
                                   onUploadItem={(orderItemId, file) =>
                                     void handleOrderItemAdminMediaUpload(order.id, orderItemId, file)
@@ -1373,7 +1388,7 @@ const OrderStatusManager = () => {
             <AdminOrderDetailPanel
               order={order}
               items={items}
-              buyerName={buyerDisplayName(userInfo)}
+              buyerName={getOrderBuyerNameForDetail(order, buyerDisplayName(userInfo))}
               screenshotMode
               uploadingItemKey={uploadingItemKey}
               onUploadItem={(orderItemId, file) =>
@@ -1427,14 +1442,25 @@ const OrderStatusManager = () => {
               （依 user_id），非 orders 上的 name 欄位。
             </p>
           </div>
-          <div className="space-y-1">
+          <div className="space-y-1 col-span-2">
             <span className="text-sm text-muted-foreground">訂購人（會員姓名）</span>
-            <Input
-              readOnly
-              className="bg-muted/50"
-              value={buyerDisplayName(users[editDraft.user_id ?? ""]) || "—"}
-              title="由 user_log_in.name 顯示，請至客戶管理修改會員姓名"
-            />
+            {editDraft.is_manual_order ? (
+              <>
+                <Input
+                  readOnly
+                  className="bg-muted/50"
+                  value={editDraft.orderer_name?.trim() || editDraft.who_receive?.trim() || "—"}
+                />
+                <p className="text-xs text-muted-foreground">此為手動建立訂單，訂購人取自 orderer_name，非網站會員帳號。</p>
+              </>
+            ) : (
+              <Input
+                readOnly
+                className="bg-muted/50"
+                value={buyerDisplayName(users[editDraft.user_id ?? ""]) || "—"}
+                title="由 user_log_in.name 顯示，請至客戶管理修改會員姓名"
+              />
+            )}
           </div>
           <div className="space-y-1">
             <span className="text-sm text-muted-foreground">LINE user_id</span>

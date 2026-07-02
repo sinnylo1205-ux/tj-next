@@ -52,6 +52,10 @@ export interface MonthlyReportPayload {
   /** 含未收款：同訂單狀態集合，不限付款狀態（＝長條圖「總營收」） */
   revenue_incl_unpaid_ntd: number;
   order_count: number;
+  /** 處理中／出貨中／已送達 且 payment_step=verified 的筆數（客單價分母） */
+  verified_order_count: number;
+  /** 實收營收 ÷ verified_order_count */
+  aov_verified_ntd: number;
   customer_type_breakdown: CustomerTypeCountRow[];
   top_product_name: string | null;
   generated_at: string;
@@ -65,6 +69,8 @@ export interface YearlyReportPayload {
   /** 含未收款：同訂單狀態集合，不限付款狀態（＝長條圖「總營收」） */
   revenue_incl_unpaid_ntd: number;
   order_count: number;
+  verified_order_count: number;
+  aov_verified_ntd: number;
   customer_type_breakdown: CustomerTypeCountRow[];
   top_products: { name: string; count: number }[];
   generated_at: string;
@@ -95,7 +101,7 @@ async function sumRevenueBreakdownInRange(
   client: SupabaseClient,
   rangeStart: Date,
   rangeEnd: Date,
-): Promise<{ paid: number; gross: number }> {
+): Promise<{ paid: number; gross: number; verified_count: number }> {
   const { data, error } = await client
     .from("orders")
     .select("total_amount, payment_step")
@@ -107,12 +113,16 @@ async function sumRevenueBreakdownInRange(
 
   let paid = 0;
   let gross = 0;
+  let verified_count = 0;
   (data ?? []).forEach((r) => {
     const amt = Number((r as { total_amount?: number }).total_amount ?? 0);
     gross += amt;
-    if ((r as { payment_step?: string }).payment_step === REVENUE_PAYMENT_STEP) paid += amt;
+    if ((r as { payment_step?: string }).payment_step === REVENUE_PAYMENT_STEP) {
+      paid += amt;
+      verified_count += 1;
+    }
   });
-  return { paid, gross };
+  return { paid, gross, verified_count };
 }
 
 async function fetchAnalyticsOrdersInRange(
@@ -197,6 +207,10 @@ export async function buildMonthlyReportPayload(
   const top = await topProductsFromOrderIds(client, orderIds, 1);
   const top_product_name = top[0]?.name ?? null;
 
+  const verified_order_count = revenue.verified_count;
+  const aov_verified_ntd =
+    verified_order_count > 0 ? Math.round(revenue.paid / verified_order_count) : 0;
+
   return {
     report_type: "monthly",
     year,
@@ -204,6 +218,8 @@ export async function buildMonthlyReportPayload(
     revenue_ntd: revenue.paid,
     revenue_incl_unpaid_ntd: revenue.gross,
     order_count,
+    verified_order_count,
+    aov_verified_ntd,
     customer_type_breakdown,
     top_product_name,
     generated_at: new Date().toISOString(),
@@ -227,12 +243,18 @@ export async function buildYearlyReportPayload(
   const order_count = analyticsRows.length;
   const top_products = await topProductsFromOrderIds(client, orderIds, 3);
 
+  const verified_order_count = revenue.verified_count;
+  const aov_verified_ntd =
+    verified_order_count > 0 ? Math.round(revenue.paid / verified_order_count) : 0;
+
   return {
     report_type: "yearly",
     year,
     revenue_ntd: revenue.paid,
     revenue_incl_unpaid_ntd: revenue.gross,
     order_count,
+    verified_order_count,
+    aov_verified_ntd,
     customer_type_breakdown,
     top_products,
     generated_at: new Date().toISOString(),

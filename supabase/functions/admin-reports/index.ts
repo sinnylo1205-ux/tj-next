@@ -66,6 +66,8 @@ type MonthlyReportPayload = {
   month: number;
   revenue_ntd: number;
   order_count: number;
+  verified_order_count: number;
+  aov_verified_ntd: number;
   customer_type_breakdown: CustomerTypeCountRow[];
   top_product_name: string | null;
   generated_at: string;
@@ -76,6 +78,8 @@ type YearlyReportPayload = {
   year: number;
   revenue_ntd: number;
   order_count: number;
+  verified_order_count: number;
+  aov_verified_ntd: number;
   customer_type_breakdown: CustomerTypeCountRow[];
   top_products: { name: string; count: number }[];
   generated_at: string;
@@ -101,16 +105,24 @@ async function sumRevenueInRange(
   client: SupabaseClient,
   rangeStart: Date,
   rangeEnd: Date,
-): Promise<number> {
+): Promise<{ paid: number; verified_count: number }> {
   const { data, error } = await client
     .from("orders")
-    .select("total_amount")
+    .select("total_amount, payment_step")
     .in("order_status", [...REVENUE_ORDER_STATUSES])
-    .eq("payment_step", REVENUE_PAYMENT_STEP)
     .gte("created_at", rangeStart.toISOString())
     .lte("created_at", rangeEnd.toISOString());
   if (error) throw new Error(error.message);
-  return (data ?? []).reduce((s: number, r: { total_amount?: number }) => s + Number(r.total_amount ?? 0), 0);
+  let paid = 0;
+  let verified_count = 0;
+  (data ?? []).forEach((r: { total_amount?: number; payment_step?: string }) => {
+    const amt = Number(r.total_amount ?? 0);
+    if (r.payment_step === REVENUE_PAYMENT_STEP) {
+      paid += amt;
+      verified_count += 1;
+    }
+  });
+  return { paid, verified_count };
 }
 
 async function fetchAnalyticsOrdersInRange(
@@ -183,7 +195,7 @@ async function buildMonthlyReportPayload(
   const rangeStart = startOfMonth(d);
   const rangeEnd = endOfMonth(d);
 
-  const [revenue_ntd, analyticsRows, orderIds] = await Promise.all([
+  const [revenue, analyticsRows, orderIds] = await Promise.all([
     sumRevenueInRange(client, rangeStart, rangeEnd),
     fetchAnalyticsOrdersInRange(client, rangeStart, rangeEnd),
     fetchOrderIdsInRange(client, rangeStart, rangeEnd),
@@ -192,13 +204,18 @@ async function buildMonthlyReportPayload(
   const customer_type_breakdown = breakdownFromRows(analyticsRows);
   const order_count = analyticsRows.length;
   const top = await topProductsFromOrderIds(client, orderIds, 1);
+  const verified_order_count = revenue.verified_count;
+  const aov_verified_ntd =
+    verified_order_count > 0 ? Math.round(revenue.paid / verified_order_count) : 0;
 
   return {
     report_type: "monthly",
     year,
     month,
-    revenue_ntd,
+    revenue_ntd: revenue.paid,
     order_count,
+    verified_order_count,
+    aov_verified_ntd,
     customer_type_breakdown,
     top_product_name: top[0]?.name ?? null,
     generated_at: new Date().toISOString(),
@@ -209,7 +226,7 @@ async function buildYearlyReportPayload(client: SupabaseClient, year: number): P
   const rangeStart = startOfYear(new Date(year, 0, 1));
   const rangeEnd = endOfYear(new Date(year, 0, 1));
 
-  const [revenue_ntd, analyticsRows, orderIds] = await Promise.all([
+  const [revenue, analyticsRows, orderIds] = await Promise.all([
     sumRevenueInRange(client, rangeStart, rangeEnd),
     fetchAnalyticsOrdersInRange(client, rangeStart, rangeEnd),
     fetchOrderIdsInRange(client, rangeStart, rangeEnd),
@@ -218,12 +235,17 @@ async function buildYearlyReportPayload(client: SupabaseClient, year: number): P
   const customer_type_breakdown = breakdownFromRows(analyticsRows);
   const order_count = analyticsRows.length;
   const top_products = await topProductsFromOrderIds(client, orderIds, 3);
+  const verified_order_count = revenue.verified_count;
+  const aov_verified_ntd =
+    verified_order_count > 0 ? Math.round(revenue.paid / verified_order_count) : 0;
 
   return {
     report_type: "yearly",
     year,
-    revenue_ntd,
+    revenue_ntd: revenue.paid,
     order_count,
+    verified_order_count,
+    aov_verified_ntd,
     customer_type_breakdown,
     top_products,
     generated_at: new Date().toISOString(),
