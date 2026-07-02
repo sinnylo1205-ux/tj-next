@@ -16,7 +16,13 @@ import {
 } from "@/lib/order-item-preview-images";
 import { cn } from "@/lib/utils";
 import { getCustomerSourceLabel } from "@/lib/customer-source";
-import { getManualOrderDisplayName } from "@/lib/order-display";
+import { OrderBuyerInline } from "./OrderBuyerDisplayBlock";
+import {
+  getManualOrderDisplayName,
+  isSpecialSourceOrder,
+  SPECIAL_ORDER_BADGE_CLASS,
+  type OrderBuyerDisplay,
+} from "@/lib/order-display";
 
 export type AdminOrderDetailOrder = {
   id: string;
@@ -35,6 +41,7 @@ export type AdminOrderDetailOrder = {
   TAX_id?: number | null;
   customer_source?: string | null;
   is_manual_order?: boolean;
+  is_from_quotation?: boolean;
   orderer_name?: string | null;
 };
 
@@ -57,7 +64,7 @@ export type AdminOrderDetailItem = {
 type AdminOrderDetailPanelProps = {
   order: AdminOrderDetailOrder;
   items: AdminOrderDetailItem[];
-  buyerName: string;
+  buyerDisplay: OrderBuyerDisplay;
   /** 手機全螢幕 Dialog：單欄、適合截圖 */
   screenshotMode?: boolean;
   uploadingItemKey?: string | null;
@@ -75,7 +82,7 @@ function pickAdminMediaUrl(item: { admin_media_url?: unknown }): string | null {
 export function AdminOrderDetailPanel({
   order,
   items,
-  buyerName,
+  buyerDisplay,
   screenshotMode = false,
   uploadingItemKey = null,
   onUploadItem,
@@ -123,9 +130,9 @@ export function AdminOrderDetailPanel({
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">收件人：</span>
           <span>{getManualOrderDisplayName(order)}</span>
-          {order.is_manual_order ? (
-            <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-5 bg-amber-50 text-amber-700 border-amber-300">
-              手動
+          {isSpecialSourceOrder(order) && buyerDisplay.badge ? (
+            <Badge variant="outline" className={SPECIAL_ORDER_BADGE_CLASS}>
+              {buyerDisplay.badge}
             </Badge>
           ) : null}
         </div>
@@ -147,9 +154,17 @@ export function AdminOrderDetailPanel({
         <div className="space-y-2.5 min-w-0">
           <div>
             <span className="font-medium">訂購人：</span>
-            {order.is_manual_order ? buyerName || "未填寫" : buyerName || "—"}
-            {order.is_manual_order ? (
-              <span className="ml-1 text-xs text-muted-foreground">（手動單）</span>
+            <OrderBuyerInline buyer={buyerDisplay} />
+            {buyerDisplay.badge ? (
+              <Badge variant="outline" className={cn("ml-1.5 align-middle", SPECIAL_ORDER_BADGE_CLASS)}>
+                {buyerDisplay.badge}
+              </Badge>
+            ) : null}
+            {buyerDisplay.linePrimary ? (
+              <span className="ml-1 text-xs text-emerald-600">（LINE）</span>
+            ) : null}
+            {buyerDisplay.showMemberAndLine ? (
+              <span className="ml-1 text-xs text-muted-foreground">（已綁 LINE）</span>
             ) : null}
           </div>
           <div>
@@ -396,4 +411,4 @@ export function AdminOrderDetailPanel({
   );
 }
 
-export { getMobileOrderListName } from "@/lib/order-display";
+export type { OrderBuyerDisplay } from "@/lib/order-display";

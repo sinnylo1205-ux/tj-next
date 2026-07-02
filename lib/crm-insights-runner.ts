@@ -1,9 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateCrmInsights, type CrmInsights } from "./crm-customer-insights-ai";
 import { fetchCrmOrdersForLineUser } from "./crm-order-attribution";
-
-/** 視為「有效訂單」的狀態（與 customer_360 / 單人洞察一致） */
-const VALID_ORDER_STATUSES = ["processing", "shipped", "delivered"];
+import { isCrmVerifiedOrder } from "./crm-order-scope";
 
 type LogRow = {
   id: string;
@@ -39,10 +37,7 @@ export async function gatherCustomerContext(
       .limit(80),
   ]);
 
-  const validOrders = mergedOrders.filter(
-    (o) =>
-      VALID_ORDER_STATUSES.includes(String(o.order_status ?? "")) && String(o.payment_step ?? "") === "verified",
-  );
+  const validOrders = mergedOrders.filter(isCrmVerifiedOrder);
 
   const orderIds = validOrders.map((o) => o.id);
   const productSummary =

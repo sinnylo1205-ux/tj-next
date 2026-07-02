@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import AdminCrmAnalysisPanel from "./AdminCrmAnalysisPanel";
 import AdminOrderCustomersPanel from "./AdminOrderCustomersPanel";
 import { fetchCrmOrdersForLineUser } from "@/lib/crm-order-attribution";
+import { isCrmVerifiedOrder } from "@/lib/crm-order-scope";
 
 type CrmView = "line-crm" | "line-analysis" | "order-customers";
 
@@ -35,6 +36,9 @@ interface Customer360Row {
   reply_mode: string | null;
   last_message_at: string | null;
   order_count: number | null;
+  verified_order_count?: number | null;
+  unpaid_order_count?: number | null;
+  has_unpaid_orders?: boolean | null;
   lifetime_value: number | null;
   last_pickup_date: string | null;
   is_repeat_customer: boolean | null;
@@ -202,7 +206,7 @@ export default function AdminCrmPanel() {
       const { data, error } = await supabase
         .from("customer_360")
         .select(
-          "line_user_id,display_name,tag,reply_mode,last_message_at,order_count,lifetime_value,last_pickup_date,is_repeat_customer,primary_email,who_receive_names,has_orders",
+          "line_user_id,display_name,tag,reply_mode,last_message_at,order_count,verified_order_count,unpaid_order_count,has_unpaid_orders,lifetime_value,last_pickup_date,is_repeat_customer,primary_email,who_receive_names,has_orders",
         )
         .order("last_message_at", { ascending: false, nullsFirst: false });
       if (error) throw error;
@@ -480,12 +484,9 @@ export default function AdminCrmPanel() {
     return merged.sort((a, b) => a.received_at.localeCompare(b.received_at));
   }, [lineLogRows, optimisticMessages]);
 
-  const validOrders = useMemo(
-    () => orders.filter((o) => ["processing", "shipped", "delivered"].includes(String(o.order_status ?? "")) && o.payment_step === "verified"),
-    [orders],
-  );
+  const verifiedOrders = useMemo(() => orders.filter(isCrmVerifiedOrder), [orders]);
 
-  const orderLtv = useMemo(() => validOrders.reduce((s, o) => s + Number(o.total_amount ?? 0), 0), [validOrders]);
+  const orderLtv = useMemo(() => verifiedOrders.reduce((s, o) => s + Number(o.total_amount ?? 0), 0), [verifiedOrders]);
 
   const topProducts = useMemo(() => {
     const m = new Map<string, number>();
@@ -647,7 +648,12 @@ export default function AdminCrmPanel() {
                       <div className="flex justify-between gap-2">
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">{row.display_name || "（未命名）"}</p>
-                          <p className="text-[11px] text-muted-foreground">訂單 {row.order_count ?? 0} 筆</p>
+                          <p className="text-[11px] text-muted-foreground">
+                            訂單 {row.order_count ?? 0} 筆
+                            {row.has_unpaid_orders ? (
+                              <span className="text-amber-700">（含待付款 {row.unpaid_order_count ?? 0}）</span>
+                            ) : null}
+                          </p>
                           {activeTag ? (
                             <span className={cn("inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] border", lineCustomerTagStyle(activeTag))}>
                               {activeTag}
@@ -759,18 +765,24 @@ export default function AdminCrmPanel() {
                 <>
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div className="rounded-md border p-2">
-                      <p className="text-muted-foreground">有效訂單數</p>
-                      <p className="text-lg font-semibold">{validOrders.length}</p>
+                      <p className="text-muted-foreground">連結訂單數</p>
+                      <p className="text-lg font-semibold">{orders.length}</p>
+                      {orders.length > verifiedOrders.length ? (
+                        <p className="text-[11px] text-amber-700 mt-0.5">
+                          含待付款 {orders.length - verifiedOrders.length} 筆
+                        </p>
+                      ) : null}
                     </div>
                     <div className="rounded-md border p-2">
-                      <p className="text-muted-foreground">LTV</p>
+                      <p className="text-muted-foreground">已確認 LTV</p>
                       <p className="text-lg font-semibold">NT${orderLtv.toLocaleString()}</p>
+                      <p className="text-[11px] text-muted-foreground mt-0.5">已確認 {verifiedOrders.length} 筆</p>
                     </div>
                   </div>
                   <div className="text-sm space-y-1">
                     <p className="text-muted-foreground">最近取貨日：{formatDate(selectedCustomer.last_pickup_date)}</p>
                     <p className="text-muted-foreground">
-                      是否回購：{validOrders.length >= 2 || selectedCustomer.is_repeat_customer ? "是" : "否"}
+                      是否回購：{verifiedOrders.length >= 2 || selectedCustomer.is_repeat_customer ? "是" : "否"}
                     </p>
                     {topProducts.length > 0 ? (
                       <p className="text-muted-foreground">常見品項：{topProducts.join("、")}</p>

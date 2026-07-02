@@ -4,16 +4,29 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, MessageCircle, RefreshCw, Search } from "lucide-react";
+import { Loader2, MessageCircle, Pencil, RefreshCw, Search } from "lucide-react";
+import { updateOrdersContactForCustomer } from "@/lib/order-customer-contact";
 
-type ContactFilter = "all" | "has_line" | "has_email" | "no_contact" | "repeat";
+type ContactFilter = "all" | "has_line" | "has_email" | "no_contact" | "repeat" | "unpaid";
 
 interface OrderCustomerRow {
   customer_key: string;
   customer_name: string | null;
   order_count: number;
+  verified_order_count?: number;
+  unpaid_order_count?: number;
+  has_unpaid_orders?: boolean;
   last_purchase_at: string | null;
   primary_email: string | null;
   primary_phone: string | null;
@@ -64,6 +77,12 @@ function formatContact(row: OrderCustomerRow): string {
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
 
+function customerTypeLabel(customerKey: string): string | null {
+  if (customerKey.startsWith("user:")) return "網站會員";
+  if (customerKey.startsWith("name:")) return "依姓名歸戶";
+  return null;
+}
+
 export default function AdminOrderCustomersPanel({
   onOpenLineCustomer,
 }: {
@@ -75,13 +94,20 @@ export default function AdminOrderCustomersPanel({
   const [search, setSearch] = useState("");
   const [contactFilter, setContactFilter] = useState<ContactFilter>("all");
 
+  const [editOpen, setEditOpen] = useState(false);
+  const [editRow, setEditRow] = useState<OrderCustomerRow | null>(null);
+  const [editEmail, setEditEmail] = useState("");
+  const [editPhone, setEditPhone] = useState("");
+  const [editLineUserId, setEditLineUserId] = useState("");
+  const [saving, setSaving] = useState(false);
+
   const fetchRows = useCallback(async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from("order_customer_rollup")
         .select(
-          "customer_key,customer_name,order_count,last_purchase_at,primary_email,primary_phone,line_user_id,has_line,has_email,has_phone,is_repeat_customer",
+          "customer_key,customer_name,order_count,verified_order_count,unpaid_order_count,has_unpaid_orders,last_purchase_at,primary_email,primary_phone,line_user_id,has_line,has_email,has_phone,is_repeat_customer",
         )
         .order("last_purchase_at", { ascending: false, nullsFirst: false });
       if (error) throw error;
@@ -102,12 +128,53 @@ export default function AdminOrderCustomersPanel({
     void fetchRows();
   }, [fetchRows]);
 
+  const openEdit = useCallback((row: OrderCustomerRow) => {
+    setEditRow(row);
+    setEditEmail(row.primary_email ?? "");
+    setEditPhone(row.primary_phone ?? "");
+    setEditLineUserId(row.line_user_id ?? "");
+    setEditOpen(true);
+  }, []);
+
+  const closeEdit = useCallback(() => {
+    setEditOpen(false);
+    setEditRow(null);
+    setSaving(false);
+  }, []);
+
+  const saveContact = useCallback(async () => {
+    if (!editRow) return;
+    setSaving(true);
+    try {
+      const { updatedCount } = await updateOrdersContactForCustomer(supabase, editRow.customer_key, {
+        email: editEmail,
+        phone: editPhone,
+        line_user_id: editLineUserId,
+      });
+      toast({
+        title: "已更新聯絡資訊",
+        description: `已寫入 ${updatedCount} 筆訂單（Email / 電話 / LINE user_id）`,
+      });
+      closeEdit();
+      await fetchRows();
+    } catch (error) {
+      toast({
+        title: "更新失敗",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }, [editRow, editEmail, editPhone, editLineUserId, toast, closeEdit, fetchRows]);
+
   const filtered = useMemo(() => {
     let list = rows;
     if (contactFilter === "has_line") list = list.filter((r) => r.has_line);
     if (contactFilter === "has_email") list = list.filter((r) => r.has_email);
     if (contactFilter === "no_contact") list = list.filter((r) => !r.has_line && !r.has_email && !r.has_phone);
     if (contactFilter === "repeat") list = list.filter((r) => r.is_repeat_customer);
+    if (contactFilter === "unpaid") list = list.filter((r) => r.has_unpaid_orders);
 
     const q = search.trim().toLowerCase();
     if (!q) return list;
@@ -125,12 +192,14 @@ export default function AdminOrderCustomersPanel({
     { id: "has_email", label: "有 Email" },
     { id: "no_contact", label: "無聯絡" },
     { id: "repeat", label: "回購客" },
+    { id: "unpaid", label: "有待付款" },
   ];
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        依有效訂單彙整所有客戶。會員以 user_id 合併；手動單以收件人姓名（完全一致）合併，不沿用管理員 user_id。
+        依有效訂單彙整所有客戶（含未匯款、待確認匯款；不含已取消、退貨、隱藏單）。會員以 user_id
+        合併；手動單以收件人姓名（完全一致）合併。可編輯聯絡資訊並批次寫入該客戶的所有訂單。
       </p>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -178,7 +247,7 @@ export default function AdminOrderCustomersPanel({
                   <TableHead className="min-w-[200px]">聯絡方式</TableHead>
                   <TableHead className="text-center whitespace-nowrap">購買次數</TableHead>
                   <TableHead className="whitespace-nowrap">上次購買日期</TableHead>
-                  <TableHead className="w-[100px]" />
+                  <TableHead className="min-w-[120px]">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -193,34 +262,50 @@ export default function AdminOrderCustomersPanel({
                     <TableRow key={row.customer_key}>
                       <TableCell className="font-medium">
                         <div>{row.customer_name || "—"}</div>
-                        {row.customer_key.startsWith("user:") && (
-                          <span className="text-xs text-muted-foreground">網站會員</span>
-                        )}
-                        {row.customer_key.startsWith("name:") && (
-                          <span className="text-xs text-muted-foreground">姓名合併</span>
-                        )}
+                        {customerTypeLabel(row.customer_key) ? (
+                          <span className="text-xs text-muted-foreground">{customerTypeLabel(row.customer_key)}</span>
+                        ) : null}
                       </TableCell>
                       <TableCell>
                         <ContactTags row={row} />
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{formatContact(row)}</TableCell>
-                      <TableCell className="text-center font-semibold">{row.order_count}</TableCell>
+                      <TableCell className="text-center font-semibold">
+                        <div>{row.order_count}</div>
+                        {row.has_unpaid_orders ? (
+                          <Badge variant="outline" className="mt-0.5 text-[10px] text-amber-700 border-amber-300 bg-amber-50">
+                            待付款 {row.unpaid_order_count ?? "?"}
+                          </Badge>
+                        ) : null}
+                      </TableCell>
                       <TableCell className="whitespace-nowrap text-sm text-muted-foreground">
                         {formatPurchaseDate(row.last_purchase_at)}
                       </TableCell>
                       <TableCell>
-                        {row.line_user_id && onOpenLineCustomer ? (
+                        <div className="flex flex-wrap gap-1">
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
                             className="h-8 px-2"
-                            onClick={() => onOpenLineCustomer(row.line_user_id!)}
+                            onClick={() => openEdit(row)}
                           >
-                            <MessageCircle className="h-4 w-4 mr-1" />
-                            LINE
+                            <Pencil className="h-4 w-4 mr-1" />
+                            聯絡
                           </Button>
-                        ) : null}
+                          {row.line_user_id && onOpenLineCustomer ? (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 px-2"
+                              onClick={() => onOpenLineCustomer(row.line_user_id!)}
+                            >
+                              <MessageCircle className="h-4 w-4 mr-1" />
+                              LINE
+                            </Button>
+                          ) : null}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))
@@ -235,6 +320,66 @@ export default function AdminOrderCustomersPanel({
         共 {filtered.length} 位客戶
         {search || contactFilter !== "all" ? `（已篩選，總計 ${rows.length} 位）` : ""}
       </p>
+
+      <Dialog open={editOpen} onOpenChange={(open) => !open && closeEdit()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>編輯聯絡資訊</DialogTitle>
+            <DialogDescription>
+              {editRow ? (
+                <>
+                  {editRow.customer_name || "—"}（{editRow.order_count} 筆訂單）
+                  <br />
+                  儲存後會批次寫入此客戶名下所有訂單的 <code className="text-xs">Email</code>、
+                  <code className="text-xs">phone</code>、<code className="text-xs">line_user_id</code>。
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="crm-contact-email">Email</Label>
+              <Input
+                id="crm-contact-email"
+                type="email"
+                value={editEmail}
+                onChange={(e) => setEditEmail(e.target.value)}
+                placeholder="name@example.com"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="crm-contact-phone">電話</Label>
+              <Input
+                id="crm-contact-phone"
+                value={editPhone}
+                onChange={(e) => setEditPhone(e.target.value)}
+                placeholder="09xxxxxxxx"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="crm-contact-line">LINE user_id</Label>
+              <Input
+                id="crm-contact-line"
+                value={editLineUserId}
+                onChange={(e) => setEditLineUserId(e.target.value)}
+                placeholder="Uxxxxxxxx..."
+              />
+              <p className="text-xs text-muted-foreground">
+                與訂單管理編輯相同；填入後可從此處跳轉 LINE 客戶經營，並供 CRM 訂單歸屬使用。
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={closeEdit} disabled={saving}>
+              取消
+            </Button>
+            <Button type="button" onClick={() => void saveContact()} disabled={saving}>
+              {saving ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : null}
+              儲存至訂單
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

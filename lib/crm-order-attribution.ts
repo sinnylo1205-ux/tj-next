@@ -1,7 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { mergeAdminLineUserIds } from "@/lib/admin-line-ids";
+import { isCrmLinkedOrder } from "@/lib/crm-order-scope";
 
 const CRM_ORDER_SELECT =
-  "id,created_at,expected_pickup_date,total_amount,order_status,payment_step,is_manual_order";
+  "id,created_at,expected_pickup_date,total_amount,order_status,payment_step,is_manual_order,is_from_quotation,is_hide,line_user_id";
 
 export type CrmAttributedOrder = {
   id: string;
@@ -11,21 +13,27 @@ export type CrmAttributedOrder = {
   order_status: string | null;
   payment_step: string | null;
   is_manual_order?: boolean | null;
+  is_from_quotation?: boolean | null;
+  is_hide?: boolean | null;
+  line_user_id?: string | null;
 };
+
+function isSpecialCrmOrder(order: { is_manual_order?: boolean | null; is_from_quotation?: boolean | null }) {
+  return Boolean(order.is_manual_order || order.is_from_quotation);
+}
 
 /** 取得管理員 LINE ID 集合，避免手動單誤歸到管理員 */
 async function fetchAdminLineUserIds(supabase: SupabaseClient): Promise<Set<string>> {
   const { data: roleRows } = await supabase.from("user_roles").select("user_id").eq("role", "admin");
   const adminUserIds = (roleRows ?? []).map((r) => r.user_id as string).filter(Boolean);
-  if (adminUserIds.length === 0) return new Set();
+  if (adminUserIds.length === 0) return mergeAdminLineUserIds([]);
 
   const { data: users } = await supabase.from("user_log_in").select("line_user_id").in("id", adminUserIds);
-  const ids = new Set<string>();
-  (users ?? []).forEach((u) => {
-    const id = (u.line_user_id as string | null)?.trim();
-    if (id) ids.add(id);
-  });
-  return ids;
+  return mergeAdminLineUserIds(
+    (users ?? [])
+      .map((u) => (u.line_user_id as string | null)?.trim())
+      .filter((id): id is string => Boolean(id)),
+  );
 }
 
 function mergeOrdersDedup<T extends { id: string }>(lists: T[][]): T[] {
@@ -80,7 +88,7 @@ export async function fetchCrmOrdersForLineUser(
       ? supabase
           .from("orders")
           .select(CRM_ORDER_SELECT)
-          .eq("is_manual_order", true)
+          .or("is_manual_order.eq.true,is_from_quotation.eq.true")
           .eq("who_receive", displayName)
           .order("created_at", { ascending: false })
           .limit(limit)
@@ -89,7 +97,7 @@ export async function fetchCrmOrdersForLineUser(
       ? supabase
           .from("orders")
           .select(CRM_ORDER_SELECT)
-          .eq("is_manual_order", true)
+          .or("is_manual_order.eq.true,is_from_quotation.eq.true")
           .eq("orderer_name", displayName)
           .order("created_at", { ascending: false })
           .limit(limit)
@@ -102,14 +110,21 @@ export async function fetchCrmOrdersForLineUser(
   if (byManualOrdererRes.error) throw byManualOrdererRes.error;
 
   const byLineRaw = (byLineRes.data as CrmAttributedOrder[]) ?? [];
-  const byLine = adminLineIds.has(lineUserId)
-    ? byLineRaw.filter((o) => !o.is_manual_order)
-    : byLineRaw;
+  const byLine = byLineRaw.filter((o) => {
+    if (adminLineIds.has(lineUserId) && isSpecialCrmOrder(o)) return false;
+    if (isSpecialCrmOrder(o)) {
+      const oid = o.line_user_id?.trim();
+      return Boolean(oid) && !adminLineIds.has(oid);
+    }
+    return true;
+  });
 
   return mergeOrdersDedup([
     byLine,
     (byUserRes.data as CrmAttributedOrder[]) ?? [],
     (byManualRecvRes.data as CrmAttributedOrder[]) ?? [],
     (byManualOrdererRes.data as CrmAttributedOrder[]) ?? [],
-  ]).slice(0, limit);
+  ])
+    .filter(isCrmLinkedOrder)
+    .slice(0, limit);
 }

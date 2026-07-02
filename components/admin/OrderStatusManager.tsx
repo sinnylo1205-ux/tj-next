@@ -17,11 +17,15 @@ import { format } from "date-fns";
 import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
 import { buildReceiptHtml, ntdIntegerToChineseCapital, triggerDownloadHtmlFile } from "@/lib/receipt-html";
 import ManualOrderForm from "./ManualOrderForm";
-import { AdminOrderDetailPanel, getMobileOrderListName } from "./AdminOrderDetailPanel";
+import { AdminOrderDetailPanel } from "./AdminOrderDetailPanel";
+import { OrderBuyerDisplayBlock } from "./OrderBuyerDisplayBlock";
 import {
-  formatManualOrderFullText,
+  formatOrderBuyerFullText,
   getManualOrderDisplayName,
-  getOrderBuyerNameForDetail,
+  getOrderBuyerDisplay,
+  isSpecialSourceOrder,
+  LINE_LINKED_BUYER_CLASS,
+  resolveOrderLineUserId,
 } from "@/lib/order-display";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -127,19 +131,17 @@ interface User {
 }
 
 /**
- * 回溯訂單對應的 LINE user id。
- * orders 優先（手動單為收件人的 LINE，即使會員端也有也以此為準），
- * 否則 fallback 到會員 user_log_in.line_user_id（會員自助結帳的訂單）。
+ * 回溯訂單對應的 LINE user id（手動／報價單若為管理員 LINE 視同未綁定）。
  */
 function resolveLineUserId(
-  orderLineUserId: string | null | undefined,
+  order: Pick<Order, "line_user_id" | "is_manual_order" | "is_from_quotation">,
   userInfo: User | undefined,
 ): { id: string | null; source: "order" | "member" | null } {
-  const fromOrder = orderLineUserId?.trim();
-  if (fromOrder) return { id: fromOrder, source: "order" };
-  const fromMember = userInfo?.line_user_id?.trim();
-  if (fromMember) return { id: fromMember, source: "member" };
-  return { id: null, source: null };
+  const id = resolveOrderLineUserId(order, userInfo?.line_user_id);
+  if (!id) return { id: null, source: null };
+  const fromOrder = order.line_user_id?.trim();
+  if (fromOrder === id) return { id, source: "order" };
+  return { id, source: "member" };
 }
 
 const OrderStatusManager = () => {
@@ -168,6 +170,21 @@ const OrderStatusManager = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchDate, setSearchDate] = useState<Date | undefined>();
   const [customerTypePopoverId, setCustomerTypePopoverId] = useState<string | null>(null);
+  const [lineDisplayNames, setLineDisplayNames] = useState<Record<string, string>>({});
+
+  const loadLineDisplayNames = useCallback(async () => {
+    const { data, error } = await supabase.from("chat_state").select("line_user_id, display_name");
+    if (error) {
+      console.error("loadLineDisplayNames:", error);
+      return;
+    }
+    const map: Record<string, string> = {};
+    (data ?? []).forEach((r) => {
+      const id = (r.line_user_id as string)?.trim();
+      if (id) map[id] = ((r.display_name as string) ?? "").trim();
+    });
+    setLineDisplayNames(map);
+  }, []);
 
   // 使用 useCallback 包裝 loadOrders 避免閉包問題
   const loadOrders = useCallback(async () => {
@@ -195,13 +212,15 @@ const OrderStatusManager = () => {
       setOrders(sorted);
       const userIds = [...new Set(data?.map((o) => o.user_id) || [])];
       loadUsers(userIds);
+      void loadLineDisplayNames();
     }
     setLoading(false);
-  }, [toast]);
+  }, [toast, loadLineDisplayNames]);
 
   useEffect(() => {
     loadOrders();
-  }, [loadOrders]);
+    void loadLineDisplayNames();
+  }, [loadOrders, loadLineDisplayNames]);
 
   // 手機全螢幕詳情：鎖定背景捲動（不使用 Radix Dialog，避免黑色遮罩）
   useEffect(() => {
@@ -481,14 +500,25 @@ const OrderStatusManager = () => {
     }
   };
 
+  const buyerDisplayForOrder = (order: Order, userInfo: User | undefined) => {
+    const lineId = resolveLineUserId(order, userInfo).id;
+    const lineName = lineId ? lineDisplayNames[lineId] : null;
+    const memberName = isSpecialSourceOrder(order)
+      ? buyerDisplayName(userInfo)
+      : userInfo?.name?.trim() || (userInfo === undefined ? "載入中..." : "—");
+    return getOrderBuyerDisplay(order, memberName, userInfo?.line_user_id, lineName);
+  };
+
   const getOrderUserFullText = (order: Order, userInfo: User | undefined): string => {
-    if (order.is_from_quotation) {
-      return `${order.who_receive || "未填寫"}（報價單）\n非網站會員`;
-    }
-    if (order.is_manual_order) {
-      return formatManualOrderFullText(order);
-    }
-    return `${userInfo?.name || "載入中..."}\n${userInfo?.email || ""}`;
+    const buyer = buyerDisplayForOrder(order, userInfo);
+    const lineId = resolveLineUserId(order, userInfo).id;
+    return formatOrderBuyerFullText(buyer, {
+      userEmail: !isSpecialSourceOrder(order) ? userInfo?.email : undefined,
+      hasLineLink: Boolean(lineId),
+      isSpecial: isSpecialSourceOrder(order),
+      ordererFieldName: order.orderer_name?.trim() || null,
+      recipientName: order.who_receive?.trim() || null,
+    });
   };
 
   const saveOrderEdits = async () => {
@@ -808,12 +838,15 @@ const OrderStatusManager = () => {
         const userName = order.is_from_quotation ? "" : (userInfo?.name?.toLowerCase() || "");
         const userEmail = order.is_from_quotation ? "" : (userInfo?.email?.toLowerCase() || "");
         const recipientName = (order.who_receive || "").toLowerCase();
+        const lineId = resolveLineUserId(order, userInfo).id;
+        const lineDisplay = (lineId && lineDisplayNames[lineId] ? lineDisplayNames[lineId] : "").toLowerCase();
         const orderIdPrefix = order.id.slice(0, 5).toLowerCase();
 
         return (
           userName.includes(query) ||
           userEmail.includes(query) ||
           recipientName.includes(query) ||
+          lineDisplay.includes(query) ||
           orderIdPrefix.includes(query)
         );
       });
@@ -950,7 +983,10 @@ const OrderStatusManager = () => {
       <CardHeader className="flex flex-row items-center justify-between">
         <div>
           <CardTitle>訂單狀態管理</CardTitle>
-          <CardDescription>管理和追蹤所有訂單狀態</CardDescription>
+          <CardDescription>
+            管理和追蹤所有訂單狀態。網站會員訂單：未綁 LINE 顯示註冊名稱，已綁則同時顯示註冊名與
+            LINE 名（綠色）。手動建立或報價單轉訂單：有 LINE 優先顯示 LINE 名，否則顯示收件人姓名。
+          </CardDescription>
         </div>
         <Button onClick={() => setShowManualOrderForm(true)}>
           <Plus className="h-4 w-4 mr-2" /> 手動建立訂單
@@ -1021,7 +1057,7 @@ const OrderStatusManager = () => {
                   <ul className="divide-y divide-border bg-white">
                     {filteredOrders.map((order) => {
                       const userInfo = users[order.user_id];
-                      const listName = getMobileOrderListName(order, buyerDisplayName(userInfo));
+                      const buyer = buyerDisplayForOrder(order, userInfo);
                       return (
                         <li key={order.id}>
                           <button
@@ -1032,7 +1068,22 @@ const OrderStatusManager = () => {
                             <span className="font-medium tabular-nums text-foreground">
                               {order.expected_pickup_date || "未指定"}
                             </span>
-                            <span className="text-right truncate text-foreground">{listName}</span>
+                            <span
+                              className={cn(
+                                "text-right truncate",
+                                buyer.linePrimary ? LINE_LINKED_BUYER_CLASS : "text-foreground",
+                              )}
+                            >
+                              {buyer.showMemberAndLine ? (
+                                <>
+                                  {buyer.memberName}
+                                  <span className="text-muted-foreground"> · </span>
+                                  <span className={LINE_LINKED_BUYER_CLASS}>{buyer.lineName}</span>
+                                </>
+                              ) : (
+                                buyer.name
+                              )}
+                            </span>
                           </button>
                         </li>
                       );
@@ -1099,37 +1150,14 @@ const OrderStatusManager = () => {
                               </Popover>
                             </div>
                             <div className="hidden md:block max-w-full break-words text-xs leading-snug text-foreground">
-                              {order.is_from_quotation ? (
-                                <>
-                                  {(order.who_receive || "未填寫") + "（報價單）"}
-                                  <br />
-                                  <span className="text-xs text-muted-foreground">非網站會員</span>
-                                </>
-                              ) : order.is_manual_order ? (
-                                <>
-                                  <span className="font-medium">{getManualOrderDisplayName(order)}</span>
-                                  {order.orderer_name?.trim() &&
-                                    order.who_receive?.trim() &&
-                                    order.orderer_name.trim() !== order.who_receive.trim() && (
-                                      <>
-                                        <br />
-                                        <span className="text-sm text-muted-foreground">
-                                          訂購：{order.orderer_name.trim()}
-                                        </span>
-                                      </>
-                                    )}
-                                  <br />
-                                  <Badge variant="outline" className="mt-0.5 text-[10px] px-1.5 py-0 h-5 bg-amber-50 text-amber-700 border-amber-300">
-                                    手動
-                                  </Badge>
-                                </>
-                              ) : (
-                                <>
-                                  {userInfo?.name || "載入中..."}
-                                  <br />
-                                  <span className="text-xs text-muted-foreground">{userInfo?.email}</span>
-                                </>
-                              )}
+                              <OrderBuyerDisplayBlock
+                                buyer={buyerDisplayForOrder(order, userInfo)}
+                                memberEmail={
+                                  !isSpecialSourceOrder(order) ? userInfo?.email : undefined
+                                }
+                                ordererFieldName={order.orderer_name?.trim() || null}
+                                recipientName={order.who_receive?.trim() || null}
+                              />
                             </div>
                           </TableCell>
                           <TableCell className="min-w-0 whitespace-nowrap py-3 px-2 md:px-4">NT$ {order.total_amount}</TableCell>
@@ -1313,7 +1341,7 @@ const OrderStatusManager = () => {
                                 <AdminOrderDetailPanel
                                   order={order}
                                   items={items}
-                                  buyerName={getOrderBuyerNameForDetail(order, buyerDisplayName(userInfo))}
+                                  buyerDisplay={buyerDisplayForOrder(order, userInfo)}
                                   uploadingItemKey={uploadingItemKey}
                                   onUploadItem={(orderItemId, file) =>
                                     void handleOrderItemAdminMediaUpload(order.id, orderItemId, file)
@@ -1370,7 +1398,10 @@ const OrderStatusManager = () => {
               </h2>
               <p className="truncate text-xs text-muted-foreground">
                 {order.expected_pickup_date || "未指定取件日"} ·{" "}
-                {getMobileOrderListName(order, buyerDisplayName(userInfo))}
+                {(() => {
+                  const b = buyerDisplayForOrder(order, userInfo);
+                  return b.name;
+                })()}
               </p>
             </div>
             <Button
@@ -1388,7 +1419,7 @@ const OrderStatusManager = () => {
             <AdminOrderDetailPanel
               order={order}
               items={items}
-              buyerName={getOrderBuyerNameForDetail(order, buyerDisplayName(userInfo))}
+              buyerDisplay={buyerDisplayForOrder(order, userInfo)}
               screenshotMode
               uploadingItemKey={uploadingItemKey}
               onUploadItem={(orderItemId, file) =>
@@ -1451,7 +1482,7 @@ const OrderStatusManager = () => {
                   className="bg-muted/50"
                   value={editDraft.orderer_name?.trim() || editDraft.who_receive?.trim() || "—"}
                 />
-                <p className="text-xs text-muted-foreground">此為手動建立訂單，訂購人取自 orderer_name，非網站會員帳號。</p>
+                <p className="text-xs text-muted-foreground">此為手動建立訂單，訂購人取自 orderer_name。</p>
               </>
             ) : (
               <Input
@@ -1470,7 +1501,7 @@ const OrderStatusManager = () => {
               placeholder="Uxxxxxxxx..."
             />
             {(() => {
-              const resolved = resolveLineUserId(editDraft.line_user_id, users[editDraft.user_id ?? ""]);
+              const resolved = resolveLineUserId(editDraft, users[editDraft.user_id ?? ""]);
               if (resolved.id) {
                 return (
                   <p className="text-xs text-emerald-700">

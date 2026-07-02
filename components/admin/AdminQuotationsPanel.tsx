@@ -33,13 +33,24 @@ import {
 import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
 import { buildQuotationPdfHtml, type QuotationPdfWebhookPayload } from "@/lib/quotation-pdf-html";
 import {
+  buildSpecialQuotationAllRequirement,
   getSpecialConvertedOrderCount,
   getSpecialQuotationRoot,
+  groupItemsByComboId,
+  isQuotationStatusBackward,
   isSpecialQuotation,
-  parseComboIdFromQuotationItem,
+  parseSpecialQuotationAllRequirement,
+  QUOTATION_STATUS_LABELS,
+  recomputeComboAmounts,
+  specialRootFromAllRequirement,
+  sumSpecialQuotationTotals,
+  validateSpecialQuotationRoot,
+  type QuotationStatus,
+  type SpecialQuotationRoot,
 } from "@/lib/special-quotation";
 import { SafeImage } from "@/components/SafeImage";
 import { SpecialQuotationDialog } from "@/components/admin/SpecialQuotationDialog";
+import { SpecialQuotationEditBlock } from "@/components/admin/SpecialQuotationEditBlock";
 import { QuotationAiDraftDialog } from "@/components/admin/QuotationAiDraftDialog";
 
 // ========== Types ==========
@@ -424,81 +435,6 @@ const handleQuotationImageUpload = async (file: File): Promise<string> => {
   return urlData.publicUrl;
 };
 
-function formatSpecialComboMoney(n: unknown): string {
-  if (n === null || n === undefined) return "待補";
-  const x = typeof n === "number" ? n : Number(n);
-  if (!Number.isFinite(x)) return "待補";
-  return x.toLocaleString();
-}
-
-/** 一、二、三…（1-based，供列表標題） */
-function comboOrdinalChinese(index1Based: number): string {
-  const table: Record<number, string> = {
-    1: "一", 2: "二", 3: "三", 4: "四", 5: "五", 6: "六", 7: "七", 8: "八", 9: "九", 10: "十",
-    11: "十一", 12: "十二", 13: "十三", 14: "十四", 15: "十五", 16: "十六", 17: "十七", 18: "十八", 19: "十九", 20: "二十",
-    21: "二十一", 22: "二十二", 23: "二十三", 24: "二十四", 25: "二十五", 26: "二十六", 27: "二十七", 28: "二十八", 29: "二十九", 30: "三十",
-  };
-  return table[index1Based] ?? String(index1Based);
-}
-
-/** 特殊報價：依 `all_requirement.special_quotation.combos` 顯示訂單組合與底下品項（唯讀摘要） */
-function SpecialQuotationCombosReadonlyBlock({
-  allRequirement,
-  items,
-  context,
-}: {
-  allRequirement: unknown;
-  items: QuotationOrderItem[];
-  context: "price_asked" | "price_reply" | "order_created";
-}) {
-  if (!isSpecialQuotation(allRequirement)) return null;
-  const notice =
-    context === "price_asked"
-      ? "特殊報價單 · 訂單組合摘要（詢價中）：轉訂單時將依「訂單組合」拆成多筆訂單。請於下方填寫各品項單價與運費後再發送報價。"
-      : context === "order_created"
-        ? "特殊報價單 · 訂單組合摘要（已建立訂單）：可依下方編輯品項內容後按「儲存品項與報價表頭」寫入資料庫。"
-        : "特殊報價單：轉訂單時將依「訂單組合」拆成多筆訂單；表頭小計／運費／總額為全單摘要。";
-  return (
-    <div className="space-y-3">
-      <p className="text-sm rounded-md border border-amber-200 bg-amber-50 text-amber-950 px-3 py-2">{notice}</p>
-      {(getSpecialQuotationRoot(allRequirement)?.combos || []).map((combo, comboIdx) => {
-        const ordinal = comboOrdinalChinese(comboIdx + 1);
-        const comboItems = items.filter(
-          (it) => parseComboIdFromQuotationItem(it.customizations_json) === combo.id,
-        );
-        return (
-          <div key={combo.id} className="p-3 border rounded-lg bg-background space-y-2">
-            <p className="text-sm font-medium">
-              訂單組合{ordinal} · 取件 {combo.expected_pickup_date || "—"} · {combo.pickup_location || "—"}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              取件人：{combo.pickup_contact_name || "—"}（{combo.pickup_contact_phone || "—"}）· 小計 NT${" "}
-              {formatSpecialComboMoney(combo.line_subtotal)}
-              {" · "}
-              運費 NT$ {formatSpecialComboMoney(combo.shipping_fee)}
-              {" · "}
-              合計 NT$ {formatSpecialComboMoney(combo.line_total)}
-            </p>
-            {comboItems.length === 0 ? (
-              <p className="text-xs text-amber-800 border-t pt-2">此組合尚無對應品項列（請檢查品項的 combo_id）。</p>
-            ) : (
-              comboItems.map((item) => (
-                <div key={item.id} className="flex justify-between gap-2 text-sm border-t pt-2 first:border-t-0 first:pt-0">
-                  <span>{item.product_name}</span>
-                  <span className="text-muted-foreground shrink-0">
-                    {item.unit_price == null ? "單價待補" : `NT$ ${(item.unit_price ?? 0).toLocaleString()}`} ×{" "}
-                    {item.quantity}
-                  </span>
-                </div>
-              ))
-            )}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
 // ========== Item Card for Price Asked ==========
 interface ItemEditorProps {
   item: QuotationOrderItem;
@@ -766,6 +702,7 @@ const AdminQuotationsPanel = () => {
 
   // Editable quotation fields for price_reply / order_created
   const [quotationEdits, setQuotationEdits] = useState<Record<string, QuotationEditsState>>({});
+  const [specialQuotationEdits, setSpecialQuotationEdits] = useState<Record<string, SpecialQuotationRoot>>({});
   const [savingQuotation, setSavingQuotation] = useState<string | null>(null);
 
   const defaultNewQuotationForm = () => ({
@@ -805,6 +742,16 @@ const AdminQuotationsPanel = () => {
         ...prev,
         [q.id]: buildQuotationEditsFromOrder(q),
       }));
+    }
+  };
+
+  const initSpecialQuotationEdits = (q: QuotationOrder) => {
+    if (!isSpecialQuotation(q.all_requirement)) return;
+    if (!specialQuotationEdits[q.id]) {
+      const root = specialRootFromAllRequirement(q.all_requirement);
+      if (root) {
+        setSpecialQuotationEdits((prev) => ({ ...prev, [q.id]: root }));
+      }
     }
   };
 
@@ -909,26 +856,65 @@ const AdminQuotationsPanel = () => {
         }
       }
 
+      let specialAllRequirement: Record<string, unknown> | undefined;
+      let specialTotals: ReturnType<typeof sumSpecialQuotationTotals> | undefined;
+      let specialContact: SpecialQuotationRoot["contact"] | undefined;
+      let specialOrderer: string | undefined;
+
+      if (isSpecialQuotation(q.all_requirement)) {
+        const specEdit = specialQuotationEdits[quotationId] ?? specialRootFromAllRequirement(q.all_requirement);
+        if (!specEdit) {
+          throw new Error("無法解析特殊報價單結構");
+        }
+        const qItemsForGroup = items[quotationId] ?? [];
+        const rowEdLocal = editData[quotationId];
+        const mergedForGroup = qItemsForGroup.map((it) => ({
+          ...it,
+          unit_price: rowEdLocal?.itemPrices?.[it.id] ?? it.unit_price,
+          quantity: rowEdLocal?.itemQuantities?.[it.id] ?? it.quantity,
+        }));
+        const { byComboId } = groupItemsByComboId(mergedForGroup);
+        const combos = specEdit.combos.map((c) => {
+          const comboItems = byComboId.get(c.id) ?? [];
+          return { ...c, ...recomputeComboAmounts(c, comboItems) };
+        });
+        const root: SpecialQuotationRoot = { ...specEdit, combos };
+        const validationError = validateSpecialQuotationRoot(root, byComboId);
+        if (validationError) throw new Error(validationError);
+        const existingAr = parseSpecialQuotationAllRequirement(q.all_requirement);
+        specialAllRequirement = buildSpecialQuotationAllRequirement(root, existingAr);
+        specialTotals = sumSpecialQuotationTotals(combos);
+        specialContact = root.contact;
+        specialOrderer = root.orderer_name.trim();
+        setSpecialQuotationEdits((prev) => ({ ...prev, [quotationId]: root }));
+      }
+
       const { error } = await supabase
         .from("quotation_orders")
         .update({
-          shipping_fee: shippingFeeForOrder,
-          subtotal: edits.subtotal,
-          total_amount: edits.total_amount,
+          shipping_fee: specialTotals?.shipping_fee ?? shippingFeeForOrder,
+          subtotal: specialTotals?.subtotal ?? edits.subtotal,
+          total_amount: specialTotals?.total_amount ?? edits.total_amount,
           notes: edits.notes,
           shipping_way: edits.shipping_way,
           discount_amount: edits.discount_amount,
-          email: edits.email,
-          who_receive: edits.who_receive,
-          recipient_name: edits.recipient_name,
+          email: specialContact?.email?.trim() || edits.email,
+          who_receive: specialOrderer ?? edits.who_receive,
+          recipient_name: specialOrderer ?? edits.recipient_name,
           shipping_address_text: edits.shipping_address_text,
           expected_pickup_date: edits.expected_pickup_date,
-          line_user_id: edits.line_user_id ?? null,
+          line_user_id: specialContact?.line_user_id?.trim() || edits.line_user_id || null,
           user_id: edits.user_id && String(edits.user_id).trim() ? String(edits.user_id).trim() : null,
+          ...(specialAllRequirement ? { all_requirement: specialAllRequirement } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("id", quotationId);
       if (error) throw error;
+      setSpecialQuotationEdits((prev) => {
+        const next = { ...prev };
+        delete next[quotationId];
+        return next;
+      });
       toast({ title: "✅ 報價單已更新" });
       loadQuotations();
       return true;
@@ -1177,97 +1163,170 @@ const AdminQuotationsPanel = () => {
     return subtotal + fee;
   };
 
+  const renderSingleItemEditor = (qid: string, item: QuotationOrderItem) => {
+    const defCust = getDefaultItemCustomization(item);
+    const defNote = getDefaultItemNote(item);
+    const edLocal = editData[qid];
+    const storedCust = edLocal?.itemCustomizations?.[item.id];
+    const storedNote = edLocal?.itemNotes?.[item.id];
+    return (
+      <ItemEditor
+        key={item.id}
+        item={item}
+        productName={edLocal?.itemProductNames?.[item.id] ?? item.product_name ?? ""}
+        quantity={edLocal?.itemQuantities?.[item.id] ?? Math.max(1, item.quantity ?? 1)}
+        customization={storedCust?.trim() ? storedCust : defCust}
+        note={storedNote?.trim() ? storedNote : defNote}
+        unitPrice={edLocal?.itemPrices[item.id] ?? null}
+        previewUrl={edLocal?.itemPreviewUrls[item.id] ?? ""}
+        whyPrice={edLocal?.itemWhyPrices?.[item.id] ?? ""}
+        onProductNameChange={(val) =>
+          setEditData((prev) => {
+            const cur = prev[qid];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [qid]: { ...cur, itemProductNames: { ...cur.itemProductNames, [item.id]: val } },
+            };
+          })
+        }
+        onQuantityChange={(val) =>
+          setEditData((prev) => {
+            const cur = prev[qid];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [qid]: { ...cur, itemQuantities: { ...cur.itemQuantities, [item.id]: val } },
+            };
+          })
+        }
+        onCustomizationChange={(val) =>
+          setEditData((prev) => {
+            const cur = prev[qid];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [qid]: { ...cur, itemCustomizations: { ...cur.itemCustomizations, [item.id]: val } },
+            };
+          })
+        }
+        onNoteChange={(val) =>
+          setEditData((prev) => {
+            const cur = prev[qid];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [qid]: { ...cur, itemNotes: { ...cur.itemNotes, [item.id]: val } },
+            };
+          })
+        }
+        onUnitPriceChange={(val) =>
+          setEditData((prev) => {
+            const cur = prev[qid];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [qid]: { ...cur, itemPrices: { ...cur.itemPrices, [item.id]: val } },
+            };
+          })
+        }
+        onPreviewUrlChange={(val) =>
+          setEditData((prev) => {
+            const cur = prev[qid];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [qid]: { ...cur, itemPreviewUrls: { ...cur.itemPreviewUrls, [item.id]: val } },
+            };
+          })
+        }
+        onWhyPriceChange={(val) =>
+          setEditData((prev) => {
+            const cur = prev[qid];
+            if (!cur) return prev;
+            return {
+              ...prev,
+              [qid]: { ...cur, itemWhyPrices: { ...cur.itemWhyPrices, [item.id]: val } },
+            };
+          })
+        }
+      />
+    );
+  };
+
   const renderQuotationItemEditors = (qid: string, qItemsList: QuotationOrderItem[]) =>
-    qItemsList.map((item) => {
-      const defCust = getDefaultItemCustomization(item);
-      const defNote = getDefaultItemNote(item);
-      const edLocal = editData[qid];
-      const storedCust = edLocal?.itemCustomizations?.[item.id];
-      const storedNote = edLocal?.itemNotes?.[item.id];
-      return (
-        <ItemEditor
-          key={item.id}
-          item={item}
-          productName={edLocal?.itemProductNames?.[item.id] ?? item.product_name ?? ""}
-          quantity={edLocal?.itemQuantities?.[item.id] ?? Math.max(1, item.quantity ?? 1)}
-          customization={storedCust?.trim() ? storedCust : defCust}
-          note={storedNote?.trim() ? storedNote : defNote}
-          unitPrice={edLocal?.itemPrices[item.id] ?? null}
-          previewUrl={edLocal?.itemPreviewUrls[item.id] ?? ""}
-          whyPrice={edLocal?.itemWhyPrices?.[item.id] ?? ""}
-          onProductNameChange={(val) =>
-            setEditData((prev) => {
-              const cur = prev[qid];
-              if (!cur) return prev;
-              return {
-                ...prev,
-                [qid]: { ...cur, itemProductNames: { ...cur.itemProductNames, [item.id]: val } },
-              };
-            })
-          }
-          onQuantityChange={(val) =>
-            setEditData((prev) => {
-              const cur = prev[qid];
-              if (!cur) return prev;
-              return {
-                ...prev,
-                [qid]: { ...cur, itemQuantities: { ...cur.itemQuantities, [item.id]: val } },
-              };
-            })
-          }
-          onCustomizationChange={(val) =>
-            setEditData((prev) => {
-              const cur = prev[qid];
-              if (!cur) return prev;
-              return {
-                ...prev,
-                [qid]: { ...cur, itemCustomizations: { ...cur.itemCustomizations, [item.id]: val } },
-              };
-            })
-          }
-          onNoteChange={(val) =>
-            setEditData((prev) => {
-              const cur = prev[qid];
-              if (!cur) return prev;
-              return {
-                ...prev,
-                [qid]: { ...cur, itemNotes: { ...cur.itemNotes, [item.id]: val } },
-              };
-            })
-          }
-          onUnitPriceChange={(val) =>
-            setEditData((prev) => {
-              const cur = prev[qid];
-              if (!cur) return prev;
-              return {
-                ...prev,
-                [qid]: { ...cur, itemPrices: { ...cur.itemPrices, [item.id]: val } },
-              };
-            })
-          }
-          onPreviewUrlChange={(val) =>
-            setEditData((prev) => {
-              const cur = prev[qid];
-              if (!cur) return prev;
-              return {
-                ...prev,
-                [qid]: { ...cur, itemPreviewUrls: { ...cur.itemPreviewUrls, [item.id]: val } },
-              };
-            })
-          }
-          onWhyPriceChange={(val) =>
-            setEditData((prev) => {
-              const cur = prev[qid];
-              if (!cur) return prev;
-              return {
-                ...prev,
-                [qid]: { ...cur, itemWhyPrices: { ...cur.itemWhyPrices, [item.id]: val } },
-              };
-            })
-          }
-        />
-      );
-    });
+    qItemsList.map((item) => renderSingleItemEditor(qid, item));
+
+  const renderSpecialQuotationSection = (
+    q: QuotationOrder,
+    qItems: QuotationOrderItem[],
+    context: "price_asked" | "price_reply" | "order_created",
+  ) => {
+    const specEdit =
+      specialQuotationEdits[q.id] ?? specialRootFromAllRequirement(q.all_requirement);
+    if (!specEdit) return null;
+    const edLocal = editData[q.id];
+    const merged = mergeQuotationItemsWithEditData(qItems, edLocal).map((it) => ({
+      ...it,
+      unit_price: edLocal?.itemPrices?.[it.id] ?? it.unit_price,
+      quantity: edLocal?.itemQuantities?.[it.id] ?? it.quantity,
+    }));
+    const { byComboId, unassigned } = groupItemsByComboId(merged);
+    return (
+      <SpecialQuotationEditBlock
+        specialEdit={specEdit}
+        onSpecialEditChange={(next) => setSpecialQuotationEdits((prev) => ({ ...prev, [q.id]: next }))}
+        itemsByComboId={byComboId}
+        unassignedItems={unassigned}
+        hasConvertedOrders={getSpecialConvertedOrderCount(q.all_requirement) > 0}
+        context={context}
+        renderItemEditor={(item) => renderSingleItemEditor(q.id, item as QuotationOrderItem)}
+      />
+    );
+  };
+
+  const handleQuotationStatusChange = async (q: QuotationOrder, nextStatus: string) => {
+    if (nextStatus === q.status) return;
+    const next = nextStatus as QuotationStatus;
+    if (!QUOTATION_STATUS_LABELS[next]) return;
+
+    if (isQuotationStatusBackward(q.status, next)) {
+      let msg = `確定要將狀態從「${QUOTATION_STATUS_LABELS[q.status as QuotationStatus] ?? q.status}」改為「${QUOTATION_STATUS_LABELS[next]}」嗎？`;
+      if (q.status === "order_created") {
+        msg += " 已轉出的訂單不會自動刪除或回滾。";
+      }
+      if (!window.confirm(msg)) return;
+    }
+
+    setActionLoading(q.id);
+    try {
+      const { error } = await supabase
+        .from("quotation_orders")
+        .update({ status: next, updated_at: new Date().toISOString() })
+        .eq("id", q.id);
+      if (error) throw error;
+      toast({
+        title: "✅ 報價狀態已更新",
+        description:
+          next !== activeTab
+            ? `已改為「${QUOTATION_STATUS_LABELS[next]}」，請至對應分頁查看`
+            : undefined,
+      });
+      if (next !== activeTab) {
+        setActiveTab(next);
+      }
+      await loadQuotations();
+      window.dispatchEvent(new Event("admin-refresh-badges"));
+    } catch (err: unknown) {
+      toast({
+        title: "狀態更新失敗",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   // Send quote action
   const handleSendQuote = async (quotation: QuotationOrder) => {
@@ -1725,6 +1784,7 @@ const AdminQuotationsPanel = () => {
                         {/* Expanded Content */}
                         {isExpanded && (() => {
                           initQuotationEdits(q);
+                          initSpecialQuotationEdits(q);
                           const qe = quotationEdits[q.id] || {};
                           const updateField = (field: string, value: any) =>
                             setQuotationEdits((prev) => ({ ...prev, [q.id]: { ...prev[q.id], [field]: value } }));
@@ -1750,10 +1810,31 @@ const AdminQuotationsPanel = () => {
                           <div className="px-4 pb-4 space-y-4">
                             <Separator />
 
+                            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+                              <div className="space-y-1 flex-1 max-w-xs">
+                                <Label className="text-sm">報價狀態</Label>
+                                <select
+                                  className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+                                  value={q.status}
+                                  disabled={actionLoading === q.id}
+                                  onChange={(e) => void handleQuotationStatusChange(q, e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {(Object.keys(QUOTATION_STATUS_LABELS) as QuotationStatus[]).map((s) => (
+                                    <option key={s} value={s}>
+                                      {QUOTATION_STATUS_LABELS[s]}
+                                    </option>
+                                  ))}
+                                </select>
+                              </div>
+                            </div>
+
                             {/* ========== 上半部：客戶與配送（僅顯示並可編輯，無服務/商品） ========== */}
                             <div className="space-y-3">
-                              <p className="font-semibold">客戶與配送</p>
+                              <p className="font-semibold">{isSq ? "其他設定" : "客戶與配送"}</p>
                               <div className="grid grid-cols-2 gap-4">
+                                {!isSq ? (
+                                <>
                                 <div className="space-y-1">
                                   <Label className="text-sm">收件人／姓名</Label>
                                   <Input
@@ -1775,6 +1856,8 @@ const AdminQuotationsPanel = () => {
                                     placeholder="email@example.com"
                                   />
                                 </div>
+                                </>
+                                ) : null}
                                 {(() => {
                                   const phone = parseAllRequirement(q.all_requirement)?.delivery as
                                     | Record<string, unknown>
@@ -1834,6 +1917,7 @@ const AdminQuotationsPanel = () => {
                                     placeholder="auth.users 的 UUID"
                                   />
                                 </div>
+                                {!isSq ? (
                                 <div className="space-y-1">
                                   <Label className="text-sm">LINE User ID（選填）</Label>
                                   <Input
@@ -1842,6 +1926,7 @@ const AdminQuotationsPanel = () => {
                                     placeholder="Uxxxxxxx..."
                                   />
                                 </div>
+                                ) : null}
                               </div>
                               <Button
                                 variant="outline"
@@ -1868,15 +1953,10 @@ const AdminQuotationsPanel = () => {
                               <div className="space-y-4">
                                 <p className="font-semibold">💰 報價填寫</p>
 
-                                <SpecialQuotationCombosReadonlyBlock
-                                  allRequirement={q.all_requirement}
-                                  items={mergeQuotationItemsWithEditData(qItems, ed)}
-                                  context="price_asked"
-                                />
-
-                                {/* Item editors */}
-                                {renderQuotationItemEditors(q.id, qItems)}
-                                {renderGeneralQuotationAddItemButton(q)}
+                                {isSq
+                                  ? renderSpecialQuotationSection(q, qItems, "price_asked")
+                                  : renderQuotationItemEditors(q.id, qItems)}
+                                {!isSq && renderGeneralQuotationAddItemButton(q)}
 
                                 {/* Order-level fields（LINE 僅在上半部客戶與配送編輯） */}
                                 <div className="grid grid-cols-2 gap-4">
@@ -2117,16 +2197,10 @@ const AdminQuotationsPanel = () => {
                               <div className="space-y-4">
                                 <p className="font-semibold">💳 付款確認 & 報價欄位修改</p>
 
-                                {isSpecialQuotation(q.all_requirement) ? (
-                                  <SpecialQuotationCombosReadonlyBlock
-                                    allRequirement={q.all_requirement}
-                                    items={mergeQuotationItemsWithEditData(qItems, ed)}
-                                    context="price_reply"
-                                  />
-                                ) : null}
-
-                                {renderQuotationItemEditors(q.id, qItems)}
-                                {renderGeneralQuotationAddItemButton(q)}
+                                {isSq
+                                  ? renderSpecialQuotationSection(q, qItems, "price_reply")
+                                  : renderQuotationItemEditors(q.id, qItems)}
+                                {!isSq && renderGeneralQuotationAddItemButton(q)}
 
                                 {/* Editable 報價欄位（小計／運費／折扣／總金額／發票）；特殊報價單僅顯示表頭有值的欄位 */}
                                 {showQuoteHeaderAmountsPriceReply && (
@@ -2297,13 +2371,9 @@ const AdminQuotationsPanel = () => {
                             {/* ========== Order Created: 報價欄位（客戶/配送僅在上半部編輯） ========== */}
                             {activeTab === "order_created" && (
                               <div className="space-y-4">
-                                {isSpecialQuotation(q.all_requirement) ? (
-                                  <SpecialQuotationCombosReadonlyBlock
-                                    allRequirement={q.all_requirement}
-                                    items={mergeQuotationItemsWithEditData(qItems, ed)}
-                                    context="order_created"
-                                  />
-                                ) : null}
+                                {isSq
+                                  ? renderSpecialQuotationSection(q, qItems, "order_created")
+                                  : null}
 
                                 {/* Editable 報價欄位；特殊報價單僅顯示表頭有值的欄位 */}
                                 {showQuoteHeaderAmountsCore && (
@@ -2355,8 +2425,8 @@ const AdminQuotationsPanel = () => {
                                   狀態：{paymentStepLabel(q.payment_step)}
                                 </div>
 
-                                {renderQuotationItemEditors(q.id, qItems)}
-                                {renderGeneralQuotationAddItemButton(q)}
+                                {!isSq && renderQuotationItemEditors(q.id, qItems)}
+                                {!isSq && renderGeneralQuotationAddItemButton(q)}
                               </div>
                             )}
                             </div>
