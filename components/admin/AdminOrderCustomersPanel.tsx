@@ -16,7 +16,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, MessageCircle, Pencil, RefreshCw, Search } from "lucide-react";
-import { updateOrdersContactForCustomer } from "@/lib/order-customer-contact";
+import { type OrderCustomerContactPatch, updateOrdersContactForCustomer } from "@/lib/order-customer-contact";
 
 type ContactFilter = "all" | "has_line" | "has_email" | "no_contact" | "repeat" | "unpaid";
 
@@ -83,6 +83,39 @@ function customerTypeLabel(customerKey: string): string | null {
   return null;
 }
 
+function normalizedContactValue(value: string | null | undefined): string {
+  return value?.trim() ?? "";
+}
+
+function buildChangedContactPatch(
+  row: OrderCustomerRow,
+  nextEmail: string,
+  nextPhone: string,
+  nextLineUserId: string,
+): OrderCustomerContactPatch {
+  const patch: OrderCustomerContactPatch = {};
+
+  if (normalizedContactValue(nextEmail) !== normalizedContactValue(row.primary_email)) {
+    patch.email = nextEmail;
+  }
+  if (normalizedContactValue(nextPhone) !== normalizedContactValue(row.primary_phone)) {
+    patch.phone = nextPhone;
+  }
+  if (normalizedContactValue(nextLineUserId) !== normalizedContactValue(row.line_user_id)) {
+    patch.line_user_id = nextLineUserId;
+  }
+
+  return patch;
+}
+
+function contactPatchLabels(patch: OrderCustomerContactPatch): string {
+  const labels: string[] = [];
+  if (patch.email !== undefined) labels.push("Email");
+  if (patch.phone !== undefined) labels.push("電話");
+  if (patch.line_user_id !== undefined) labels.push("LINE user_id");
+  return labels.join(" / ");
+}
+
 export default function AdminOrderCustomersPanel({
   onOpenLineCustomer,
 }: {
@@ -144,16 +177,20 @@ export default function AdminOrderCustomersPanel({
 
   const saveContact = useCallback(async () => {
     if (!editRow) return;
+    const patch = buildChangedContactPatch(editRow, editEmail, editPhone, editLineUserId);
+    if (Object.keys(patch).length === 0) {
+      toast({
+        title: "沒有變更",
+        description: "聯絡資訊未變更，未寫入訂單。",
+      });
+      return;
+    }
     setSaving(true);
     try {
-      const { updatedCount } = await updateOrdersContactForCustomer(supabase, editRow.customer_key, {
-        email: editEmail,
-        phone: editPhone,
-        line_user_id: editLineUserId,
-      });
+      const { updatedCount } = await updateOrdersContactForCustomer(supabase, editRow.customer_key, patch);
       toast({
         title: "已更新聯絡資訊",
-        description: `已寫入 ${updatedCount} 筆訂單（Email / 電話 / LINE user_id）`,
+        description: `已寫入 ${updatedCount} 筆訂單（${contactPatchLabels(patch)}）`,
       });
       closeEdit();
       await fetchRows();
@@ -330,7 +367,7 @@ export default function AdminOrderCustomersPanel({
                 <>
                   {editRow.customer_name || "—"}（{editRow.order_count} 筆訂單）
                   <br />
-                  儲存後會批次寫入此客戶名下所有訂單的 <code className="text-xs">Email</code>、
+                  儲存後只會批次寫入有變更的 <code className="text-xs">Email</code>、
                   <code className="text-xs">phone</code>、<code className="text-xs">line_user_id</code>。
                 </>
               ) : null}
