@@ -20,6 +20,7 @@ import {
 import { format, addDays, isSameDay, isWithinInterval, getDay } from "date-fns";
 import { CUSTOMIZER_PATHS } from "@/lib/product-notice-url";
 import { SafeImage } from "@/components/SafeImage";
+import { ProductCustomizerIntroDialog } from "./ProductCustomizerIntroDialog";
 
 export interface ProductNoticeData {
   product_id: string;
@@ -100,6 +101,7 @@ export function ProductNoticeClient({
 
   return (
     <div className="min-h-screen py-8 px-4 md:px-6" style={{ backgroundColor: "#fdfbfa" }}>
+      <ProductCustomizerIntroDialog />
       <div className="max-w-6xl mx-auto">
         <div className="rounded-t-lg p-6 mb-6 bg-transparent">
           <div className="hidden md:grid grid-cols-[120px_auto_120px] items-center gap-4">
