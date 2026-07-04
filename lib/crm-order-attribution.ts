@@ -114,7 +114,8 @@ export async function fetchCrmOrdersForLineUser(
     if (adminLineIds.has(lineUserId) && isSpecialCrmOrder(o)) return false;
     if (isSpecialCrmOrder(o)) {
       const oid = o.line_user_id?.trim();
-      return Boolean(oid) && !adminLineIds.has(oid);
+      if (!oid) return false;
+      return !adminLineIds.has(oid);
     }
     return true;
   });
