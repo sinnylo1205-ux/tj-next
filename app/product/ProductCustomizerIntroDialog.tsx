@@ -11,9 +11,9 @@ import { SafeImage } from "@/components/SafeImage";
 import { cn } from "@/lib/utils";
 
 const DESKTOP_IMG =
-  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/product/compu.png";
+  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/product/compu_1_11zon.webp";
 const MOBILE_IMG =
-  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/product/phone.png";
+  "https://akrxbdoxiopiubksgcrl.supabase.co/storage/v1/object/public/custom_asset/website_img/product/phone_2_11zon.webp";
 
 /** 產品頁共用：客製化編輯器導覽圖，點擊任意處關閉 */
 export function ProductCustomizerIntroDialog() {
