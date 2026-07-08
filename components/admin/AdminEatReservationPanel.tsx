@@ -18,6 +18,9 @@ interface EatReservation {
   status: string | null;
   created_at: string;
   line_user_id: string | null;
+  form_email: string | null;
+  sample_note: string | null;
+  shipping_status: string | null;
 }
 
 const AdminEatReservationPanel = () => {
@@ -102,6 +105,16 @@ const AdminEatReservationPanel = () => {
             <p className="font-semibold text-lg">{r.name || "未填姓名"}</p>
             <p className="text-sm text-muted-foreground">{new Date(r.created_at).toLocaleString("zh-TW")}</p>
           </div>
+          <div className="flex items-center gap-2">
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                r.shipping_status === "已寄送"
+                  ? "bg-green-100 text-green-700"
+                  : "bg-muted text-muted-foreground"
+              }`}
+            >
+              {r.shipping_status || "未寄送"}
+            </span>
           {showAction && (
             <Button
               size="sm"
@@ -116,9 +129,11 @@ const AdminEatReservationPanel = () => {
               可排入製作/試吃
             </Button>
           )}
+          </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
           <div><span className="text-muted-foreground">Email：</span>{r.email || "-"}</div>
+          <div><span className="text-muted-foreground">表單Email：</span>{r.form_email || "-"}</div>
           <div><span className="text-muted-foreground">電話：</span>{r.phone ?? "-"}</div>
           <div className="col-span-2"><span className="text-muted-foreground">地址：</span>{r.address || "-"}</div>
           <div className="col-span-2"><span className="text-muted-foreground">轉帳末5碼：</span>{r.tranfer_5 ?? "-"}</div>
@@ -140,6 +155,10 @@ const AdminEatReservationPanel = () => {
         <div>
           <span className="text-sm text-muted-foreground">試吃品項：</span>
           <div className="mt-1">{renderEatItems(r.eat_item)}</div>
+        </div>
+        <div>
+          <span className="text-sm text-muted-foreground">打樣備註：</span>
+          <p className="mt-1 text-sm whitespace-pre-wrap">{r.sample_note || "-"}</p>
         </div>
       </CardContent>
     </Card>
