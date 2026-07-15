@@ -383,10 +383,7 @@ const BatchUploadTab = ({ preset = "ig" }: BatchUploadTabProps) => {
           ) : (
             <div className="space-y-1 max-h-80 overflow-y-auto">
               {history.map((r, i) => {
-                const isVideo =
-                  r.mediaType === "video" ||
-                  r.url.includes("/IG/reels/") ||
-                  (preset === "sea" && r.mediaType === "video");
+                const isVideo = r.mediaType === "video" || r.url.includes("/IG/reels/");
                 return (
                   <div key={i} className="flex items-center gap-2 text-xs bg-muted/30 rounded px-2 py-1.5">
                     {isVideo ? (
