@@ -393,6 +393,7 @@ export function SpecialQuotationDialog({ open, onOpenChange, onCommitted }: Prop
     const filtered = filterProducts(search);
     return (
       <Popover
+        modal
         open={productPopoverOpen[key] ?? false}
         onOpenChange={(o) => setProductPopoverOpen((prev) => ({ ...prev, [key]: o }))}
       >

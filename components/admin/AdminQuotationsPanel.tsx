@@ -857,9 +857,29 @@ const AdminQuotationsPanel = () => {
       }
 
       let specialAllRequirement: Record<string, unknown> | undefined;
+      let generalAllRequirement: Record<string, unknown> | undefined;
       let specialTotals: ReturnType<typeof sumSpecialQuotationTotals> | undefined;
       let specialContact: SpecialQuotationRoot["contact"] | undefined;
       let specialOrderer: string | undefined;
+
+      if (!isSpecialQuotation(q.all_requirement)) {
+        const ar = parseAllRequirement(q.all_requirement) || {};
+        const cp = { ...((ar.customer_profile as Record<string, unknown> | undefined) || {}) };
+        const del = { ...((ar.delivery as Record<string, unknown> | undefined) || {}) };
+        const receiver =
+          (edits.recipient_name ?? edits.who_receive)?.trim() ||
+          (typeof del.receiver === "string" ? del.receiver.trim() : "") ||
+          (typeof cp.name === "string" ? cp.name.trim() : "");
+        if (edits.email?.trim()) cp.email = edits.email.trim();
+        else delete cp.email;
+        if (receiver) {
+          cp.name = receiver;
+          del.receiver = receiver;
+        }
+        if (edits.shipping_address_text?.trim()) del.address = edits.shipping_address_text.trim();
+        if (edits.shipping_way?.trim()) del.method = edits.shipping_way.trim();
+        generalAllRequirement = { ...ar, customer_profile: cp, delivery: del };
+      }
 
       if (isSpecialQuotation(q.all_requirement)) {
         const specEdit = specialQuotationEdits[quotationId] ?? specialRootFromAllRequirement(q.all_requirement);
@@ -905,7 +925,11 @@ const AdminQuotationsPanel = () => {
           expected_pickup_date: edits.expected_pickup_date,
           line_user_id: specialContact?.line_user_id?.trim() || edits.line_user_id || null,
           user_id: edits.user_id && String(edits.user_id).trim() ? String(edits.user_id).trim() : null,
-          ...(specialAllRequirement ? { all_requirement: specialAllRequirement } : {}),
+          ...(specialAllRequirement
+            ? { all_requirement: specialAllRequirement }
+            : generalAllRequirement
+              ? { all_requirement: generalAllRequirement }
+              : {}),
           updated_at: new Date().toISOString(),
         })
         .eq("id", quotationId);
@@ -1559,6 +1583,19 @@ const AdminQuotationsPanel = () => {
     }
   };
 
+  const resolveQuotationContactEmail = (quotation: QuotationOrder): string | null => {
+    const specEdit = specialQuotationEdits[quotation.id];
+    const specEmail = specEdit?.contact?.email?.trim();
+    if (specEmail) return specEmail;
+    const qe = quotationEdits[quotation.id];
+    const editedEmail = qe?.email?.trim();
+    if (editedEmail) return editedEmail;
+    const ar = parseAllRequirement(quotation.all_requirement) || {};
+    const cp = (ar.customer_profile as Record<string, unknown> | undefined) || {};
+    const profileEmail = typeof cp.email === "string" ? cp.email.trim() : "";
+    return quotation.email?.trim() || profileEmail || null;
+  };
+
   // Convert to order action
   const handleConvertToOrder = async (quotation: QuotationOrder) => {
     const pd = paymentData[quotation.id];
@@ -1566,6 +1603,11 @@ const AdminQuotationsPanel = () => {
       toast({ title: "請填寫付款方式", variant: "destructive" });
       return;
     }
+
+    const contactEmail = resolveQuotationContactEmail(quotation);
+
+    const saved = await handleSaveQuotationEdits(quotation.id);
+    if (!saved) return;
 
     const qe = quotationEdits[quotation.id];
     const userId = (qe?.user_id && String(qe.user_id).trim()) ? String(qe.user_id).trim() : quotation.user_id;
@@ -1584,6 +1626,7 @@ const AdminQuotationsPanel = () => {
           transfer_last5: pd.transferLast5 || null,
           user_id: userId || null,
           line_user_id: lineUserId || null,
+          email: contactEmail,
         },
       });
 
@@ -2624,6 +2667,7 @@ const AdminQuotationsPanel = () => {
                     <div className="space-y-1">
                       <Label className="text-xs">從商品庫帶入（選填）</Label>
                       <Popover
+                        modal
                         open={popoverOpen}
                         onOpenChange={(open) =>
                           setNewQuoteDraftItemPopoverOpen((prev) => ({ ...prev, [draft.id]: open }))

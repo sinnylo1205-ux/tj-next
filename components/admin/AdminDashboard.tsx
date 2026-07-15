@@ -124,10 +124,22 @@ interface CustomerTypePieSlice {
   key: string;
 }
 
+/** 依所選年度與今天日期，決定營收圖預設顯示上半年或下半年 */
+function defaultRevenueHalfYear(forYear: number): 1 | 2 {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
+  if (forYear < currentYear) return 2;
+  if (forYear > currentYear) return 1;
+  return currentMonth <= 6 ? 1 : 2;
+}
+
 const AdminDashboard = () => {
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   /** 營收長條圖：1＝1–6 月、2＝7–12 月，避免 12 個月三柱過擠 */
-  const [revenueHalfYear, setRevenueHalfYear] = useState<1 | 2>(1);
+  const [revenueHalfYear, setRevenueHalfYear] = useState<1 | 2>(() =>
+    defaultRevenueHalfYear(new Date().getFullYear()),
+  );
   const [revenueData, setRevenueData] = useState<MonthlyRevenue[]>([]);
   const [popularProducts, setPopularProducts] = useState<ProductPopularity[]>([]);
   const [orderCountData, setOrderCountData] = useState<MonthlyOrderCount[]>([]);
@@ -161,7 +173,7 @@ const AdminDashboard = () => {
   }, [monthlyReportYear, monthlyReportMonth, yearlyReportYear]);
 
   useEffect(() => {
-    setRevenueHalfYear(1);
+    setRevenueHalfYear(defaultRevenueHalfYear(selectedYear));
   }, [selectedYear]);
 
   const reportYearOptions = useMemo(() => {

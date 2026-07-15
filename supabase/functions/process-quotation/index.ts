@@ -629,6 +629,7 @@ async function handleConvertSpecialQuotationToOrders(
     transfer_last5,
     user_id: bodyUserId,
     line_user_id: bodyLineUserId,
+    email: bodyEmail,
   } = body;
 
   const special = allReq.special_quotation;
@@ -676,7 +677,11 @@ async function handleConvertSpecialQuotationToOrders(
   const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1";
   const lineUserId = bodyLineUserId || quotation.line_user_id || special.contact?.line_user_id || null;
   const ordererName = String(special.orderer_name || "").trim() || "客戶";
-  const contactEmail = quotation.email || special.contact?.email || null;
+  const contactEmail =
+    (typeof bodyEmail === "string" && bodyEmail.trim()) ||
+    special.contact?.email?.trim() ||
+    quotation.email?.trim() ||
+    null;
 
   const createdOrderIds: string[] = [];
 
@@ -886,6 +891,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
     transfer_last5,
     user_id: bodyUserId,
     line_user_id: bodyLineUserId,
+    email: bodyEmail,
   } = body;
 
   if (!quotation_order_id || !payment_method) {
@@ -936,9 +942,14 @@ async function handleConvertToOrder(supabase: any, body: any) {
   // 3. Create order（優先使用 body 傳入的 user_id、line_user_id，否則用報價單上的）
   const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1"; // fallback to admin user
   const lineUserId = bodyLineUserId || quotation.line_user_id || null;
+  const contactEmail =
+    (typeof bodyEmail === "string" && bodyEmail.trim()) ||
+    quotation.email?.trim() ||
+    (typeof customerProfile.email === "string" ? customerProfile.email.trim() : "") ||
+    null;
   const orderInsert = {
     user_id: userId,
-    Email: quotation.email || customerProfile.email || null,
+    Email: contactEmail,
     who_receive: quotation.who_receive || delivery.receiver || customerProfile.name || null,
     phone: delivery.phone || null,
     shipping_way: quotation.shipping_way || delivery.method || null,
@@ -1055,7 +1066,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
         order_status: "processing",
         payment_step: payment_step || "verified",
         user_name: customerProfile.name || "客戶",
-        user_email: quotation.email || null,
+        user_email: contactEmail,
         product_summary: productSummary,
         expected_pickup_date: quotation.expected_pickup_date || null,
         notes: quotation.notes || null,
