@@ -148,12 +148,17 @@ const AdminWebsiteMaterialsSection = () => {
       <Tabs defaultValue="batch-upload">
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-md bg-secondary p-1 text-secondary-foreground">
           <TabsTrigger value="batch-upload">IG 素材上傳</TabsTrigger>
+          <TabsTrigger value="sea-upload">海巡素材上傳</TabsTrigger>
           <TabsTrigger value="products">產品圖片與文字</TabsTrigger>
           <TabsTrigger value="materials">頁面素材</TabsTrigger>
         </TabsList>
 
         <TabsContent value="batch-upload" className="mt-6">
-          <BatchUploadTab />
+          <BatchUploadTab preset="ig" />
+        </TabsContent>
+
+        <TabsContent value="sea-upload" className="mt-6">
+          <BatchUploadTab preset="sea" />
         </TabsContent>
 
         <TabsContent value="products" className="mt-6">
