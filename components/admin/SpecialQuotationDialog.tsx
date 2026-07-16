@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 import { QUOTATION_KIND_SPECIAL, type SpecialQuotationComboPayload, type SpecialQuotationRoot } from "@/lib/special-quotation";
 import { buildSpecialQuotationPdfPayload, type SpecialComboPdfInput } from "@/lib/special-quotation-pdf";
 import { buildQuotationPdfHtml } from "@/lib/quotation-pdf-html";
+import { LineUserIdInput } from "./LineUserIdInput";
 
 export interface SpecialQuotationProductRow {
   id: string;
@@ -493,7 +494,11 @@ export function SpecialQuotationDialog({ open, onOpenChange, onCommitted }: Prop
             </div>
             <div className="space-y-1">
               <Label>LINE User ID（選填）</Label>
-              <Input value={form.lineUserId} onChange={(e) => setForm((p) => ({ ...p, lineUserId: e.target.value }))} placeholder="U…" />
+              <LineUserIdInput
+                value={form.lineUserId}
+                onChange={(v) => setForm((p) => ({ ...p, lineUserId: v }))}
+                placeholder="U…"
+              />
             </div>
           </div>
         )}

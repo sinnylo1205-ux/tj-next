@@ -5,8 +5,14 @@
 import type { PackageStyleOption, BoxConfig } from "@/hooks/useUniversalPackageCustomizer";
 import type { DecorationOption } from "@/hooks/useHierarchicalOptions";
 import type { PackageStylePhotoMetadata } from "@/components/universal-customizer/PackageStyleSelector";
-import type { CSSProperties } from "react";
 import { SafeImage } from "@/components/SafeImage";
+import { cn } from "@/lib/utils";
+import {
+  PHOTO_FRAME_CLIP_STYLES,
+  photoFrameClipContainerClass,
+  photoFrameOuterClipStyle,
+  photoFrameShapeStyle,
+} from "@/lib/photo-frame-styles";
 
 interface PackagePreviewCanvasProps {
   selectedPackageStyle: PackageStyleOption | null;
@@ -105,7 +111,7 @@ export function PackagePreviewCanvas({
             ui_height?: number;
             rotation?: number;
             requires_photo_upload?: boolean;
-            photo_carrier_type?: "diamond" | "square" | "circle" | "irregular" | "none";
+            photo_carrier_type?: "diamond" | "square" | "circle" | "ellipse" | "irregular" | "none";
           } | null;
 
           // 跳過需要照片上傳的裝飾品（在照片層渲染）
@@ -151,39 +157,39 @@ export function PackagePreviewCanvas({
         >
           {(() => {
             const frameType = activePhotoMetadata.photo_carrier_type ?? "none";
-            
-            // 框架樣式映射
-            const frameStyles: Record<string, CSSProperties> = {
-              diamond: { clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" },
-              square: {},
-              circle: { borderRadius: "50%" },
-              none: {},
-            };
+            const frameStyles = PHOTO_FRAME_CLIP_STYLES;
 
             return uploadedPhotoUrl ? (
-              <div className="relative h-full w-full">
+              <div
+                className={cn("relative h-full w-full", photoFrameClipContainerClass(frameType))}
+                style={{
+                  ...photoFrameOuterClipStyle(frameType, frameStyles),
+                  ...photoFrameShapeStyle(frameType),
+                }}
+              >
                 <SafeImage
                   src={uploadedPhotoUrl}
                   alt="上傳的照片"
                   fill
                   className="object-contain object-center"
                   style={{
-                    ...frameStyles[frameType],
                     backgroundColor: frameType === "none" ? "transparent" : "white",
                     border: frameType === "none" ? "none" : "2px solid white",
-                    borderRadius: frameType === "square" ? "8px" : frameType === "circle" ? "50%" : "0",
                   }}
                   sizes="200px"
                 />
               </div>
             ) : (
               <div
-                className="w-full h-full flex items-center justify-center text-xs text-secondary-foreground/70"
+                className={cn(
+                  "flex h-full w-full items-center justify-center text-xs text-secondary-foreground/70",
+                  photoFrameClipContainerClass(frameType),
+                )}
                 style={{
-                  ...frameStyles[frameType],
+                  ...photoFrameOuterClipStyle(frameType, frameStyles),
+                  ...photoFrameShapeStyle(frameType),
                   border: "2px dashed #ffc0cb",
                   backgroundColor: frameType === "none" ? "transparent" : "rgba(255,255,255,0.9)",
-                  borderRadius: frameType === "square" ? "8px" : frameType === "circle" ? "50%" : "0",
                 }}
               >
                 照片放置處

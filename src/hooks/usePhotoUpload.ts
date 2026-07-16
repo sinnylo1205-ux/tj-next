@@ -8,7 +8,7 @@ import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
 import type { DecorationOption } from "./useHierarchicalOptions";
 
 interface PhotoFrame {
-  type: "diamond" | "irregular" | "circle" | "square" | "none";
+  type: "diamond" | "irregular" | "circle" | "square" | "ellipse" | "none";
   position: { x: number; y: number; width: number; height: number };
   rotation?: number;
 }

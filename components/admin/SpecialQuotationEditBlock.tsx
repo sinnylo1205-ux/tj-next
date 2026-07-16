@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LineUserIdInput } from "./LineUserIdInput";
 import {
   recomputeComboAmounts,
   type SpecialQuotationComboPayload,
@@ -104,9 +105,9 @@ export function SpecialQuotationEditBlock({
         </div>
         <div className="space-y-1 md:col-span-2">
           <Label className="text-sm">LINE User ID</Label>
-          <Input
+          <LineUserIdInput
             value={specialEdit.contact.line_user_id ?? ""}
-            onChange={(e) => updateContact({ line_user_id: e.target.value || null })}
+            onChange={(v) => updateContact({ line_user_id: v || null })}
             placeholder="Uxxxxxxxx..."
           />
         </div>

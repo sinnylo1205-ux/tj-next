@@ -52,6 +52,7 @@ import { SafeImage } from "@/components/SafeImage";
 import { SpecialQuotationDialog } from "@/components/admin/SpecialQuotationDialog";
 import { SpecialQuotationEditBlock } from "@/components/admin/SpecialQuotationEditBlock";
 import { QuotationAiDraftDialog } from "@/components/admin/QuotationAiDraftDialog";
+import { LineUserIdInput } from "@/components/admin/LineUserIdInput";
 
 // ========== Types ==========
 interface QuotationOrder {
@@ -144,10 +145,41 @@ function getDefaultItemNote(item: QuotationOrderItem): string {
   return typeof note === "string" ? note : "";
 }
 
+function readQuotationBilling(allReqRaw: unknown): { tax_title: string; tax_id: string } {
+  const ar = parseAllRequirement(allReqRaw) || {};
+  const billing = (ar.billing as Record<string, unknown> | undefined) || {};
+  const legacyCp = (ar.customer_profile as Record<string, unknown> | undefined) || {};
+  return {
+    tax_title: String(billing.tax_title ?? legacyCp.tax_title ?? "").trim(),
+    tax_id: String(billing.tax_id ?? legacyCp.tax_id ?? "")
+      .replace(/\D/g, "")
+      .slice(0, 8),
+  };
+}
+
+function mergeBillingIntoAllRequirement(
+  ar: Record<string, unknown>,
+  tax_title?: string | null,
+  tax_id?: string | null,
+): Record<string, unknown> {
+  const billing = { ...((ar.billing as Record<string, unknown> | undefined) || {}) };
+  const title = (tax_title ?? "").trim();
+  const id = (tax_id ?? "").replace(/\D/g, "").slice(0, 8);
+  if (title) billing.tax_title = title;
+  else delete billing.tax_title;
+  if (id) billing.tax_id = id;
+  else delete billing.tax_id;
+  const next = { ...ar };
+  if (Object.keys(billing).length > 0) next.billing = billing;
+  else delete next.billing;
+  return next;
+}
+
 function buildQuotationEditsFromOrder(q: QuotationOrder): QuotationEditsState {
   const ar = parseAllRequirement(q.all_requirement) || {};
   const cp = (ar.customer_profile as Record<string, unknown> | undefined) || {};
   const del = (ar.delivery as Record<string, unknown> | undefined) || {};
+  const billing = readQuotationBilling(q.all_requirement);
   const nameOrReceiver =
     q.recipient_name ||
     q.who_receive ||
@@ -178,6 +210,8 @@ function buildQuotationEditsFromOrder(q: QuotationOrder): QuotationEditsState {
       null,
     line_user_id: q.line_user_id ?? null,
     user_id: q.user_id ?? null,
+    tax_title: billing.tax_title || undefined,
+    tax_id: billing.tax_id || undefined,
   };
 }
 
@@ -878,7 +912,11 @@ const AdminQuotationsPanel = () => {
         }
         if (edits.shipping_address_text?.trim()) del.address = edits.shipping_address_text.trim();
         if (edits.shipping_way?.trim()) del.method = edits.shipping_way.trim();
-        generalAllRequirement = { ...ar, customer_profile: cp, delivery: del };
+        generalAllRequirement = mergeBillingIntoAllRequirement(
+          { ...ar, customer_profile: cp, delivery: del },
+          edits.tax_title,
+          edits.tax_id,
+        );
       }
 
       if (isSpecialQuotation(q.all_requirement)) {
@@ -902,7 +940,11 @@ const AdminQuotationsPanel = () => {
         const validationError = validateSpecialQuotationRoot(root, byComboId);
         if (validationError) throw new Error(validationError);
         const existingAr = parseSpecialQuotationAllRequirement(q.all_requirement);
-        specialAllRequirement = buildSpecialQuotationAllRequirement(root, existingAr);
+        specialAllRequirement = mergeBillingIntoAllRequirement(
+          buildSpecialQuotationAllRequirement(root, existingAr),
+          edits.tax_title,
+          edits.tax_id,
+        );
         specialTotals = sumSpecialQuotationTotals(combos);
         specialContact = root.contact;
         specialOrderer = root.orderer_name.trim();
@@ -934,13 +976,27 @@ const AdminQuotationsPanel = () => {
         })
         .eq("id", quotationId);
       if (error) throw error;
+      const { data: freshRow } = await supabase
+        .from("quotation_orders")
+        .select("*")
+        .eq("id", quotationId)
+        .single();
+      if (freshRow) {
+        setQuotationEdits((prev) => ({
+          ...prev,
+          [quotationId]: buildQuotationEditsFromOrder(freshRow as QuotationOrder),
+        }));
+      }
       setSpecialQuotationEdits((prev) => {
         const next = { ...prev };
         delete next[quotationId];
         return next;
       });
       toast({ title: "✅ 報價單已更新" });
-      loadQuotations();
+      await loadQuotations();
+      if (expandedOrders.has(quotationId)) {
+        await loadItems(quotationId);
+      }
       return true;
     } catch (err: any) {
       toast({ title: "更新失敗", description: err.message, variant: "destructive" });
@@ -1322,6 +1378,9 @@ const AdminQuotationsPanel = () => {
       if (!window.confirm(msg)) return;
     }
 
+    const saved = await handleSaveQuotationEdits(q.id);
+    if (!saved) return;
+
     setActionLoading(q.id);
     try {
       const { error } = await supabase
@@ -1340,6 +1399,9 @@ const AdminQuotationsPanel = () => {
         setActiveTab(next);
       }
       await loadQuotations();
+      if (expandedOrders.has(q.id)) {
+        await loadItems(q.id);
+      }
       window.dispatchEvent(new Event("admin-refresh-badges"));
     } catch (err: unknown) {
       toast({
@@ -1391,12 +1453,7 @@ const AdminQuotationsPanel = () => {
       toast({ title: "✅ 報價單已發送" });
       loadQuotations();
       window.dispatchEvent(new Event("admin-refresh-badges"));
-      // Clear expanded so it reloads items on next expand
-      setItems((prev) => {
-        const next = { ...prev };
-        delete next[quotation.id];
-        return next;
-      });
+      await loadItems(quotation.id);
     } catch (err: any) {
       toast({ title: "發送報價失敗", description: err.message, variant: "destructive" });
     } finally {
@@ -1468,11 +1525,7 @@ const AdminQuotationsPanel = () => {
       }
       loadQuotations();
       window.dispatchEvent(new Event("admin-refresh-badges"));
-      setItems((prev) => {
-        const next = { ...prev };
-        delete next[quotation.id];
-        return next;
-      });
+      await loadItems(quotation.id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "操作失敗";
       toast({ title: "單獨開立失敗", description: msg, variant: "destructive" });
@@ -1963,9 +2016,9 @@ const AdminQuotationsPanel = () => {
                                 {!isSq ? (
                                 <div className="space-y-1">
                                   <Label className="text-sm">LINE User ID（選填）</Label>
-                                  <Input
+                                  <LineUserIdInput
                                     value={qe.line_user_id ?? ""}
-                                    onChange={(e) => updateField("line_user_id", e.target.value)}
+                                    onChange={(v) => updateField("line_user_id", v)}
                                     placeholder="Uxxxxxxx..."
                                   />
                                 </div>
@@ -2108,32 +2161,31 @@ const AdminQuotationsPanel = () => {
                                           />
                                         </div>
                                       )}
-                                      {sqShowHeaderText(qe.tax_title) && (
-                                        <div className="space-y-1">
-                                          <Label className="text-sm">發票抬頭</Label>
-                                          <Input
-                                            value={qe.tax_title ?? ""}
-                                            onChange={(e) => updateField("tax_title", e.target.value)}
-                                            placeholder="OO科技股份有限公司"
-                                          />
-                                        </div>
-                                      )}
-                                      {sqShowHeaderText(qe.tax_id) && (
-                                        <div className="space-y-1">
-                                          <Label className="text-sm">統一編號</Label>
-                                          <Input
-                                            value={qe.tax_id ?? ""}
-                                            onChange={(e) =>
-                                              updateField("tax_id", e.target.value.replace(/\D/g, "").slice(0, 8))
-                                            }
-                                            placeholder="12345678"
-                                            maxLength={8}
-                                          />
-                                        </div>
-                                      )}
                                     </div>
                                   </div>
                                 )}
+
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-1">
+                                    <Label className="text-sm">發票抬頭</Label>
+                                    <Input
+                                      value={qe.tax_title ?? ""}
+                                      onChange={(e) => updateField("tax_title", e.target.value)}
+                                      placeholder="OO科技股份有限公司"
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-sm">統一編號</Label>
+                                    <Input
+                                      value={qe.tax_id ?? ""}
+                                      onChange={(e) =>
+                                        updateField("tax_id", e.target.value.replace(/\D/g, "").slice(0, 8))
+                                      }
+                                      placeholder="12345678"
+                                      maxLength={8}
+                                    />
+                                  </div>
+                                </div>
 
                                 {/* Totals */}
                                 <div className="bg-muted/30 p-4 rounded-lg space-y-1 text-sm">
@@ -2272,20 +2324,19 @@ const AdminQuotationsPanel = () => {
                                     <Input type="number" value={qe.total_amount ?? ""} onChange={e => updateField("total_amount", e.target.value ? Number(e.target.value) : null)} />
                                   </div>
                                   )}
-                                  {sqShowHeaderText(qe.tax_title) && (
+                                </div>
+                                )}
+
+                                <div className="grid grid-cols-2 gap-4">
                                   <div className="space-y-1">
                                     <Label className="text-sm">發票抬頭</Label>
                                     <Input value={qe.tax_title ?? ""} onChange={e => updateField("tax_title", e.target.value)} placeholder="OO科技股份有限公司" />
                                   </div>
-                                  )}
-                                  {sqShowHeaderText(qe.tax_id) && (
                                   <div className="space-y-1">
                                     <Label className="text-sm">統一編號</Label>
                                     <Input value={qe.tax_id ?? ""} onChange={e => updateField("tax_id", e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="12345678" maxLength={8} />
                                   </div>
-                                  )}
                                 </div>
-                                )}
 
                                 <Button
                                   variant="outline"
@@ -2416,7 +2467,8 @@ const AdminQuotationsPanel = () => {
                               <div className="space-y-4">
                                 {isSq
                                   ? renderSpecialQuotationSection(q, qItems, "order_created")
-                                  : null}
+                                  : renderQuotationItemEditors(q.id, qItems)}
+                                {!isSq && renderGeneralQuotationAddItemButton(q)}
 
                                 {/* Editable 報價欄位；特殊報價單僅顯示表頭有值的欄位 */}
                                 {showQuoteHeaderAmountsCore && (
@@ -2448,7 +2500,17 @@ const AdminQuotationsPanel = () => {
                                 </div>
                                 )}
 
-                                {(showQuoteHeaderAmountsCore || qItems.length > 0) && (
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-1">
+                                    <Label className="text-sm">發票抬頭</Label>
+                                    <Input value={qe.tax_title ?? ""} onChange={e => updateField("tax_title", e.target.value)} placeholder="OO科技股份有限公司" />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <Label className="text-sm">統一編號</Label>
+                                    <Input value={qe.tax_id ?? ""} onChange={e => updateField("tax_id", e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="12345678" maxLength={8} />
+                                  </div>
+                                </div>
+
                                 <Button
                                   variant="outline"
                                   className="w-full"
@@ -2458,7 +2520,6 @@ const AdminQuotationsPanel = () => {
                                   {savingQuotation === q.id ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                                   儲存品項與報價表頭
                                 </Button>
-                                )}
 
                                 <Separator />
 
@@ -2467,9 +2528,6 @@ const AdminQuotationsPanel = () => {
                                   匯款末五碼：{q.transfer_last5 || "—"} ·
                                   狀態：{paymentStepLabel(q.payment_step)}
                                 </div>
-
-                                {!isSq && renderQuotationItemEditors(q.id, qItems)}
-                                {!isSq && renderGeneralQuotationAddItemButton(q)}
                               </div>
                             )}
                             </div>
@@ -2552,9 +2610,9 @@ const AdminQuotationsPanel = () => {
               </div>
               <div className="space-y-1">
                 <Label>LINE User ID（選填）</Label>
-                <Input
+                <LineUserIdInput
                   value={newQForm.lineUserId}
-                  onChange={(e) => setNewQForm((p) => ({ ...p, lineUserId: e.target.value }))}
+                  onChange={(v) => setNewQForm((p) => ({ ...p, lineUserId: v }))}
                   placeholder="Uxxxx…"
                 />
               </div>

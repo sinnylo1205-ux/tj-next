@@ -19,6 +19,7 @@ import { buildReceiptHtml, ntdIntegerToChineseCapital, triggerDownloadHtmlFile }
 import ManualOrderForm from "./ManualOrderForm";
 import { AdminOrderDetailPanel } from "./AdminOrderDetailPanel";
 import { OrderBuyerDisplayBlock } from "./OrderBuyerDisplayBlock";
+import { LineUserIdInput } from "./LineUserIdInput";
 import {
   formatOrderBuyerFullText,
   getManualOrderDisplayName,
@@ -1495,27 +1496,26 @@ const OrderStatusManager = () => {
           </div>
           <div className="space-y-1">
             <span className="text-sm text-muted-foreground">LINE user_id</span>
-            <Input
+            <LineUserIdInput
               value={editDraft.line_user_id ?? ""}
-              onChange={(e) => setEditDraft((p) => ({ ...p, line_user_id: e.target.value }))}
-              placeholder="Uxxxxxxxx..."
-            />
-            {(() => {
-              const resolved = resolveLineUserId(editDraft, users[editDraft.user_id ?? ""]);
-              if (resolved.id) {
+              onChange={(v) => setEditDraft((p) => ({ ...p, line_user_id: v }))}
+              footer={(() => {
+                const resolved = resolveLineUserId(editDraft, users[editDraft.user_id ?? ""]);
+                if (resolved.id) {
+                  return (
+                    <p className="text-xs text-emerald-700">
+                      ✅ 已綁定 LINE（{resolved.source === "order" ? "訂單指定" : "會員資料"}）：
+                      <code className="ml-1 text-[11px] font-mono text-emerald-800 break-all">{resolved.id}</code>
+                    </p>
+                  );
+                }
                 return (
-                  <p className="text-xs text-emerald-700">
-                    ✅ 已綁定 LINE（{resolved.source === "order" ? "訂單指定" : "會員資料"}）：
-                    <code className="ml-1 text-[11px] font-mono text-emerald-800 break-all">{resolved.id}</code>
+                  <p className="text-xs text-muted-foreground">
+                    ❌ 此訂單尚未綁定 LINE（orders 與會員資料皆無）
                   </p>
                 );
-              }
-              return (
-                <p className="text-xs text-muted-foreground">
-                  ❌ 此訂單尚未綁定 LINE（orders 與會員資料皆無）
-                </p>
-              );
-            })()}
+              })()}
+            />
           </div>
           <div className="space-y-1">
             <span className="text-sm text-muted-foreground">聯絡信箱</span>

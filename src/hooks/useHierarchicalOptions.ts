@@ -16,7 +16,7 @@ interface ProductMetadata {
   ui_width?: number;
   ui_height?: number;
   rotation?: number;
-  photo_carrier_type?: "diamond" | "irregular" | "circle" | "square" | "none";
+  photo_carrier_type?: "diamond" | "irregular" | "circle" | "square" | "ellipse" | "none";
   requires_photo_upload?: boolean;
   // 禮盒專用：多照片框陣列
   photo_frames?: Array<{

@@ -15,6 +15,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CalendarIcon, Plus, Trash2, X, ChevronsUpDown, Check } from "lucide-react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+import { LineUserIdInput } from "./LineUserIdInput";
 import {
   Command,
   CommandEmpty,
@@ -660,14 +661,16 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
           {/* LINE User ID */}
           <div className="space-y-2 md:col-span-2">
             <Label>LINE User ID（選填）</Label>
-            <Input
+            <LineUserIdInput
               value={lineUserId}
-              onChange={(e) => setLineUserId(e.target.value)}
+              onChange={setLineUserId}
               placeholder="填入後，訂單狀態更新將發送 LINE 通知給此用戶"
+              footer={
+                <p className="text-xs text-muted-foreground">
+                  ℹ️ 填入 LINE User ID 後，訂單狀態變更時將發送 LINE 通知
+                </p>
+              }
             />
-            <p className="text-xs text-muted-foreground">
-              ℹ️ 填入 LINE User ID 後，訂單狀態變更時將發送 LINE 通知
-            </p>
           </div>
 
           {/* 統編/抬頭 */}

@@ -29,6 +29,7 @@ import AdminSettingsPanel from "@/components/admin/AdminSettingsPanel";
 import AdminQuotationsPanel from "@/components/admin/AdminQuotationsPanel";
 import AdminEatReservationPanel from "@/components/admin/AdminEatReservationPanel";
 import AdminHRPanel from "@/components/admin/AdminHRPanel";
+import { AdminReplyModeFab } from "@/components/admin/AdminReplyModeFab";
 
 type AdminModule =
   | "dashboard"
@@ -281,6 +282,7 @@ export default function AdminPage() {
           </Link>
         </nav>
       )}
+      <AdminReplyModeFab />
     </div>
   );
 }

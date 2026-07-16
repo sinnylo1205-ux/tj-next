@@ -683,6 +683,19 @@ async function handleConvertSpecialQuotationToOrders(
     quotation.email?.trim() ||
     null;
 
+  const billing = allReq.billing || {};
+  const taxTitle =
+    typeof billing.tax_title === "string" && billing.tax_title.trim()
+      ? billing.tax_title.trim()
+      : null;
+  const taxIdRaw =
+    typeof billing.tax_id === "string"
+      ? billing.tax_id.replace(/\D/g, "").slice(0, 8)
+      : billing.tax_id != null
+        ? String(billing.tax_id).replace(/\D/g, "").slice(0, 8)
+        : "";
+  const taxId = taxIdRaw.length > 0 ? Number(taxIdRaw) : null;
+
   const createdOrderIds: string[] = [];
 
   try {
@@ -718,6 +731,8 @@ async function handleConvertSpecialQuotationToOrders(
         payment_step: payment_step || "verified",
         order_status: order_status || "processing",
         transfer_last5: transfer_last5 || null,
+        TAX_title: taxTitle,
+        TAX_id: taxId,
       };
 
       let orderData: any = null;
@@ -938,6 +953,18 @@ async function handleConvertToOrder(supabase: any, body: any) {
 
   const delivery = allReq.delivery || {};
   const customerProfile = allReq.customer_profile || {};
+  const billing = allReq.billing || {};
+  const taxTitle =
+    typeof billing.tax_title === "string" && billing.tax_title.trim()
+      ? billing.tax_title.trim()
+      : null;
+  const taxIdRaw =
+    typeof billing.tax_id === "string"
+      ? billing.tax_id.replace(/\D/g, "").slice(0, 8)
+      : billing.tax_id != null
+        ? String(billing.tax_id).replace(/\D/g, "").slice(0, 8)
+        : "";
+  const taxId = taxIdRaw.length > 0 ? Number(taxIdRaw) : null;
 
   // 3. Create order（優先使用 body 傳入的 user_id、line_user_id，否則用報價單上的）
   const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1"; // fallback to admin user
@@ -967,6 +994,8 @@ async function handleConvertToOrder(supabase: any, body: any) {
     payment_step: payment_step || "verified",
     order_status: order_status || "processing",
     transfer_last5: transfer_last5 || null,
+    TAX_title: taxTitle,
+    TAX_id: taxId,
   };
 
   console.log(

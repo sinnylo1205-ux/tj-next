@@ -13,7 +13,7 @@ export interface PackageStylePhotoMetadata {
   ui_width?: number;
   ui_height?: number;
   rotation?: number;
-  photo_carrier_type?: "diamond" | "square" | "circle" | "irregular" | "none";
+  photo_carrier_type?: "diamond" | "square" | "circle" | "ellipse" | "irregular" | "none";
   requires_photo_upload?: boolean;
 }
 

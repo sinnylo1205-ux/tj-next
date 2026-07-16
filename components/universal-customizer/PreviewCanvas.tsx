@@ -2,7 +2,7 @@
 // PreviewCanvas.tsx — 通用預覽區域（基於 Customizer.tsx）+ 包裝縮圖
 // ======================================================================
 
-import { useState, useMemo, type CSSProperties } from "react";
+import { useState, useMemo } from "react";
 import type { ProductConfig } from "@/config/product-registry";
 import type { ColorOption, FlavorOption } from "@/hooks/useUniversalCustomizer";
 import type { DecorationOption } from "@/hooks/useHierarchicalOptions";
@@ -12,18 +12,13 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Slider } from "@/components/ui/slider";
 import { SafeImage } from "@/components/SafeImage";
 import { cn } from "@/lib/utils";
-
-/** circle／square 用 overflow + 圓角裁切，利於 html-to-image；diamond／irregular 的 clip-path 放在外層 */
-function photoFrameOuterClipStyle(
-  frameType: string,
-  frameStyles: Record<string, CSSProperties>,
-): CSSProperties {
-  if (frameType === "diamond" || frameType === "irregular") {
-    const c = frameStyles[frameType]?.clipPath;
-    return c ? { clipPath: c } : {};
-  }
-  return {};
-}
+import {
+  PHOTO_FRAME_CLIP_STYLES,
+  photoFrameClipContainerClass,
+  photoFrameOuterClipStyle,
+  photoFrameShapeStyle,
+  type PhotoCarrierType,
+} from "@/lib/photo-frame-styles";
 
 interface PreviewCanvasProps {
   config: ProductConfig;
@@ -36,7 +31,7 @@ interface PreviewCanvasProps {
   decorationOptions: DecorationOption[];
   uploadedPhotoUrl: string | null;
   photoFrame: {
-    type: "diamond" | "irregular" | "circle" | "square" | "none";
+    type: "diamond" | "irregular" | "circle" | "square" | "ellipse" | "none";
     position: { x: number; y: number; width: number; height: number };
     rotation?: number;
   } | null;
@@ -325,36 +320,22 @@ export function PreviewCanvas({
           }>
         | undefined;
 
-      // ✅ 框架樣式映射（新增 flag 類型）
-      const frameStyles: Record<string, CSSProperties> = {
-        diamond: { clipPath: "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)" },
-        irregular: { clipPath: "polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%)" },
-        circle: { clipPath: "circle(50%)" },
-        square: {},
-        flag: {}, // 小旗子形狀
-        none: {},
-      };
+      // ✅ 框架樣式映射（新增 flag、ellipse 類型）
+      const frameStyles = PHOTO_FRAME_CLIP_STYLES;
 
       // ✅ 多照片框模式：使用 photo_frames 陣列
       if (photoFrames && photoFrames.length > 0) {
         return (
           <div key={`${type}-${index}`} className="absolute inset-0" style={{ zIndex }}>
             {photoFrames.map((frame, frameIndex) => {
-              const frameType = (frame.photo_carrier_type ?? "none") as
-                | "diamond"
-                | "irregular"
-                | "circle"
-                | "square"
-                | "flag"
-                | "none";
+              const frameType = (frame.photo_carrier_type ?? "none") as PhotoCarrierType;
 
               return (
                 <div
                   key={`photo-frame-${frameIndex}`}
                   className={cn(
-                    "absolute flex items-center justify-center overflow-hidden",
-                    frameType === "circle" && "rounded-full",
-                    frameType === "square" && "rounded-sm",
+                    "absolute flex items-center justify-center",
+                    photoFrameClipContainerClass(frameType),
                   )}
                   style={{
                     left: "50%",
@@ -365,6 +346,7 @@ export function PreviewCanvas({
                     transformOrigin: "center",
                     rotate: `${frame.rotation || 0}deg`,
                     ...photoFrameOuterClipStyle(frameType, frameStyles),
+                    ...photoFrameShapeStyle(frameType),
                   }}
                 >
                   {uploadedPhotoUrl ? (
@@ -404,13 +386,7 @@ export function PreviewCanvas({
       }
 
       // ✅ 單照片框模式（原有邏輯）- 加入 flag 支援 + 響應式修正
-      const frameType = (meta.photo_carrier_type ?? "none") as
-        | "diamond"
-        | "irregular"
-        | "circle"
-        | "square"
-        | "flag"
-        | "none";
+      const frameType = (meta.photo_carrier_type ?? "none") as PhotoCarrierType;
 
       // ✅ 計算響應式尺寸和位置（使用 photoScaleFactor 以支援產品專屬縮放）
       const isFlag = frameType === "flag";
@@ -465,13 +441,9 @@ export function PreviewCanvas({
             />
           )}
 
-          {/* 照片區域 - overflow-hidden；circle／square 用圓角裁切取代 img 上 clip-path */}
+          {/* 照片區域 - overflow-hidden；circle／ellipse／square 用圓角裁切取代 img 上 clip-path */}
           <div
-            className={cn(
-              "relative overflow-hidden",
-              frameType === "circle" && "rounded-full",
-              frameType === "square" && "rounded-sm",
-            )}
+            className={cn("relative", photoFrameClipContainerClass(frameType))}
             style={{
               position: "absolute",
               left: isFlag ? `${poleWidth + poleGap}px` : 0, // ✅ 照片在旗桿右側
@@ -479,6 +451,7 @@ export function PreviewCanvas({
               width: `${photoWidth}px`,
               height: `${frameHeight}px`,
               ...photoFrameOuterClipStyle(frameType, frameStyles),
+              ...photoFrameShapeStyle(frameType),
               backgroundColor: frameType === "none" ? "transparent" : "white",
               border: frameType === "none" ? "none" : "1px solid white",
             }}
