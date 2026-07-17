@@ -29,6 +29,8 @@ import { trackLineClick } from "@/lib/track-line-click";
 import { trackInitiateCheckout } from "@/lib/meta-pixel";
 import { ga4BeginCheckout } from "@/lib/ga4";
 import { CUSTOMER_SOURCE_OPTIONS, type CustomerSource } from "@/lib/customer-source";
+import { CHECKOUT_INTENT_KEY, type CheckoutIntent } from "@/lib/checkout-create-quotation";
+import { buildQuotationPdfHtml, type QuotationPdfWebhookPayload } from "@/lib/quotation-pdf-html";
 import { cn } from "@/lib/utils";
 
 const CHECKOUT_SELECTED_KEY = "tj_checkout_selected";
@@ -49,9 +51,17 @@ export default function CheckoutPage() {
 
   const [items, setItems] = useState<CartItem[]>([]);
   const [itemsReady, setItemsReady] = useState(false);
+  const [checkoutIntent, setCheckoutIntent] = useState<CheckoutIntent>("order");
+  const isQuotationMode = checkoutIntent === "quotation";
+  const [showQuotationConfirmDialog, setShowQuotationConfirmDialog] = useState(false);
 
   useEffect(() => {
     try {
+      const intentRaw =
+        typeof window !== "undefined" ? sessionStorage.getItem(CHECKOUT_INTENT_KEY) : null;
+      if (intentRaw === "quotation") setCheckoutIntent("quotation");
+      else setCheckoutIntent("order");
+
       const raw = typeof window !== "undefined" ? sessionStorage.getItem(CHECKOUT_SELECTED_KEY) : null;
       if (raw) {
         const parsed = JSON.parse(raw) as CartItem[];
@@ -59,7 +69,10 @@ export default function CheckoutPage() {
           setItems(parsed);
           setItemsReady(true);
           // 延後移除 key，讓 React Strict Mode 二次掛載時仍能讀到同一筆資料
-          const t = setTimeout(() => sessionStorage.removeItem(CHECKOUT_SELECTED_KEY), 500);
+          const t = setTimeout(() => {
+            sessionStorage.removeItem(CHECKOUT_SELECTED_KEY);
+            sessionStorage.removeItem(CHECKOUT_INTENT_KEY);
+          }, 500);
           return () => clearTimeout(t);
         }
       }
@@ -264,15 +277,7 @@ export default function CheckoutPage() {
     }
   };
 
-  const handleSubmitOrder = async () => {
-    if (!user) {
-      toast({ title: "❌ 請先登入", description: "您需要登入才能送出訂單", variant: "destructive" });
-      return;
-    }
-    if (minOrderError) {
-      toast({ title: "❌ 未達最小訂購量", description: minOrderError, variant: "destructive" });
-      return;
-    }
+  const validateCheckoutForm = (): boolean => {
     let hasError = false;
     if (!recipientName.trim()) {
       setRecipientError("請填寫收件人姓名");
@@ -302,8 +307,126 @@ export default function CheckoutPage() {
     } else setCustomerSourceError("");
     if (hasError) {
       toast({ title: "❌ 請填寫完整資訊", description: "請確認所有必填欄位已正確填寫", variant: "destructive" });
+      return false;
+    }
+    return true;
+  };
+
+  const handleCreateQuotationClick = () => {
+    if (!user) {
+      toast({ title: "❌ 請先登入", description: "您需要登入才能建立報價單", variant: "destructive" });
       return;
     }
+    if (minOrderError) {
+      toast({ title: "❌ 未達最小訂購量", description: minOrderError, variant: "destructive" });
+      return;
+    }
+    if (!validateCheckoutForm()) return;
+    setShowQuotationConfirmDialog(true);
+  };
+
+  const handleCreateQuotation = async () => {
+    if (!user || !shippingMethod || !customerSource) return;
+    setShowQuotationConfirmDialog(false);
+    setLoading(true);
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      if (!token) {
+        toast({ title: "❌ 請重新登入", description: "無法取得登入憑證", variant: "destructive" });
+        return;
+      }
+
+      const res = await fetch("/api/checkout/create-quotation", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          who_receive: recipientName.trim(),
+          phone: phone.trim(),
+          address: address.trim(),
+          shipping_way: shippingMethod,
+          email: email.trim() || null,
+          notes: notes.trim() || null,
+          expected_pickup_date: items[0]?.expected_pickup_date || null,
+          customer_source: customerSource,
+          subtotal,
+          shipping_fee: shippingFee,
+          total_amount: totalAmount,
+          items: items.map((item) => ({
+            product_id: item.product_id || null,
+            name: item.name || null,
+            quantity: item.quantity,
+            price: item.price ?? null,
+            total_price: item.total_price ?? null,
+            category: item.category || null,
+            is_package_design: (item as { is_package_design?: boolean }).is_package_design ?? item.name?.includes("包裝設計"),
+            customizations: item.customizations,
+            customizations_json: (item as { customizations_json?: unknown }).customizations_json,
+          })),
+        }),
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        quotation_order_id?: string;
+        pdf_input?: QuotationPdfWebhookPayload;
+      };
+      if (!res.ok) throw new Error(data.error || "建立報價單失敗");
+
+      const pdfInput = data.pdf_input;
+      if (pdfInput) {
+        const html = buildQuotationPdfHtml(pdfInput);
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const w = window.open(url, "_blank", "noopener,noreferrer");
+        if (!w) {
+          toast({
+            title: "報價單已建立，但無法開啟新視窗",
+            description: "請允許彈出視窗後，至後台或聯絡客服取得報價單。可用 ⌘P／Ctrl+P 另存 PDF。",
+            variant: "destructive",
+          });
+          setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        } else {
+          toast({
+            title: "✅ 報價單已建立",
+            description:
+              "已在新分頁開啟報價單。請用 ⌘P／Ctrl+P → 目的地選「另存為 PDF」。購物車商品仍會保留。",
+          });
+          setTimeout(() => URL.revokeObjectURL(url), 600_000);
+        }
+      } else {
+        toast({
+          title: "✅ 報價單已建立",
+          description: `報價單編號：${data.quotation_order_id || ""}（購物車商品仍會保留）`,
+        });
+      }
+
+      router.push("/cart");
+    } catch (error) {
+      console.error("報價單建立失敗:", error);
+      toast({
+        title: "❌ 報價單建立失敗",
+        description: error instanceof Error ? error.message : "請稍後再試或聯絡客服",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSubmitOrder = async () => {
+    if (!user) {
+      toast({ title: "❌ 請先登入", description: "您需要登入才能送出訂單", variant: "destructive" });
+      return;
+    }
+    if (minOrderError) {
+      toast({ title: "❌ 未達最小訂購量", description: minOrderError, variant: "destructive" });
+      return;
+    }
+    if (!validateCheckoutForm()) return;
     setLoading(true);
     try {
       const { data: orderData, error: orderError } = await supabase
@@ -465,7 +588,7 @@ export default function CheckoutPage() {
           <CardHeader>
             <CardTitle>請先選擇要結帳的商品</CardTitle>
             <p className="text-sm text-muted-foreground mt-1">
-              請至購物車勾選至少一筆商品，並確保預定取貨時間一致後，再點「去買單」前往結帳。
+              請至購物車勾選至少一筆商品，並確保預定取貨時間一致後，再點「去買單」或「預先建立報價單」。
             </p>
           </CardHeader>
           <CardContent>
@@ -490,7 +613,9 @@ export default function CheckoutPage() {
             <ArrowLeft className="w-5 h-5" />
             返回購物車
           </Button>
-          <h1 className="text-3xl font-bold text-foreground">🧁 填寫訂單資訊</h1>
+          <h1 className="text-3xl font-bold text-foreground">
+            {isQuotationMode ? "填寫報價單資訊" : "🧁 填寫訂單資訊"}
+          </h1>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -540,7 +665,9 @@ export default function CheckoutPage() {
                   {phoneError && <p className="text-sm text-destructive">{phoneError}</p>}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email（用於接收訂單確認信）</Label>
+                  <Label htmlFor="email">
+                    {isQuotationMode ? "Email（選填）" : "Email（用於接收訂單確認信）"}
+                  </Label>
                   <div className="flex gap-2">
                     <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="請輸入您的 Email" className="flex-1" />
                     <Button
@@ -559,20 +686,24 @@ export default function CheckoutPage() {
                     </Button>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="taxTitle">發票抬頭（選填）</Label>
-                  <Input id="taxTitle" value={taxTitle} onChange={(e) => setTaxTitle(e.target.value)} placeholder="例：OO科技股份有限公司" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="taxId">統一編號（選填，8 碼數字）</Label>
-                  <Input
-                    id="taxId"
-                    value={taxId}
-                    onChange={(e) => setTaxId(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                    placeholder="例：12345678"
-                    maxLength={8}
-                  />
-                </div>
+                {!isQuotationMode && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="taxTitle">發票抬頭（選填）</Label>
+                      <Input id="taxTitle" value={taxTitle} onChange={(e) => setTaxTitle(e.target.value)} placeholder="例：OO科技股份有限公司" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="taxId">統一編號（選填，8 碼數字）</Label>
+                      <Input
+                        id="taxId"
+                        value={taxId}
+                        onChange={(e) => setTaxId(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                        placeholder="例：12345678"
+                        maxLength={8}
+                      />
+                    </div>
+                  </>
+                )}
                 <div className="space-y-2">
                   <Label htmlFor="address">收件地址 *</Label>
                   <Textarea
@@ -638,7 +769,7 @@ export default function CheckoutPage() {
           <div className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>🧾 訂單摘要</CardTitle>
+                <CardTitle>{isQuotationMode ? "報價摘要" : "🧾 訂單摘要"}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {items.map((item) => {
@@ -691,23 +822,25 @@ export default function CheckoutPage() {
                     <span>總金額</span>
                     <span>NT${totalAmount}</span>
                   </div>
-                  <div className="pt-2">
-                    {!showCouponInput ? (
-                      <Button variant="outline" size="sm" onClick={() => setShowCouponInput(true)} className="w-full">
-                        輸入優惠折扣碼
-                      </Button>
-                    ) : (
-                      <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <Input placeholder="請輸入優惠碼" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} className="flex-1" />
-                          <Button size="sm" onClick={handleApplyCoupon} disabled={couponLoading || !couponCode.trim()}>
-                            {couponLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "套用"}
-                          </Button>
+                  {!isQuotationMode && (
+                    <div className="pt-2">
+                      {!showCouponInput ? (
+                        <Button variant="outline" size="sm" onClick={() => setShowCouponInput(true)} className="w-full">
+                          輸入優惠折扣碼
+                        </Button>
+                      ) : (
+                        <div className="space-y-2">
+                          <div className="flex gap-2">
+                            <Input placeholder="請輸入優惠碼" value={couponCode} onChange={(e) => setCouponCode(e.target.value)} className="flex-1" />
+                            <Button size="sm" onClick={handleApplyCoupon} disabled={couponLoading || !couponCode.trim()}>
+                              {couponLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "套用"}
+                            </Button>
+                          </div>
+                          {couponMessage && <p className="text-sm text-muted-foreground">{couponMessage}</p>}
                         </div>
-                        {couponMessage && <p className="text-sm text-muted-foreground">{couponMessage}</p>}
-                      </div>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {minOrderError && <div className="text-sm text-destructive bg-destructive/10 p-3 rounded">{minOrderError}</div>}
               </CardContent>
@@ -749,16 +882,26 @@ export default function CheckoutPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>📋 下單須知</CardTitle>
+                <CardTitle>{isQuotationMode ? "報價須知" : "📋 下單須知"}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <p>● 依據消保法規定，本公司商品屬於保存期限短，無法回收再販售的生鮮商品，不適用消保法7日無條件退貨，若無法接受請勿下單。</p>
-                <p>● 結帳前請確認訂購人／收件人資料是否正確，以利商品順利送達。</p>
-                <p>● 請注意，黑貓宅配可能延誤送達，建議一定要選定在活動前1-2送達並放置陰涼處保存（奶油杯子蛋糕需要冷藏），本司無承擔黑貓物流延誤之責任</p>
-                <div>
-                  <p>● 門市店營業時間</p>
-                  <p className="ml-4">週一～週五 09:00–18:00</p>
-                </div>
+                {isQuotationMode ? (
+                  <>
+                    <p>● 建立報價單並非送出訂單，購物車商品會保留，之後仍可正式下單。</p>
+                    <p>● 匯款後請告知 Line 客服人員，已排入訂單。</p>
+                    <p>● 請確認收件／配送資訊正確，以便後續轉為正式訂單。</p>
+                  </>
+                ) : (
+                  <>
+                    <p>● 依據消保法規定，本公司商品屬於保存期限短，無法回收再販售的生鮮商品，不適用消保法7日無條件退貨，若無法接受請勿下單。</p>
+                    <p>● 結帳前請確認訂購人／收件人資料是否正確，以利商品順利送達。</p>
+                    <p>● 請注意，黑貓宅配可能延誤送達，建議一定要選定在活動前1-2送達並放置陰涼處保存（奶油杯子蛋糕需要冷藏），本司無承擔黑貓物流延誤之責任</p>
+                    <div>
+                      <p>● 門市店營業時間</p>
+                      <p className="ml-4">週一～週五 09:00–18:00</p>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
 
@@ -767,9 +910,25 @@ export default function CheckoutPage() {
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 回購物車
               </Button>
-              <Button onClick={handleSubmitOrder} disabled={loading || !!minOrderError || isRecalculating} className="flex-1">
-                {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />處理中...</> : isRecalculating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />運費計算中...</> : "送出訂單"}
-              </Button>
+              {isQuotationMode ? (
+                <Button
+                  onClick={handleCreateQuotationClick}
+                  disabled={loading || !!minOrderError || isRecalculating}
+                  className="flex-1"
+                >
+                  {loading ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />處理中...</>
+                  ) : isRecalculating ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />運費計算中...</>
+                  ) : (
+                    "建立報價單 PDF"
+                  )}
+                </Button>
+              ) : (
+                <Button onClick={handleSubmitOrder} disabled={loading || !!minOrderError || isRecalculating} className="flex-1">
+                  {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />處理中...</> : isRecalculating ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />運費計算中...</> : "送出訂單"}
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -787,6 +946,27 @@ export default function CheckoutPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <Button onClick={() => setShowSpecialDeliveryDialog(false)}>我知道了</Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showQuotationConfirmDialog} onOpenChange={setShowQuotationConfirmDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>建立報價單前提醒</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3 text-left">
+              <p>建立報價單並非送出訂單。</p>
+              <p>匯款後請告知 Line 客服人員，已排入訂單。</p>
+              <p className="text-sm text-muted-foreground">建立後會開啟報價單頁面，可用列印功能另存為 PDF；購物車商品不會被移除。</p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setShowQuotationConfirmDialog(false)} disabled={loading}>
+              取消
+            </Button>
+            <Button onClick={() => void handleCreateQuotation()} disabled={loading}>
+              {loading ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />處理中...</> : "確認建立報價單 PDF"}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

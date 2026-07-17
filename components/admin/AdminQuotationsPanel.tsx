@@ -53,6 +53,7 @@ import { SpecialQuotationDialog } from "@/components/admin/SpecialQuotationDialo
 import { SpecialQuotationEditBlock } from "@/components/admin/SpecialQuotationEditBlock";
 import { QuotationAiDraftDialog } from "@/components/admin/QuotationAiDraftDialog";
 import { LineUserIdInput } from "@/components/admin/LineUserIdInput";
+import { getCustomerSourceLabel } from "@/lib/customer-source";
 
 // ========== Types ==========
 interface QuotationOrder {
@@ -77,6 +78,7 @@ interface QuotationOrder {
   transfer_last5: string | null;
   discount_amount: number | null;
   recipient_name: string | null;
+  customer_source?: string | null;
   is_hide?: boolean | null;
 }
 
@@ -1851,6 +1853,9 @@ const AdminQuotationsPanel = () => {
                                 " · "}
                               {new Date(q.created_at).toLocaleDateString("zh-TW")}
                               {q.total_amount ? ` · NT$ ${q.total_amount.toLocaleString()}` : ""}
+                              {q.customer_source
+                                ? ` · 來源 ${getCustomerSourceLabel(q.customer_source)}`
+                                : ""}
                               {q.status === "order_created" && getSpecialConvertedOrderCount(q.all_requirement) > 0
                                 ? ` · 已轉 ${getSpecialConvertedOrderCount(q.all_requirement)} 筆訂單`
                                 : ""}
@@ -1951,6 +1956,15 @@ const AdminQuotationsPanel = () => {
                                     onChange={(e) => updateField("email", e.target.value)}
                                     placeholder="email@example.com"
                                   />
+                                </div>
+                                <div className="space-y-1 col-span-2">
+                                  <Label className="text-sm">客戶來源</Label>
+                                  <p className="text-sm text-muted-foreground border rounded-md px-3 py-2 bg-muted/30">
+                                    {getCustomerSourceLabel(q.customer_source)}
+                                    {q.all_requirement?.source === "cart_checkout_prequote"
+                                      ? "（購物車預建報價）"
+                                      : ""}
+                                  </p>
                                 </div>
                                 </>
                                 ) : null}

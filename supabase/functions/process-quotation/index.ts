@@ -733,6 +733,7 @@ async function handleConvertSpecialQuotationToOrders(
         transfer_last5: transfer_last5 || null,
         TAX_title: taxTitle,
         TAX_id: taxId,
+        customer_source: quotation.customer_source || null,
       };
 
       let orderData: any = null;
@@ -996,6 +997,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
     transfer_last5: transfer_last5 || null,
     TAX_title: taxTitle,
     TAX_id: taxId,
+    customer_source: quotation.customer_source || null,
   };
 
   console.log(

@@ -166,6 +166,7 @@ const OrderStatusManager = () => {
     orderId: string;
     action: string;
   } | null>(null);
+  const [receiptTaxWarnOrder, setReceiptTaxWarnOrder] = useState<Order | null>(null);
 
   // 搜尋篩選狀態
   const [searchQuery, setSearchQuery] = useState("");
@@ -679,9 +680,34 @@ const OrderStatusManager = () => {
     await handleStatusUpdate(orderId, "processing", "verify_payment");
   };
 
+  const getMissingReceiptTaxFields = (order: Order): string[] => {
+    const missing: string[] = [];
+    const title = String(order.TAX_title ?? "").trim();
+    const taxIdRaw = order.TAX_id;
+    const taxId =
+      taxIdRaw !== null && taxIdRaw !== undefined && String(taxIdRaw).trim() !== ""
+        ? String(taxIdRaw).trim()
+        : "";
+    if (!title) missing.push("發票抬頭");
+    if (!taxId) missing.push("統一編號");
+    return missing;
+  };
+
+  /** 點「預先組裝收據」：缺抬頭／統編時先提醒 */
+  const handleAssembleReceiptClick = (order: Order) => {
+    if (loadingAction) return;
+    const missing = getMissingReceiptTaxFields(order);
+    if (missing.length > 0) {
+      setReceiptTaxWarnOrder(order);
+      return;
+    }
+    void handleAssembleReceiptDownload(order);
+  };
+
   /** 未匯款（payment_step=pending）時預覽收據（本機下載 HTML）；不變更訂單狀態、不觸發寄信 edge */
   const handleAssembleReceiptDownload = async (order: Order) => {
     if (loadingAction) return;
+    setReceiptTaxWarnOrder(null);
     setLoadingAction({ orderId: order.id, action: "assemble_receipt" });
     try {
       const { data, error } = await supabase.from("order_items").select("*").eq("order_id", order.id);
@@ -875,7 +901,7 @@ const OrderStatusManager = () => {
         <Button
           size="sm"
           variant="secondary"
-          onClick={() => void handleAssembleReceiptDownload(order)}
+          onClick={() => handleAssembleReceiptClick(order)}
           disabled={loadingAction !== null}
         >
           {loadingAction?.orderId === order.id && loadingAction?.action === "assemble_receipt"
@@ -1669,6 +1695,39 @@ const OrderStatusManager = () => {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog
+      open={!!receiptTaxWarnOrder}
+      onOpenChange={(open) => {
+        if (!open) setReceiptTaxWarnOrder(null);
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>尚未填寫發票資訊</AlertDialogTitle>
+          <AlertDialogDescription className="space-y-2 text-left">
+            <p>
+              此訂單尚未填寫
+              {receiptTaxWarnOrder
+                ? getMissingReceiptTaxFields(receiptTaxWarnOrder).join("、")
+                : "發票抬頭、統一編號"}
+              。
+            </p>
+            <p>建議先在訂單編輯中補齊抬頭與統編再組裝收據；若確定不需統編／抬頭，仍可繼續預覽。</p>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>返回填寫</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={() => {
+              if (receiptTaxWarnOrder) void handleAssembleReceiptDownload(receiptTaxWarnOrder);
+            }}
+          >
+            仍要組裝收據
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
     </>
   );
 };

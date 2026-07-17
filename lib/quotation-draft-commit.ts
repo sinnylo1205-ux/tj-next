@@ -16,6 +16,7 @@ const ORDER_INSERT_KEYS = new Set([
   "shipping_fee",
   "total_amount",
   "discount_amount",
+  "customer_source",
   "all_requirement",
 ]);
 

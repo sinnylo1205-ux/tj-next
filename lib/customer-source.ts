@@ -1,4 +1,4 @@
-/** 結帳頁「如何認識我們」選項，值寫入 orders.customer_source */
+/** 結帳／預建報價「如何認識我們」選項，值寫入 orders.customer_source 或 quotation_orders.customer_source */
 export const CUSTOMER_SOURCE_OPTIONS = [
   { value: "facebook", label: "Facebook" },
   { value: "instagram", label: "Instagram" },

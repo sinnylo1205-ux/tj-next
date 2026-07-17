@@ -52,6 +52,7 @@ const CUSTOMIZER_ROUTE_MAP: Record<string, string> = {
 };
 
 const CHECKOUT_SELECTED_KEY = "tj_checkout_selected";
+const CHECKOUT_INTENT_KEY = "tj_checkout_intent";
 
 function CartSkeleton() {
   return (
@@ -119,11 +120,14 @@ export default function CartPage() {
 
   const [showLoginDialog, setShowLoginDialog] = useState(false);
   const [showDateMismatchDialog, setShowDateMismatchDialog] = useState(false);
+  const [dateMismatchMode, setDateMismatchMode] = useState<"order" | "quotation">("order");
   const [show24HourWarningDialog, setShow24HourWarningDialog] = useState(false);
+  const [showQuotationMergeDialog, setShowQuotationMergeDialog] = useState(false);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
   const [calendarMonth, setCalendarMonth] = useState<Date>(new Date());
   const [pendingCheckoutProducts, setPendingCheckoutProducts] = useState<typeof items>([]);
   const pendingCheckoutRef = useRef<typeof items>([]);
+  const pendingQuotationRef = useRef<typeof items>([]);
 
   const dessertPackageMap = new Map<string, string>();
   const packageDessertMap = new Map<string, string>();
@@ -201,14 +205,16 @@ export default function CartPage() {
     }
   };
 
-  const handleCheckout = () => {
+  const validateSelectedForCheckout = (
+    mode: "order" | "quotation" = "order",
+  ): (typeof items) | null => {
     if (selectedItems.length === 0) {
       toast({ title: "請至少勾選一筆商品", description: "請勾選要結帳的項目後再送出", variant: "destructive" });
-      return;
+      return null;
     }
     if (!user) {
       setShowLoginDialog(true);
-      return;
+      return null;
     }
     const selectedProducts = items.filter((i) => selectedItems.includes(i.id));
     if (selectedProducts.length === 0) {
@@ -217,36 +223,91 @@ export default function CartPage() {
         description: "購物車已更新（例如登入後同步），請再勾選要結帳的項目後點「去買單」",
         variant: "destructive",
       });
-      return;
+      return null;
     }
     const nonPackageSelected = selectedProducts.filter((item) => !item.name?.includes("包裝設計"));
     const pickupDates = nonPackageSelected.map((item) => item.expected_pickup_date).filter(Boolean);
     const uniqueDates = [...new Set(pickupDates)];
 
     if (uniqueDates.length > 1) {
+      setDateMismatchMode(mode);
       setShowDateMismatchDialog(true);
-      return;
+      return null;
     }
     const hasSomeDate = nonPackageSelected.some((item) => !!item.expected_pickup_date);
     const hasSomeNoDate = nonPackageSelected.some((item) => !item.expected_pickup_date);
     if (hasSomeDate && hasSomeNoDate) {
+      if (mode === "quotation") {
+        setDateMismatchMode("quotation");
+        setShowDateMismatchDialog(true);
+        return null;
+      }
       toast({
         title: "取貨日期須一致",
         description: "請為所有選中商品設定相同的預定取貨時間，或全部改為「結帳時選擇」",
         variant: "destructive",
       });
-      return;
+      return null;
     }
     const classicWithoutDate = selectedProducts.find(
       (item) => item.category === "classic" && !item.expected_pickup_date && !item.name?.includes("包裝設計")
     );
     if (classicWithoutDate) {
-      toast({ title: "請設定取貨日期", description: "經典款商品需要設定取貨日期才能結帳", variant: "destructive" });
+      toast({
+        title: "請設定取貨日期",
+        description:
+          mode === "quotation"
+            ? "經典款商品需要設定取貨日期才能建立報價單"
+            : "經典款商品需要設定取貨日期才能結帳",
+        variant: "destructive",
+      });
+      return null;
+    }
+    return selectedProducts;
+  };
+
+  const goToCheckout = (selectedProducts: (typeof items), intent: "order" | "quotation") => {
+    try {
+      sessionStorage.setItem(CHECKOUT_SELECTED_KEY, JSON.stringify(selectedProducts));
+      sessionStorage.setItem(CHECKOUT_INTENT_KEY, intent);
+    } catch (_) {
+      toast({ title: "無法儲存結帳資料", variant: "destructive" });
       return;
     }
+    router.push("/checkout");
+  };
+
+  const handleCheckout = () => {
+    const selectedProducts = validateSelectedForCheckout();
+    if (!selectedProducts) return;
     pendingCheckoutRef.current = selectedProducts;
     setPendingCheckoutProducts(selectedProducts);
     setShow24HourWarningDialog(true);
+  };
+
+  const handlePreCreateQuotation = () => {
+    const selectedProducts = validateSelectedForCheckout("quotation");
+    if (!selectedProducts) return;
+    if (selectedProducts.length > 1) {
+      pendingQuotationRef.current = selectedProducts;
+      setShowQuotationMergeDialog(true);
+      return;
+    }
+    goToCheckout(selectedProducts, "quotation");
+  };
+
+  const proceedMergedQuotation = () => {
+    setShowQuotationMergeDialog(false);
+    const toSubmit = pendingQuotationRef.current;
+    if (!toSubmit?.length) {
+      toast({
+        title: "請重新勾選商品",
+        description: "未取得勾選項目，請勾選後再點「預先建立報價單」",
+        variant: "destructive",
+      });
+      return;
+    }
+    goToCheckout(toSubmit, "quotation");
   };
 
   const proceedToCheckout = () => {
@@ -263,13 +324,7 @@ export default function CartPage() {
       });
       return;
     }
-    try {
-      sessionStorage.setItem(CHECKOUT_SELECTED_KEY, JSON.stringify(toSubmit));
-    } catch (_) {
-      toast({ title: "無法儲存結帳資料", variant: "destructive" });
-      return;
-    }
-    router.push("/checkout");
+    goToCheckout(toSubmit, "order");
   };
 
   const isClassicProduct = (item: (typeof items)[0]) => item.category === "classic";
@@ -603,6 +658,15 @@ export default function CartPage() {
                     >
                       去買單
                     </Button>
+                    <Button
+                      size="lg"
+                      variant="outline"
+                      className="w-full sm:w-auto px-8 md:px-12 py-4 text-lg border-brand-500 text-brand-600 hover:bg-brand-50 rounded-xl transition disabled:opacity-50 disabled:pointer-events-none"
+                      onClick={handlePreCreateQuotation}
+                      disabled={selectedItems.length === 0}
+                    >
+                      預先建立報價單
+                    </Button>
                   </div>
                 )}
               </>
@@ -636,11 +700,40 @@ export default function CartPage() {
       <AlertDialog open={showDateMismatchDialog} onOpenChange={setShowDateMismatchDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>取貨日期不一致</AlertDialogTitle>
-            <AlertDialogDescription>您選擇的商品有不同的預定取貨日期，請確保所有商品的取貨日期一致後再結帳。</AlertDialogDescription>
+            <AlertDialogTitle>
+              {dateMismatchMode === "quotation" ? "無法合併建立報價單" : "取貨日期不一致"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {dateMismatchMode === "quotation"
+                ? "您勾選的商品配送／自取日期不同（或有的有日期、有的沒有）。請分開勾選，並分別建立報價單。"
+                : "您選擇的商品有不同的預定取貨日期，請確保所有商品的取貨日期一致後再結帳。"}
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogAction onClick={() => setShowDateMismatchDialog(false)}>了解，返回修改</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={showQuotationMergeDialog} onOpenChange={setShowQuotationMergeDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>多筆商品是否合併報價？</AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3 text-left">
+              <p>您勾選了多筆購物車項目。請確認：</p>
+              <ul className="list-disc pl-5 space-y-1">
+                <li>是否為同一送貨地點（或皆為自取）？</li>
+                <li>配送／自取日期是否為同一天？</li>
+              </ul>
+              <p>
+                若皆為「是」，將合併為一張報價單（訂購內容與報價明細會合併顯示）。
+                若不是，請取消後分開勾選、分別建立報價單。
+              </p>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex flex-col sm:flex-row gap-2">
+            <AlertDialogCancel>不是，我要分開建立</AlertDialogCancel>
+            <AlertDialogAction onClick={proceedMergedQuotation}>是，合併建立報價單</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

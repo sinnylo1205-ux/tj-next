@@ -132,14 +132,17 @@ function buildServiceOrderBlocks(body: QuotationPdfWebhookPayload): string {
   const orderBlocks: string[] = [];
 
   if (service_order.category === "custom_design" && hasValue(service_order.items_text)) {
-    const formattedItems = escapeHtml(
-      service_order.items_text
-        .split("）,")
-        .map((t) => t.trim())
-        .filter(Boolean)
-        .map((t) => (t.endsWith("）") ? t : `${t}）`))
-        .join("\n\n"),
-    ).replace(/\n\n/g, "<br/><br/>");
+    const raw = service_order.items_text;
+    const formattedItems = raw.includes("（")
+      ? escapeHtml(
+          raw
+            .split("）,")
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .map((t) => (t.endsWith("）") ? t : `${t}）`))
+            .join("\n\n"),
+        ).replace(/\n\n/g, "<br/><br/>")
+      : escapeHtml(raw).replace(/\n/g, "<br/>");
 
     orderBlocks.push(`
   <h3>客製化單品</h3>
@@ -184,6 +187,14 @@ function buildServiceOrderBlocks(body: QuotationPdfWebhookPayload): string {
     </table>
   `;
     orderBlocks.push(`<h3>甜點佈置 / Dessert Bar</h3>${table}`);
+  }
+
+  // 購物車預建報價等：有品項文字但非上述分類時，仍顯示訂購內容
+  if (orderBlocks.length === 0 && hasValue(service_order.items_text)) {
+    orderBlocks.push(`
+  <h3>訂購品項</h3>
+  <p>${escapeHtml(service_order.items_text).replace(/\n/g, "<br/>")}</p>
+`);
   }
 
   return orderBlocks.length > 0 ? orderBlocks.join("<br/>") : "<p>（本次未填寫訂購內容）</p>";
