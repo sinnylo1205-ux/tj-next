@@ -6,6 +6,7 @@ export const CHECKOUT_INTENT_KEY = "tj_checkout_intent";
 export type CheckoutIntent = "order" | "quotation";
 
 export type CreateQuotationItemInput = {
+  cart_item_id?: string | null;
   product_id?: string | null;
   name?: string | null;
   product_name?: string | null;
@@ -14,6 +15,8 @@ export type CreateQuotationItemInput = {
   total_price?: number | null;
   category?: string | null;
   is_package_design?: boolean | null;
+  preview_url?: string | null;
+  linked_item_id?: string | null;
   customizations?: unknown;
   customizations_json?: unknown;
 };
@@ -61,6 +64,7 @@ export function summarizeCustomizationsText(raw: unknown): string {
       "";
     const details = c.details && typeof c.details === "object" ? (c.details as Record<string, unknown>) : null;
     const option =
+      (typeof c.summary === "string" && c.summary.trim()) ||
       (typeof c.option_name_zh === "string" && c.option_name_zh.trim()) ||
       (details && typeof details.option_name_zh === "string" && details.option_name_zh.trim()) ||
       (typeof c.option_value === "string" && c.option_value.trim()) ||
@@ -117,7 +121,7 @@ export function buildCartQuotationRows(input: CreateQuotationInput): {
       product_name,
       quantity: qty,
       unit_price,
-      preview_url: null,
+      preview_url: item.preview_url || null,
       category: item.category || (packageDesign ? "package" : "custom_design"),
       all_requirement: {
         customization,
@@ -127,6 +131,10 @@ export function buildCartQuotationRows(input: CreateQuotationInput): {
         product_id: pid || null,
         role: "cart_prequote_line",
         summary: customization || null,
+        cart_item_id: item.cart_item_id || null,
+        linked_cart_item_id: item.linked_item_id || null,
+        is_package_design: packageDesign,
+        customizations: item.customizations_json ?? item.customizations ?? null,
       },
       quantity_description: packageDesign
         ? "與訂購之甜點數量一致，如有加購盒子，則與禮盒數量一致。"
