@@ -10,19 +10,6 @@ import { insertQuotationFromDraft } from "@/lib/quotation-draft-commit";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-const itemSchema = z.object({
-  product_id: z.string().optional().nullable(),
-  name: z.string().optional().nullable(),
-  product_name: z.string().optional().nullable(),
-  quantity: z.number().finite().positive(),
-  price: z.number().finite().optional().nullable(),
-  total_price: z.number().finite().optional().nullable(),
-  category: z.string().optional().nullable(),
-  is_package_design: z.boolean().optional().nullable(),
-  customizations: z.unknown().optional(),
-  customizations_json: z.unknown().optional(),
-});
-
 const bodySchema = z.object({
   who_receive: z.string().trim().min(1),
   phone: z.string().trim().min(1),
@@ -30,17 +17,14 @@ const bodySchema = z.object({
   shipping_way: z.enum(["自取", "黑貓宅配", "專件配送"]),
   email: z.union([z.string().email(), z.literal(""), z.null()]).optional(),
   notes: z.string().optional().nullable(),
-  expected_pickup_date: z.string().optional().nullable(),
   customer_source: z.string(),
-  subtotal: z.number().finite().nonnegative(),
-  shipping_fee: z.number().finite().nonnegative(),
-  total_amount: z.number().finite().nonnegative(),
-  items: z.array(itemSchema).min(1),
+  cart_item_ids: z.array(z.string().uuid()).min(1).max(50),
+  coupon_code: z.string().trim().max(32).optional().nullable(),
 });
 
 /**
  * POST /api/checkout/create-quotation
- * 顧客從結帳頁預建報價單：寫入 quotation_orders（price_reply）、不存圖片、回傳 pdf_input。
+ * 顧客從結帳頁預建報價單：由伺服器重新讀取／計價購物車後寫入 quotation_orders。
  */
 export async function POST(req: Request) {
   try {
@@ -70,18 +54,107 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "電話號碼必須為 10 碼" }, { status: 400 });
     }
 
+    const uniqueCartItemIds = [...new Set(body.cart_item_ids)];
+    if (uniqueCartItemIds.length !== body.cart_item_ids.length) {
+      return NextResponse.json({ error: "購物車項目不可重複" }, { status: 400 });
+    }
+
+    const { data: cartRows, error: cartError } = await auth.supabase
+      .from("cart")
+      .select(
+        "id, product_id, quantity, total_price, preview_url, customizations_json, linked_item_id, is_package_design, expected_pickup_date",
+      )
+      .in("id", uniqueCartItemIds)
+      .eq("user_id", auth.userId)
+      .eq("is_submitted", false);
+    if (cartError) {
+      console.error("[checkout/create-quotation] cart query failed", cartError);
+      return NextResponse.json({ error: "讀取購物車失敗" }, { status: 500 });
+    }
+    if (!cartRows || cartRows.length !== uniqueCartItemIds.length) {
+      return NextResponse.json(
+        { error: "部分購物車項目不存在、不屬於您或已送出，請重新整理購物車" },
+        { status: 403 },
+      );
+    }
+
+    const cartRowsById = new Map(cartRows.map((row) => [String(row.id), row]));
+    const orderedCartRows = uniqueCartItemIds.map((id) => cartRowsById.get(id)!);
+    const pickupDates = [
+      ...new Set(
+        orderedCartRows
+          .filter((row) => !row.is_package_design)
+          .map((row) => row.expected_pickup_date)
+          .filter((date): date is string => typeof date === "string" && date.length > 0),
+      ),
+    ];
+    if (pickupDates.length > 1) {
+      return NextResponse.json({ error: "所選購物車項目的取貨日期必須一致" }, { status: 400 });
+    }
+    const expectedPickupDate = pickupDates[0];
+
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim();
+    if (!anonKey) {
+      return NextResponse.json({ error: "伺服器未設定 NEXT_PUBLIC_SUPABASE_ANON_KEY" }, { status: 503 });
+    }
+    const calculationResponse = await fetch(`${auth.supabaseUrl}/functions/v1/calculate-checkout`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${auth.accessToken}`,
+        apikey: anonKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        cart_item_ids: uniqueCartItemIds,
+        shipping_method: body.shipping_way,
+        expected_pickup_date: expectedPickupDate,
+        coupon_code: body.coupon_code || undefined,
+      }),
+    });
+    const calculationPayload = (await calculationResponse.json().catch(() => null)) as {
+      success?: boolean;
+      error?: string;
+      data?: {
+        subtotal?: number;
+        shipping_fee?: number;
+        total_amount?: number;
+      };
+    } | null;
+    if (!calculationResponse.ok || !calculationPayload?.success || !calculationPayload.data) {
+      return NextResponse.json(
+        { error: calculationPayload?.error || "購物車計價驗證失敗" },
+        { status: calculationResponse.ok ? 400 : calculationResponse.status },
+      );
+    }
+    const { subtotal, shipping_fee, total_amount } = calculationPayload.data;
+    if (
+      !Number.isFinite(subtotal) ||
+      !Number.isFinite(shipping_fee) ||
+      !Number.isFinite(total_amount) ||
+      Number(total_amount) <= 0
+    ) {
+      return NextResponse.json({ error: "購物車計價結果無效" }, { status: 502 });
+    }
+
     const productIds = [
-      ...new Set(body.items.map((i) => i.product_id).filter((id): id is string => !!id)),
+      ...new Set(
+        orderedCartRows
+          .map((row) => row.product_id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
     ];
     let product_name_map: Record<string, string> = {};
+    let product_category_map: Record<string, string> = {};
     if (productIds.length > 0) {
       const { data: products } = await auth.supabase
         .from("products")
-        .select("id, name")
+        .select("id, name, category")
         .in("id", productIds);
       product_name_map = {};
-      products?.forEach((p: { id: string; name: string }) => {
+      product_category_map = {};
+      products?.forEach((p: { id: string; name: string; category: string | null }) => {
         product_name_map[p.id] = p.name || p.id;
+        product_category_map[p.id] = p.category || "";
       });
     }
 
@@ -92,13 +165,24 @@ export async function POST(req: Request) {
       phone: body.phone,
       address: body.address,
       shipping_way: body.shipping_way,
-      expected_pickup_date: body.expected_pickup_date || null,
+      expected_pickup_date: expectedPickupDate || null,
       notes: body.notes || null,
       customer_source: body.customer_source,
-      subtotal: body.subtotal,
-      shipping_fee: body.shipping_fee,
-      total_amount: body.total_amount,
-      items: body.items,
+      subtotal: Number(subtotal),
+      shipping_fee: Number(shipping_fee),
+      total_amount: Number(total_amount),
+      items: orderedCartRows.map((row) => ({
+        cart_item_id: String(row.id),
+        product_id: typeof row.product_id === "string" ? row.product_id : null,
+        quantity: Number(row.quantity),
+        total_price: Number(row.total_price),
+        category:
+          typeof row.product_id === "string" ? product_category_map[row.product_id] || null : null,
+        is_package_design: Boolean(row.is_package_design),
+        preview_url: typeof row.preview_url === "string" ? row.preview_url : null,
+        customizations_json: row.customizations_json,
+        linked_item_id: typeof row.linked_item_id === "string" ? row.linked_item_id : null,
+      })),
       product_name_map,
     });
 
