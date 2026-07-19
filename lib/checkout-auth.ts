@@ -3,6 +3,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 export type UserAuthOk = {
   userId: string;
+  accessToken: string;
+  supabaseUrl: string;
   supabase: SupabaseClient;
 };
 
@@ -37,5 +39,5 @@ export async function assertAuthenticatedUser(req: Request): Promise<UserAuthOk 
     return NextResponse.json({ error: "認證失敗或 token 已過期" }, { status: 401 });
   }
 
-  return { userId: user.id, supabase: sb };
+  return { userId: user.id, accessToken: token, supabaseUrl: url, supabase: sb };
 }
