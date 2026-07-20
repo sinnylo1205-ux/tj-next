@@ -1677,10 +1677,10 @@ const AdminQuotationsPanel = () => {
 
     const qe = quotationEdits[quotation.id];
     const userId = qe ? String(qe.user_id ?? "").trim() || null : quotation.user_id;
-    const specialLineUserId = specialQuotationEdits[quotation.id]?.contact.line_user_id;
+    const specialEdit = specialQuotationEdits[quotation.id];
     const lineUserId =
-      specialLineUserId !== undefined
-        ? specialLineUserId.trim() || null
+      specialEdit
+        ? specialEdit.contact.line_user_id?.trim() || null
         : qe
           ? qe.line_user_id?.trim() || null
           : quotation.line_user_id;
