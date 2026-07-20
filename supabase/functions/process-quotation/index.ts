@@ -763,9 +763,14 @@ async function handleConvertSpecialQuotationToOrders(
 
   const createdOrderIds: string[] = [];
   const deferredNotifications: Array<{
-    orderData: any;
-    meta: any;
-    orderInsert: Record<string, any>;
+    orderData: { id: string };
+    meta: { expected_pickup_date?: string | null };
+    orderInsert: {
+      shipping_way: string;
+      who_receive: string;
+      phone: string | null;
+      shipping_address_text: string | null;
+    };
     productSummary: string;
     lineSubtotal: number;
     shipFee: number;
