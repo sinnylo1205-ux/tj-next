@@ -123,6 +123,8 @@ export default function RootLayout({
   return (
     <html lang="zh-TW" className={`${notoSerifTC.variable} ${notoSansTC.variable}`}>
       <head>
+        {/* Facebook 網域驗證：須為靜態 head 輸出，不可僅由 JS 動態插入 */}
+        <meta name="facebook-domain-verification" content="71x0k9tw4jpkmrjxstz1olfbhls6ur" />
         {/* next/font 字體由 /_next/static 自託管，不需 fonts.googleapis / gstatic preconnect（Lighthouse 會標未使用） */}
         <link rel="preconnect" href="https://akrxbdoxiopiubksgcrl.supabase.co" />
         <link
