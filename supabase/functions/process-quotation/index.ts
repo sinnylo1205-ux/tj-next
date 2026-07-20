@@ -762,6 +762,15 @@ async function handleConvertSpecialQuotationToOrders(
   const taxId = taxIdRaw.length > 0 ? Number(taxIdRaw) : null;
 
   const createdOrderIds: string[] = [];
+  const deferredNotifications: Array<{
+    orderData: any;
+    meta: any;
+    orderInsert: Record<string, any>;
+    productSummary: string;
+    lineSubtotal: number;
+    shipFee: number;
+    lineTotal: number;
+  }> = [];
 
   try {
     for (const [comboId, comboItems] of byCombo.entries()) {
@@ -848,6 +857,49 @@ async function handleConvertSpecialQuotationToOrders(
         .map((it: any) => `${it.product_name} x${it.quantity}`)
         .join("、");
 
+      deferredNotifications.push({
+        orderData,
+        meta,
+        orderInsert,
+        productSummary,
+        lineSubtotal,
+        shipFee,
+        lineTotal,
+      });
+    }
+
+    const nextAllReq = {
+      ...allReq,
+      special_quotation: {
+        ...special,
+        converted_order_ids: createdOrderIds,
+      },
+    };
+
+    const { data: updatedQuotation, error: statusError } = await supabase
+      .from("quotation_orders")
+      .update({
+        status: "order_created",
+        payment_method,
+        payment_step: payment_step || "verified",
+        transfer_last5: transfer_last5 || null,
+        user_id: bodyUserId || quotation.user_id || null,
+        line_user_id: bodyLineUserId || quotation.line_user_id || null,
+        all_requirement: nextAllReq,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", quotation_order_id)
+      .neq("status", "order_created")
+      .select("id")
+      .maybeSingle();
+
+    if (statusError || !updatedQuotation) {
+      console.error("[process-quotation/special_convert] quotation update failed:", statusError);
+      throw new Error(statusError?.message || "報價單已被轉單或狀態更新失敗");
+    }
+
+    for (const notification of deferredNotifications) {
+      const { orderData, meta, orderInsert, productSummary, lineSubtotal, shipFee, lineTotal } = notification;
       try {
         const linePayload: Record<string, any> = {
           source: "system",
@@ -914,32 +966,6 @@ async function handleConvertSpecialQuotationToOrders(
       } catch (calendarError) {
         console.error("[process-quotation/special_convert] Calendar error:", calendarError);
       }
-    }
-
-    const nextAllReq = {
-      ...allReq,
-      special_quotation: {
-        ...special,
-        converted_order_ids: createdOrderIds,
-      },
-    };
-
-    const { error: statusError } = await supabase
-      .from("quotation_orders")
-      .update({
-        status: "order_created",
-        payment_method,
-        payment_step: payment_step || "verified",
-        transfer_last5: transfer_last5 || null,
-        user_id: bodyUserId || quotation.user_id || null,
-        line_user_id: bodyLineUserId || quotation.line_user_id || null,
-        all_requirement: nextAllReq,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", quotation_order_id);
-
-    if (statusError) {
-      console.error("[process-quotation/special_convert] quotation update failed:", statusError);
     }
 
     return new Response(
