@@ -807,6 +807,15 @@ const AdminQuotationsPanel = () => {
         rowEd != null && rowEd.shippingFee !== null && rowEd.shippingFee !== undefined
           ? rowEd.shippingFee
           : edits.shipping_fee;
+      const recalculatedSubtotal =
+        !isSpecialQuotation(q.all_requirement) && rowEd && qItemsLocal?.length
+          ? qItemsLocal.reduce((sum, item) => {
+              const price = Number(rowEd.itemPrices?.[item.id] ?? item.unit_price) || 0;
+              const quantity =
+                Math.max(1, Math.floor(Number(rowEd.itemQuantities?.[item.id] ?? item.quantity ?? 1))) || 1;
+              return sum + price * quantity;
+            }, 0)
+          : null;
 
       if (rowEd && qItemsLocal?.length) {
         for (const item of qItemsLocal) {
@@ -957,8 +966,12 @@ const AdminQuotationsPanel = () => {
         .from("quotation_orders")
         .update({
           shipping_fee: specialTotals?.shipping_fee ?? shippingFeeForOrder,
-          subtotal: specialTotals?.subtotal ?? edits.subtotal,
-          total_amount: specialTotals?.total_amount ?? edits.total_amount,
+          subtotal: specialTotals?.subtotal ?? recalculatedSubtotal ?? edits.subtotal,
+          total_amount:
+            specialTotals?.total_amount ??
+            (recalculatedSubtotal !== null
+              ? recalculatedSubtotal + (shippingFeeForOrder ?? 0)
+              : edits.total_amount),
           notes: edits.notes,
           shipping_way: edits.shipping_way,
           discount_amount: edits.discount_amount,
@@ -1640,11 +1653,9 @@ const AdminQuotationsPanel = () => {
 
   const resolveQuotationContactEmail = (quotation: QuotationOrder): string | null => {
     const specEdit = specialQuotationEdits[quotation.id];
-    const specEmail = specEdit?.contact?.email?.trim();
-    if (specEmail) return specEmail;
+    if (specEdit) return specEdit.contact.email?.trim() || null;
     const qe = quotationEdits[quotation.id];
-    const editedEmail = qe?.email?.trim();
-    if (editedEmail) return editedEmail;
+    if (qe) return qe.email?.trim() || null;
     const ar = parseAllRequirement(quotation.all_requirement) || {};
     const cp = (ar.customer_profile as Record<string, unknown> | undefined) || {};
     const profileEmail = typeof cp.email === "string" ? cp.email.trim() : "";
@@ -1665,8 +1676,14 @@ const AdminQuotationsPanel = () => {
     if (!saved) return;
 
     const qe = quotationEdits[quotation.id];
-    const userId = (qe?.user_id && String(qe.user_id).trim()) ? String(qe.user_id).trim() : quotation.user_id;
-    const lineUserId = qe?.line_user_id ?? quotation.line_user_id;
+    const userId = qe ? String(qe.user_id ?? "").trim() || null : quotation.user_id;
+    const specialEdit = specialQuotationEdits[quotation.id];
+    const lineUserId =
+      specialEdit
+        ? specialEdit.contact.line_user_id?.trim() || null
+        : qe
+          ? qe.line_user_id?.trim() || null
+          : quotation.line_user_id;
 
     setActionLoading(quotation.id);
     try {
