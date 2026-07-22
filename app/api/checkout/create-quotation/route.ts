@@ -135,6 +135,19 @@ export async function POST(req: Request) {
     ) {
       return NextResponse.json({ error: "購物車計價結果無效" }, { status: 502 });
     }
+    const cartSnapshotSubtotal = orderedCartRows.reduce(
+      (sum, row) => sum + Number(row.total_price),
+      0,
+    );
+    if (
+      !Number.isFinite(cartSnapshotSubtotal) ||
+      Math.abs(cartSnapshotSubtotal - Number(subtotal)) > 0.01
+    ) {
+      return NextResponse.json(
+        { error: "購物車內容已變更，請重新整理後再試" },
+        { status: 409 },
+      );
+    }
 
     const productIds = [
       ...new Set(
