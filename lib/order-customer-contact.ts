@@ -144,3 +144,74 @@ export async function updateOrdersContactForCustomer(
 
   return { updatedCount: orderIds.length };
 }
+
+export type OrderCustomerMetaPatch = {
+  admin_note?: string | null;
+  customer_type?: string | null;
+};
+
+/** 批次寫入該客戶所有訂單的管理員備注／客戶類型 */
+export async function updateOrdersMetaForCustomer(
+  supabase: SupabaseClient,
+  customerKey: string,
+  patch: OrderCustomerMetaPatch,
+): Promise<{ updatedCount: number }> {
+  const dbPatch: Record<string, string | null> = {};
+  if (patch.admin_note !== undefined) {
+    const v = (patch.admin_note ?? "").trim();
+    dbPatch.admin_note = v || null;
+  }
+  if (patch.customer_type !== undefined) {
+    const v = (patch.customer_type ?? "").trim();
+    dbPatch.customer_type = v || null;
+  }
+  if (Object.keys(dbPatch).length === 0) {
+    throw new Error("沒有可更新的欄位");
+  }
+
+  const orderIds = await fetchOrderIdsForCustomerKey(supabase, customerKey);
+  if (orderIds.length === 0) {
+    throw new Error("找不到此客戶的訂單");
+  }
+
+  const { error } = await supabase.from("orders").update(dbPatch).in("id", orderIds);
+  if (error) throw error;
+
+  return { updatedCount: orderIds.length };
+}
+
+/**
+ * 寫入訂單客戶總覽的手寫公司名稱（order_customer_crm）。
+ * 不會改動 orders.TAX_title／訂單管理。
+ */
+export async function upsertCustomerCompanyName(
+  supabase: SupabaseClient,
+  customerKey: string,
+  companyName: string | null,
+): Promise<void> {
+  if (!parseCustomerKey(customerKey)) {
+    throw new Error("無效的客戶鍵");
+  }
+
+  const trimmed = (companyName ?? "").trim();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!trimmed) {
+    const { error } = await supabase.from("order_customer_crm").delete().eq("customer_key", customerKey);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await supabase.from("order_customer_crm").upsert(
+    {
+      customer_key: customerKey,
+      company_name: trimmed,
+      updated_at: new Date().toISOString(),
+      updated_by: user?.id ?? null,
+    },
+    { onConflict: "customer_key" },
+  );
+  if (error) throw error;
+}

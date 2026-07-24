@@ -1,0 +1,487 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## 出貨通知（管理員）\n每日台北 10:00：取件日前 7 天／前 1 天／當天 → LINE 提醒更新出貨狀態\n（與「訂單通知」webhook/line 無關）",
+        "height": 120
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-4864, 4224],
+      "typeVersion": 1,
+      "id": "ea143571-cae7-488b-8742-80ee10e29904",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [{ "triggerAtHour": 10 }]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [-4576, 4224],
+      "id": "f43d195f-d098-4ff6-ab2b-f1bc62e6a60c",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY",
+          "mode": "list",
+          "cachedResultName": "T&J ALL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 654142469,
+          "mode": "list",
+          "cachedResultName": "orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY/edit#gid=654142469"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-4368, 4224],
+      "id": "58268039-2777-4bf4-b6b3-125053c5d8cf",
+      "name": "Get row(s) in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1ze5WBFIZBzhw8oS",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst now = new Date();\nconst today = new Date(now.toLocaleString(\"en-US\", { timeZone: \"Asia/Taipei\" }));\ntoday.setHours(0, 0, 0, 0);\n\nconst isTrue = (v) =>\n  v === true || v === \"TRUE\" || v === \"true\" || v === \"TURE\" || v === \"True\";\n\nconst results = [];\n\nfor (const item of items) {\n  const row = item.json;\n\n  const pickupRaw = row.pickup_date || row[\"取件日\"];\n  if (!pickupRaw) continue;\n\n  let pickup;\n  if (!isNaN(pickupRaw) && String(pickupRaw).trim() !== \"\") {\n    const excelEpoch = new Date(1899, 11, 30);\n    pickup = new Date(excelEpoch.getTime() + Number(pickupRaw) * 86400000);\n  } else {\n    pickup = new Date(pickupRaw);\n  }\n  if (Number.isNaN(pickup.getTime())) continue;\n\n  pickup = new Date(pickup.toLocaleString(\"en-US\", { timeZone: \"Asia/Taipei\" }));\n  pickup.setHours(0, 0, 0, 0);\n\n  const diffDays = Math.round((pickup - today) / (1000 * 60 * 60 * 24));\n\n  const sent7 =\n    isTrue(row.sent_7day) ||\n    isTrue(row.is_sent_7day);\n\n  const sent1 =\n    isTrue(row.sent_1day) ||\n    isTrue(row.is_sent_1day) ||\n    isTrue(row[\"is_sent_1day \"]);\n\n  const sent0 =\n    isTrue(row.sent_0day) ||\n    isTrue(row.is_sent_0day);\n\n  // 前 7 天（既有）\n  if (diffDays === 7 && !sent7) {\n    results.push({ json: { ...row, notify_type: \"7day\", diff_days: 7 } });\n  }\n\n  // 前 1 天（預定配達前一天）\n  if (diffDays === 1 && !sent1) {\n    results.push({ json: { ...row, notify_type: \"1day\", diff_days: 1 } });\n  }\n\n  // 當天（預定配達當天）\n  if (diffDays === 0 && !sent0) {\n    results.push({ json: { ...row, notify_type: \"0day\", diff_days: 0 } });\n  }\n}\n\nreturn results;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-4160, 4224],
+      "id": "5877d6a6-d3bb-4990-8825-1ba0f798d883",
+      "name": "Code in JavaScript2"
+    },
+    {
+      "parameters": {
+        "content": "### 不符合 7天／1天／當天 條件就不會往下走",
+        "height": 80
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [-4032, 4400],
+      "typeVersion": 1,
+      "id": "3fe1f9ed-903b-4a5d-bdec-f0b47e6079c7",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "sw-7day",
+                    "leftValue": "={{ $json.notify_type }}",
+                    "rightValue": "7day",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "sw-1day",
+                    "leftValue": "={{ $json.notify_type }}",
+                    "rightValue": "1day",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "sw-0day",
+                    "leftValue": "={{ $json.notify_type }}",
+                    "rightValue": "0day",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [-3936, 4224],
+      "id": "switch-shipping-notify-type",
+      "name": "Switch-提醒類型"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst adminIds = [\n  \"Ue6499ae132e994266ea500b976a3277c\",\n  \"U7fb743a941f0e5574a21b4c5686585e8\"\n];\n\nconst output = [];\n\nfor (const item of items) {\n  const name = item.json[\"取件人\"] || item.json[\"會員名\"] || \"未填寫\";\n  const pickup = item.json[\"取件日\"] || item.json.pickup_date || \"—\";\n  const oid = item.json.order_id || \"—\";\n\n  for (const adminId of adminIds) {\n    output.push({\n      json: {\n        ...item.json,\n        to: adminId,\n        messages: [\n          {\n            type: \"text\",\n            text:\n              \"📦 訂單出貨提醒（倒數 7 天）\\n\" +\n              \"請至後台確認並更新出貨狀態\\n\" +\n              \"取件人：\" + name + \"\\n\" +\n              \"取件日：\" + pickup + \"\\n\" +\n              \"訂單：\" + oid\n          }\n        ]\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-3568, 4000],
+      "id": "0102d654-d499-4c15-89a2-049acdcdc885",
+      "name": "傳給多個管理員"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst adminIds = [\n  \"Ue6499ae132e994266ea500b976a3277c\",\n  \"U7fb743a941f0e5574a21b4c5686585e8\"\n];\n\nconst output = [];\n\nfor (const item of items) {\n  const name = item.json[\"取件人\"] || item.json[\"會員名\"] || \"未填寫\";\n  const pickup = item.json[\"取件日\"] || item.json.pickup_date || \"—\";\n  const oid = item.json.order_id || \"—\";\n\n  for (const adminId of adminIds) {\n    output.push({\n      json: {\n        ...item.json,\n        to: adminId,\n        messages: [\n          {\n            type: \"text\",\n            text:\n              \"📦 訂單出貨提醒（明天配達／取件）\\n\" +\n              \"請至後台確認並更新出貨狀態\\n\" +\n              \"取件人：\" + name + \"\\n\" +\n              \"取件日：\" + pickup + \"\\n\" +\n              \"訂單：\" + oid\n          }\n        ]\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-3568, 4224],
+      "id": "56633fb1-5307-4b88-94b4-820fc542f0b7",
+      "name": "傳給多個管理員4"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nconst adminIds = [\n  \"Ue6499ae132e994266ea500b976a3277c\",\n  \"U7fb743a941f0e5574a21b4c5686585e8\"\n];\n\nconst output = [];\n\nfor (const item of items) {\n  const name = item.json[\"取件人\"] || item.json[\"會員名\"] || \"未填寫\";\n  const pickup = item.json[\"取件日\"] || item.json.pickup_date || \"—\";\n  const oid = item.json.order_id || \"—\";\n\n  for (const adminId of adminIds) {\n    output.push({\n      json: {\n        ...item.json,\n        to: adminId,\n        messages: [\n          {\n            type: \"text\",\n            text:\n              \"📦 訂單出貨提醒（今天配達／取件）\\n\" +\n              \"請至後台確認並更新出貨狀態\\n\" +\n              \"取件人：\" + name + \"\\n\" +\n              \"取件日：\" + pickup + \"\\n\" +\n              \"訂單：\" + oid\n          }\n        ]\n      }\n    });\n  }\n}\n\nreturn output;"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-3568, 4448],
+      "id": "admin-notify-0day-code",
+      "name": "傳給多個管理員-當天"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY",
+          "mode": "list",
+          "cachedResultName": "T&J ALL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 654142469,
+          "mode": "list",
+          "cachedResultName": "orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY/edit#gid=654142469"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "is_sent_7day": "TRUE",
+            "order_id": "={{ $json.order_id }}"
+          },
+          "matchingColumns": ["order_id"],
+          "schema": [
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "is_sent_7day",
+              "displayName": "is_sent_7day",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-3392, 3792],
+      "id": "31bb6a01-1526-49e7-8100-f723e5ed694d",
+      "name": "Update row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1ze5WBFIZBzhw8oS",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY",
+          "mode": "list",
+          "cachedResultName": "T&J ALL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 654142469,
+          "mode": "list",
+          "cachedResultName": "orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY/edit#gid=654142469"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "is_sent_1day ": "TRUE",
+            "order_id": "={{ $json.order_id }}"
+          },
+          "matchingColumns": ["order_id"],
+          "schema": [
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "is_sent_1day ",
+              "displayName": "is_sent_1day ",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-3392, 4224],
+      "id": "45626800-f64e-4c71-b4f0-90a177a4f870",
+      "name": "Update row in sheet1",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1ze5WBFIZBzhw8oS",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY",
+          "mode": "list",
+          "cachedResultName": "T&J ALL",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 654142469,
+          "mode": "list",
+          "cachedResultName": "orders",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1jFJgEpnUdFVJVaEXYWeOBNhA25kjdSQa-wF3DHzQCTY/edit#gid=654142469"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "is_sent_0day": "TRUE",
+            "order_id": "={{ $json.order_id }}"
+          },
+          "matchingColumns": ["order_id"],
+          "schema": [
+            {
+              "id": "order_id",
+              "displayName": "order_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "is_sent_0day",
+              "displayName": "is_sent_0day",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-3392, 4448],
+      "id": "update-sheet-0day",
+      "name": "Update row in sheet-當天",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1ze5WBFIZBzhw8oS",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.line.me/v2/bot/message/push",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [-3168, 4000],
+      "id": "6d83e2f1-6d76-4ae2-82eb-8e538023b9e8",
+      "name": "HTTP Request4",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "9mlRTKsZERcNa5N5",
+          "name": "公司line"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.line.me/v2/bot/message/push",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [-3168, 4224],
+      "id": "050b9561-9272-492f-9106-2f5bd23f92d7",
+      "name": "HTTP Request5",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "9mlRTKsZERcNa5N5",
+          "name": "公司line"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.line.me/v2/bot/message/push",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [-3168, 4448],
+      "id": "http-push-0day",
+      "name": "HTTP Request-當天",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "9mlRTKsZERcNa5N5",
+          "name": "公司line"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Get row(s) in sheet", "type": "main", "index": 0 }]]
+    },
+    "Get row(s) in sheet": {
+      "main": [[{ "node": "Code in JavaScript2", "type": "main", "index": 0 }]]
+    },
+    "Code in JavaScript2": {
+      "main": [[{ "node": "Switch-提醒類型", "type": "main", "index": 0 }]]
+    },
+    "Switch-提醒類型": {
+      "main": [
+        [
+          { "node": "Update row in sheet", "type": "main", "index": 0 },
+          { "node": "傳給多個管理員", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Update row in sheet1", "type": "main", "index": 0 },
+          { "node": "傳給多個管理員4", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Update row in sheet-當天", "type": "main", "index": 0 },
+          { "node": "傳給多個管理員-當天", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "傳給多個管理員": {
+      "main": [[{ "node": "HTTP Request4", "type": "main", "index": 0 }]]
+    },
+    "傳給多個管理員4": {
+      "main": [[{ "node": "HTTP Request5", "type": "main", "index": 0 }]]
+    },
+    "傳給多個管理員-當天": {
+      "main": [[{ "node": "HTTP Request-當天", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7d9e58101fc92922b10ae8fffe64b0742f9685be1ed0fd1aa601430db7d76241"
+  }
+}

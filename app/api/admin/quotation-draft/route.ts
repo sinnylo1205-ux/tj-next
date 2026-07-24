@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { assertAdminQuotationApi } from "@/lib/quotation-draft-auth";
 import {
   callOpenAiQuotationDraft,
+  collectQuotationDraftImages,
   normalizeQuotationDraft,
   quotationDraftRequestSchema,
   stripBase64ForLog,
@@ -11,10 +12,15 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 120;
 
-const bodySchema = quotationDraftRequestSchema.extend({}).refine(
-  (d) => d.text.trim().length > 0 || (d.image_base64 != null && d.image_base64.trim().length > 80),
-  { message: "請提供 text（對話文字）或 image_base64（截圖 base64）" },
-);
+const bodySchema = quotationDraftRequestSchema.extend({}).superRefine((d, ctx) => {
+  const images = collectQuotationDraftImages(d);
+  if (d.text.trim().length === 0 && images.length === 0) {
+    ctx.addIssue({
+      code: "custom",
+      message: "請提供 text（對話文字）或至少一張截圖（images / image_base64）",
+    });
+  }
+});
 
 /**
  * POST /api/admin/quotation-draft
@@ -22,8 +28,9 @@ const bodySchema = quotationDraftRequestSchema.extend({}).refine(
  *
  * Body JSON:
  * - text?: 對話／需求純文字
- * - image_base64?: 圖片 base64（可含 data:image/...;base64, 前綴）
- * - image_mime_type?: 預設 image/jpeg
+ * - images?: { base64, mime_type? }[]（最多 8 張；建議）
+ * - image_base64?: 單張圖片（舊版相容，會與 images 合併）
+ * - image_mime_type?: 單張 MIME，預設 image/jpeg
  * - context_year?: 補全年份，預設當年
  */
 export async function POST(req: Request) {
@@ -46,6 +53,7 @@ export async function POST(req: Request) {
 
     const body = parsedBody.data;
     const contextYear = body.context_year ?? new Date().getFullYear();
+    const images = collectQuotationDraftImages(body);
 
     if (!process.env.OPENAI_API_KEY?.trim()) {
       return NextResponse.json({ error: "伺服器未設定 OPENAI_API_KEY" }, { status: 503 });
@@ -67,8 +75,7 @@ export async function POST(req: Request) {
 
     const raw = await callOpenAiQuotationDraft({
       text: body.text,
-      imageBase64: body.image_base64,
-      imageMimeType: body.image_mime_type || "image/jpeg",
+      images,
       contextYear,
       productCatalog,
     });
@@ -79,7 +86,8 @@ export async function POST(req: Request) {
       admin: auth.userId,
       kind: draft.quotation_kind,
       items: draft.quotation_order_items.length,
-      image: body.image_base64 ? stripBase64ForLog(body.image_base64) : null,
+      image_count: images.length,
+      images: images.map((img) => stripBase64ForLog(img.base64)),
     });
 
     return NextResponse.json({

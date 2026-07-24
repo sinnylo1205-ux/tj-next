@@ -54,6 +54,7 @@ import { SpecialQuotationEditBlock } from "@/components/admin/SpecialQuotationEd
 import { QuotationAiDraftDialog } from "@/components/admin/QuotationAiDraftDialog";
 import { LineUserIdInput } from "@/components/admin/LineUserIdInput";
 import { getCustomerSourceLabel } from "@/lib/customer-source";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ========== Types ==========
 interface QuotationOrder {
@@ -1769,12 +1770,28 @@ const AdminQuotationsPanel = () => {
               >
                 <RefreshCw className="h-4 w-4 mr-1" /> 重新整理
               </Button>
-              <Button size="sm" variant="secondary" onClick={() => setSpecialQuotationOpen(true)}>
-                <Plus className="h-4 w-4 mr-1" /> 建立特殊報價單
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setQuotationAiDraftOpen(true)}>
-                從對話／截圖（AI）
-              </Button>
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="sm" variant="secondary" onClick={() => setSpecialQuotationOpen(true)}>
+                      <Plus className="h-4 w-4 mr-1" /> 建立特殊報價單
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    當有多組配送地點/品項時使用它
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button size="sm" variant="outline" onClick={() => setQuotationAiDraftOpen(true)}>
+                      AI建立報價單
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    一旦建立後會出現在已報價，可切回到詢價中以利建立 PDF 檔案
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
               <Button size="sm" onClick={() => setNewQuotationOpen(true)}>
                 <Plus className="h-4 w-4 mr-1" /> 新增報價單
               </Button>

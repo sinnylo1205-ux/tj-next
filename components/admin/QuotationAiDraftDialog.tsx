@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -17,8 +17,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Loader2 } from "lucide-react";
+import { Loader2, X } from "lucide-react";
 import type { QuotationDraftResponse } from "@/lib/quotation-draft-ai";
+
+const MAX_IMAGES = 8;
 
 type Props = {
   open: boolean;
@@ -45,18 +47,20 @@ async function readFileAsDataUrl(file: File): Promise<{ base64: string; mime: st
 
 export function QuotationAiDraftDialog({ open, onOpenChange, onCommitted }: Props) {
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [text, setText] = useState("");
   const [contextYear, setContextYear] = useState(() => new Date().getFullYear());
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [loadingCommit, setLoadingCommit] = useState(false);
   const [draft, setDraft] = useState<QuotationDraftResponse | null>(null);
 
   const reset = useCallback(() => {
     setText("");
-    setImageFile(null);
+    setImageFiles([]);
     setDraft(null);
     setContextYear(new Date().getFullYear());
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }, []);
 
   const handleOpenChange = (o: boolean) => {
@@ -71,27 +75,55 @@ export function QuotationAiDraftDialog({ open, onOpenChange, onCommitted }: Prop
     return `Bearer ${t}`;
   };
 
+  const addImageFiles = (files: FileList | File[] | null) => {
+    if (!files || files.length === 0) return;
+    const incoming = Array.from(files);
+    const nonImage = incoming.find((f) => !f.type.startsWith("image/"));
+    if (nonImage) {
+      toast({ title: "僅支援圖片檔", description: nonImage.name, variant: "destructive" });
+      return;
+    }
+    setImageFiles((prev) => {
+      const next = [...prev, ...incoming];
+      if (next.length > MAX_IMAGES) {
+        toast({
+          title: `最多 ${MAX_IMAGES} 張截圖`,
+          description: `已保留前 ${MAX_IMAGES} 張`,
+          variant: "destructive",
+        });
+        return next.slice(0, MAX_IMAGES);
+      }
+      return next;
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeImageAt = (index: number) => {
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
   const runDraft = async () => {
     setLoadingDraft(true);
     setDraft(null);
     try {
-      let image_base64: string | undefined;
-      let image_mime_type = "image/jpeg";
-      if (imageFile) {
-        if (!imageFile.type.startsWith("image/")) {
-          toast({ title: "僅支援圖片檔", variant: "destructive" });
-          setLoadingDraft(false);
-          return;
-        }
-        const { base64, mime } = await readFileAsDataUrl(imageFile);
-        image_base64 = base64;
-        image_mime_type = mime || imageFile.type || "image/jpeg";
-      }
-
-      if (!text.trim() && !image_base64) {
+      if (!text.trim() && imageFiles.length === 0) {
         toast({ title: "請貼上文字或選擇截圖", variant: "destructive" });
         setLoadingDraft(false);
         return;
+      }
+
+      const images: { base64: string; mime_type: string }[] = [];
+      for (const file of imageFiles) {
+        if (!file.type.startsWith("image/")) {
+          toast({ title: "僅支援圖片檔", description: file.name, variant: "destructive" });
+          setLoadingDraft(false);
+          return;
+        }
+        const { base64, mime } = await readFileAsDataUrl(file);
+        images.push({
+          base64,
+          mime_type: mime || file.type || "image/jpeg",
+        });
       }
 
       const res = await fetch("/api/admin/quotation-draft", {
@@ -102,8 +134,7 @@ export function QuotationAiDraftDialog({ open, onOpenChange, onCommitted }: Prop
         },
         body: JSON.stringify({
           text: text.trim(),
-          image_base64,
-          image_mime_type,
+          images,
           context_year: contextYear,
         }),
       });
@@ -180,9 +211,9 @@ export function QuotationAiDraftDialog({ open, onOpenChange, onCommitted }: Prop
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>從對話／截圖建立報價（AI 草稿）</DialogTitle>
+          <DialogTitle>AI建立報價單</DialogTitle>
           <DialogDescription>
-            文字與圖片會送到伺服器，由 OpenAI 解析為「一般」或「特殊」報價結構；按「產生草稿」只預覽，按「建立報價單」才寫入 Supabase。
+            文字與圖片會送到伺服器，由 OpenAI 解析為「一般」或「特殊」報價結構；可一次上傳多張截圖。按「產生草稿」只預覽，按「建立報價單」才寫入 Supabase。
           </DialogDescription>
         </DialogHeader>
 
@@ -198,16 +229,41 @@ export function QuotationAiDraftDialog({ open, onOpenChange, onCommitted }: Prop
             />
           </div>
           <div className="space-y-1">
-            <Label>截圖（選填）</Label>
+            <Label>截圖（選填，最多 {MAX_IMAGES} 張）</Label>
             <Input
+              ref={fileInputRef}
               type="file"
               accept="image/*"
-              onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+              multiple
+              onChange={(e) => addImageFiles(e.target.files)}
               className="text-sm"
             />
-            {imageFile ? (
-              <p className="text-xs text-muted-foreground">已選：{imageFile.name}</p>
-            ) : null}
+            {imageFiles.length > 0 ? (
+              <ul className="space-y-1.5 pt-1">
+                {imageFiles.map((file, index) => (
+                  <li
+                    key={`${file.name}-${file.size}-${file.lastModified}-${index}`}
+                    className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground" title={file.name}>
+                      {index + 1}. {file.name}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 shrink-0 p-0"
+                      onClick={() => removeImageAt(index)}
+                      aria-label={`移除 ${file.name}`}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-muted-foreground">可一次選多張，或分次再加</p>
+            )}
           </div>
           <div className="space-y-1">
             <Label>補全年份（對話只寫月/日時）</Label>

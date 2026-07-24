@@ -13,10 +13,18 @@ import { QUOTATION_KIND_SPECIAL, isSpecialQuotation, parseComboIdFromQuotationIt
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export const quotationDraftImageSchema = z.object({
+  base64: z.string().min(80),
+  mime_type: z.string().max(80).optional().default("image/jpeg"),
+});
+
 export const quotationDraftRequestSchema = z.object({
   text: z.string().default(""),
+  /** @deprecated 單張截圖；請改用 images[]。仍支援以相容舊前端。 */
   image_base64: z.string().optional(),
   image_mime_type: z.string().max(80).optional().default("image/jpeg"),
+  /** 多張截圖（建議）；與 image_base64 可並存，會合併送入模型 */
+  images: z.array(quotationDraftImageSchema).max(8).optional(),
   context_year: z
     .number()
     .int()
@@ -27,6 +35,31 @@ export const quotationDraftRequestSchema = z.object({
 });
 
 export type QuotationDraftRequest = z.infer<typeof quotationDraftRequestSchema>;
+
+export type QuotationDraftImageInput = {
+  base64: string;
+  mimeType: string;
+};
+
+/** 合併 images[] 與舊版單張 image_base64，上限 8 張 */
+export function collectQuotationDraftImages(body: QuotationDraftRequest): QuotationDraftImageInput[] {
+  const out: QuotationDraftImageInput[] = [];
+  for (const img of body.images ?? []) {
+    if (img.base64?.trim()) {
+      out.push({
+        base64: img.base64.trim(),
+        mimeType: img.mime_type || "image/jpeg",
+      });
+    }
+  }
+  if (body.image_base64?.trim()) {
+    out.push({
+      base64: body.image_base64.trim(),
+      mimeType: body.image_mime_type || "image/jpeg",
+    });
+  }
+  return out.slice(0, 8);
+}
 
 export type ProductCatalogRow = { id: string; name: string; category: string; price: number };
 
@@ -42,7 +75,7 @@ export type QuotationDraftResponse = {
   all_requirement: Record<string, unknown>;
 };
 
-const SYSTEM_PROMPT = `你是甜點／禮盒電商後台的報價草稿助理。管理員會貼上與客戶的對話文字，或附上對話截圖（OCR 已由另一模組處理時則只有文字）。
+const SYSTEM_PROMPT = `你是甜點／禮盒電商後台的報價草稿助理。管理員會貼上與客戶的對話文字，或附上**一張或多張**對話截圖（多圖時請合併解讀，後段截圖可覆寫前段共識）。
 請輸出「唯一一個 JSON 物件」，不要 markdown，不要註解。
 
 ## 判斷 special vs general
@@ -87,7 +120,7 @@ const SYSTEM_PROMPT = `你是甜點／禮盒電商後台的報價草稿助理。
    - general: null 或 {}
 - all_requirement: **每一品項必填物件**。至少含 **customization**: string（該品項客製／規格重點，摘自對話；無可填 ""）。可含 **note**: string（備註）。special 與 general 皆同；勿只把需求寫在第一筆而後續品項留空。
 
-**僅有截圖、無純文字時仍必須**：從圖中辨識門市／數量／日期／聯絡方式，輸出 **非空** 的 quotation_order_items；special 時每個 combo 至少一筆品項（可用 product_name 描述「禮盒／包數」等，quantity 為數字）。**禁止**輸出空的 quotation_order_items 陣列。
+**僅有截圖、無純文字時仍必須**：從圖中辨識門市／數量／日期／聯絡方式，輸出 **非空** 的 quotation_order_items；若有多張截圖請綜合所有畫面；special 時每個 combo 至少一筆品項（可用 product_name 描述「禮盒／包數」等，quantity 為數字）。**禁止**輸出空的 quotation_order_items 陣列。
 
 **鍵名必須完全一致**：根物件務必使用 **quotation_orders**（複數 s）與 **quotation_order_items**（複數），勿用 quotation_order、items、lines 等替代鍵。
 
@@ -150,8 +183,10 @@ function coerceModelRoot(root: Record<string, unknown>): Record<string, unknown>
 
 export async function callOpenAiQuotationDraft(params: {
   text: string;
+  /** @deprecated 請改用 images */
   imageBase64?: string;
-  imageMimeType: string;
+  imageMimeType?: string;
+  images?: QuotationDraftImageInput[];
   contextYear: number;
   productCatalog: ProductCatalogRow[];
 }): Promise<Record<string, unknown>> {
@@ -167,6 +202,13 @@ export async function callOpenAiQuotationDraft(params: {
 
   const yearHint = `若對話只寫「月/日」未寫年份，預設年份為 ${params.contextYear}。`;
 
+  const images: QuotationDraftImageInput[] = [
+    ...(params.images ?? []),
+    ...(params.imageBase64?.trim()
+      ? [{ base64: params.imageBase64.trim(), mimeType: params.imageMimeType || "image/jpeg" }]
+      : []),
+  ].slice(0, 8);
+
   const userText = [
     yearHint,
     "",
@@ -176,14 +218,22 @@ export async function callOpenAiQuotationDraft(params: {
     "【對話／需求文字】",
     params.text.trim() || "(未提供純文字，請僅依圖片內容解析)",
     "",
+    images.length > 1
+      ? `【附圖】共 ${images.length} 張截圖，請依序合併解讀；若資訊衝突以較後的截圖為準。`
+      : images.length === 1
+        ? "【附圖】1 張截圖，請一併解析。"
+        : "",
+    "",
     "【輸出約束】根物件鍵名務必為 quotation_orders（複數）與 quotation_order_items（複數）；品項每一列須含 quantity、product_name、all_requirement（至少含 customization 字串），special 時須含 combo_id（與 combos[].id 一致）。無法辨識品名時 product_name 請填「待補充」。special 時：若某 combo 下任一品項 unit_price 為 null，該 combo 的 line_subtotal、line_total 必為 null；僅當該 combo 下所有品項皆有數字 unit_price 時才填寫 line_subtotal（Σ單價×數量）與 line_total（加 shipping_fee）。",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const userContent: unknown[] = [{ type: "text", text: userText }];
 
-  if (params.imageBase64) {
-    const raw = stripDataUrlPrefix(params.imageBase64);
-    const mime = params.imageMimeType || "image/jpeg";
+  for (const img of images) {
+    const raw = stripDataUrlPrefix(img.base64);
+    const mime = img.mimeType || "image/jpeg";
     userContent.push({
       type: "image_url",
       image_url: { url: `data:${mime};base64,${raw}`, detail: "high" },
@@ -409,9 +459,18 @@ export function normalizeQuotationDraft(
         if (comboId && idMap.has(comboId)) {
           comboId = idMap.get(comboId)!;
         }
+        const firstComboId = String(asRecord(combosWithIds[0])?.id ?? "").trim();
         if (comboId && !combosWithIds.some((co) => asRecord(co)?.id === comboId)) {
-          warnings.push(`品項 #${i} 的 combo_id 無對應 combo，已清空（請人工修正）`);
-          comboId = "";
+          warnings.push(
+            firstComboId
+              ? `品項 #${i} 的 combo_id 無對應 combo，已指派至第一組`
+              : `品項 #${i} 的 combo_id 無對應 combo，已清空（請人工修正）`,
+          );
+          comboId = firstComboId;
+        }
+        if (!comboId && firstComboId) {
+          warnings.push(`品項 #${i} 缺少有效 combo_id，已指派至第一組`);
+          comboId = firstComboId;
         }
 
         const productId =
