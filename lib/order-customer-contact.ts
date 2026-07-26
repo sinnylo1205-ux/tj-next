@@ -26,10 +26,14 @@ async function fetchAdminUserIds(supabase: SupabaseClient): Promise<Set<string>>
   return ids;
 }
 
+/**
+ * 與 order_customer_rollup SQL 一致：COALESCE(who_receive, orderer_name, '')。
+ * 不可 trim：空白姓名在 view 會進 customer_key，trim 會導致 batch 更新找不到訂單。
+ */
 function coalesceReceiveName(row: Pick<OrderRowForKey, "who_receive" | "orderer_name">): string {
-  const who = row.who_receive?.trim();
-  if (who) return who;
-  return row.orderer_name?.trim() ?? "";
+  if (row.who_receive != null) return row.who_receive;
+  if (row.orderer_name != null) return row.orderer_name;
+  return "";
 }
 
 /** 與 order_customer_rollup view 相同的 customer_key 邏輯 */
@@ -44,6 +48,41 @@ export function customerKeyForOrder(
     return `user:${row.user_id}`;
   }
   return `name:${coalesceReceiveName(row)}`;
+}
+
+export type OrderCustomerContactBaseline = {
+  primary_email?: string | null;
+  primary_phone?: string | null;
+  line_user_id?: string | null;
+};
+
+function normalizedContactValue(value: string | null | undefined): string {
+  return value?.trim() ?? "";
+}
+
+/**
+ * 只送出相對 rollup 初始值有變更的聯絡欄位。
+ * 避免空白彙總值（如 MAX(line_user_id) 為空）把其他訂單的既有聯絡資料清成 NULL。
+ */
+export function buildChangedContactPatch(
+  baseline: OrderCustomerContactBaseline,
+  nextEmail: string,
+  nextPhone: string,
+  nextLineUserId: string,
+): OrderCustomerContactPatch {
+  const patch: OrderCustomerContactPatch = {};
+
+  if (normalizedContactValue(nextEmail) !== normalizedContactValue(baseline.primary_email)) {
+    patch.email = nextEmail;
+  }
+  if (normalizedContactValue(nextPhone) !== normalizedContactValue(baseline.primary_phone)) {
+    patch.phone = nextPhone;
+  }
+  if (normalizedContactValue(nextLineUserId) !== normalizedContactValue(baseline.line_user_id)) {
+    patch.line_user_id = nextLineUserId;
+  }
+
+  return patch;
 }
 
 export function parseCustomerKey(customerKey: string): { type: "user" | "name"; value: string } | null {
@@ -67,27 +106,28 @@ export async function fetchOrderIdsForCustomerKey(
 
   const adminUserIds = await fetchAdminUserIds(supabase);
 
+  const orderKeySelect =
+    "id, is_manual_order, is_from_quotation, user_id, who_receive, orderer_name";
+
   if (parsed.type === "user") {
     const { data, error } = await supabase
       .from("orders")
-      .select("id")
+      .select(orderKeySelect)
       .eq("user_id", parsed.value)
       .eq("is_manual_order", false);
     if (error) throw error;
-    return (data ?? []).map((r) => r.id as string);
+    // 必須再以 customerKeyForOrder 過濾：is_from_quotation=true 且 is_manual_order=false
+    // 的訂單在 rollup 屬 name: 鍵，不可被 user: 批次更新誤傷。
+    return ((data as OrderRowForKey[]) ?? [])
+      .filter((row) => customerKeyForOrder(row, adminUserIds) === customerKey)
+      .map((row) => row.id);
   }
 
   const name = parsed.value;
   const [byReceiveRes, byOrdererRes] = await Promise.all([
-    supabase
-      .from("orders")
-      .select("id, is_manual_order, user_id, who_receive, orderer_name")
-      .eq("who_receive", name),
+    supabase.from("orders").select(orderKeySelect).eq("who_receive", name),
     name
-      ? supabase
-          .from("orders")
-          .select("id, is_manual_order, user_id, who_receive, orderer_name")
-          .eq("orderer_name", name)
+      ? supabase.from("orders").select(orderKeySelect).eq("orderer_name", name)
       : Promise.resolve({ data: [] as OrderRowForKey[], error: null }),
   ]);
   if (byReceiveRes.error) throw byReceiveRes.error;
