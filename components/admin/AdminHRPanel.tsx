@@ -23,6 +23,10 @@ import { supabase } from "@/lib/supabase";
 import { getTaiwanPublicHolidaysInCalendarMonth } from "@/lib/taiwan-public-holidays";
 import * as XLSX from "xlsx";
 import type { CellObject } from "xlsx";
+import HrExpenseClaimsCard, {
+  fetchHrExpenseClaims,
+  type HrExpenseClaim,
+} from "@/components/admin/HrExpenseClaimsCard";
 
 // ── 型別 ──
 
@@ -40,12 +44,52 @@ interface ScheduleBlock {
   slot: number; // 8, 8.5, 9, 9.5, … 17.5
 }
 
+interface EmployeeWageConfig {
+  mode: "per_workday" | "fixed_monthly_leave_deduct";
+  /** Betty：日薪（元／天）；月薪 = 日薪 × 工作天數 */
+  dailyWageYuan?: number;
+  /** Betty：日薪列標籤 */
+  dailyWageLabel?: string;
+  dailyWageComment?: string;
+  /** 心怡：固定月薪 */
+  fixedMonthlyYuan?: number;
+  /** 扣薪：月薪 ÷ 此工作天數 = 日薪 */
+  workDaysDivisor?: number;
+  /** 扣薪：日薪 ÷ 此時數 = 時薪；全日請假以此時數計 */
+  hoursPerDay?: number;
+  leaveDeductComment?: string;
+  /** 心怡：勞健保加計 */
+  laborHealthInsuranceYuan?: number;
+  laborHealthInsuranceComment?: string;
+}
+
 // ── 常數 ──
 
 const EMPLOYEES: Employee[] = [
   { id: "betty", name: "Betty", color: "#DDD6FE", textColor: "#5B21B6" },
   { id: "xinyi", name: "心怡", color: "#FED7AA", textColor: "#C2410C" },
 ];
+
+const EMPLOYEE_WAGE: Record<string, EmployeeWageConfig> = {
+  betty: {
+    mode: "per_workday",
+    dailyWageYuan: 1262,
+    dailyWageLabel: "日薪（包含勞健保）",
+    dailyWageComment:
+      "應領薪資：16,000 元\n勞保扣款：398 元（以部分工時級距計算自付額）\n健保扣款：458 元（以法定最低基本工資投保自付額）\n實領15144元/月，日薪1262元",
+  },
+  xinyi: {
+    mode: "fixed_monthly_leave_deduct",
+    fixedMonthlyYuan: 22000,
+    workDaysDivisor: 20,
+    hoursPerDay: 4,
+    laborHealthInsuranceYuan: 993,
+    laborHealthInsuranceComment:
+      "勞保：$22,000 × 費率 12.5% × 員工自付 20% = $550 元\n健保：$28,590 × 費率 5.17% × 員工自付 30% = $443",
+    leaveDeductComment:
+      "固定月薪22000。日薪=22000/20個工作天；時薪=日薪/4小時；全日請假以4小時計。應發=固定月薪−請假扣薪+勞健保993。",
+  },
+};
 
 // 23 half-hour slots: 8, 8.5, 9, 9.5, … 18, 18.5, 19 (08:00–19:00)
 const SLOTS = Array.from({ length: 23 }, (_, i) => 8 + i * 0.5);
@@ -63,11 +107,6 @@ function isFullHour(s: number): boolean {
 const DEFAULT_WORK_DAYS = [3, 4, 5]; // Wed, Thu, Fri
 const DEFAULT_START = 9;
 const DEFAULT_END = 18; // 9:00–18:00 → slots 9, 9.5, 10, … 17.5
-
-/** Excel 匯出：日薪（元／天）；月薪 = 日薪 × 工作天數（有上班日數，不含請假與無打卡日） */
-const HR_EXPORT_DAILY_WAGE_YUAN = 1262;
-/** 附於「日薪」儲存格之 Excel 備註 */
-const HR_EXPORT_DAILY_WAGE_COMMENT = "1262元=15144/12個工作天=1262元/天";
 
 function isWeekday(date: Date): boolean {
   const d = getDay(date);
@@ -123,6 +162,11 @@ const AdminHRPanel = () => {
   // 待刪除 block（顯示理由 dialog）
   const [pendingDelete, setPendingDelete] = useState<{ blockId: string; employeeId: string; date: string; slot: number } | null>(null);
   const [deleteReason, setDeleteReason] = useState("");
+  const [expenseClaims, setExpenseClaims] = useState<HrExpenseClaim[]>([]);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [exportSelectedIds, setExportSelectedIds] = useState<string[]>(() => EMPLOYEES.map((e) => e.id));
+
+  const yearMonth = format(currentMonth, "yyyy-MM");
 
   const weekdays = useMemo(() => getWeekdaysInMonth(currentMonth), [currentMonth]);
 
@@ -143,10 +187,14 @@ const AdminHRPanel = () => {
     const start = format(startOfMonth(month), "yyyy-MM-dd");
     const end = format(endOfMonth(month), "yyyy-MM-dd");
 
-    const [schedRes, leaveRes, notesRes] = await Promise.all([
+    const [schedRes, leaveRes, notesRes, claimsRes] = await Promise.all([
       supabase.from("hr_schedule").select("*").gte("scheduled_date", start).lte("scheduled_date", end),
       supabase.from("hr_leaves").select("*").gte("leave_date", start).lte("leave_date", end),
       supabase.from("hr_notes").select("*").gte("note_date", start).lte("note_date", end),
+      fetchHrExpenseClaims(format(month, "yyyy-MM")).catch((err) => {
+        console.error("Load expense claims error:", err);
+        return [] as HrExpenseClaim[];
+      }),
     ]);
 
     if (schedRes.error) {
@@ -192,6 +240,8 @@ const AdminHRPanel = () => {
       notes.set(`${r.employee_id}-${r.note_date}-${Number(r.slot)}`, r.reason);
     });
     setDeleteNotes(notes);
+
+    setExpenseClaims(Array.isArray(claimsRes) ? claimsRes : []);
 
     setLoading(false);
   }, [toast]);
@@ -373,15 +423,32 @@ const AdminHRPanel = () => {
     toast({ title: `✅ 已取消 ${emp?.name ?? employeeId} 於 ${date} 的請假` });
   };
 
-  // ── Excel 匯出 ──
-  const exportExcel = () => {
+  // ── Excel 匯出：可選員工，每位各一份檔案 ──
+  const openExportDialog = () => {
+    setExportSelectedIds(EMPLOYEES.map((e) => e.id));
+    setExportDialogOpen(true);
+  };
+
+  const toggleExportEmployee = (id: string) => {
+    setExportSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const exportExcel = (employeeIds: string[]) => {
+    const targets = EMPLOYEES.filter((e) => employeeIds.includes(e.id));
+    if (targets.length === 0) {
+      toast({ title: "請至少選擇一位員工", variant: "destructive" });
+      return;
+    }
+
     const monthStr = format(currentMonth, "yyyyMM");
     const monthNum = format(currentMonth, "M");
     const daysInMonth = getDaysInMonth(currentMonth);
     const holidayMap = getTaiwanPublicHolidaysInCalendarMonth(currentMonth);
-    const wb = XLSX.utils.book_new();
 
-    EMPLOYEES.forEach((emp) => {
+    const buildSheetForEmployee = (emp: Employee) => {
+      const wage = EMPLOYEE_WAGE[emp.id] ?? EMPLOYEE_WAGE.betty;
       const empBlocks = blocks.filter((b) => b.employeeId === emp.id);
       const dateSlots = new Map<string, number[]>();
       empBlocks.forEach((b) => {
@@ -389,6 +456,8 @@ const AdminHRPanel = () => {
         arr.push(b.slot);
         dateSlots.set(b.date, arr);
       });
+      const empClaims = expenseClaims.filter((c) => c.employeeId === emp.id);
+      const claimsTotal = empClaims.reduce((sum, c) => sum + c.amount, 0);
 
       const rows: (string | number | null | CellObject)[][] = [];
       rows.push([`${emp.name}${monthNum}月薪資`, null, null, null, null, null, null, null]);
@@ -408,7 +477,6 @@ const AdminHRPanel = () => {
           continue;
         }
 
-        // 收集該天的刪除備註
         const dayNotes: string[] = [];
         deleteNotes.forEach((reason, key) => {
           if (key.startsWith(`${emp.id}-${dateStr}-`) && reason) {
@@ -437,18 +505,171 @@ const AdminHRPanel = () => {
 
       rows.push([null, null, null, null, null, null, null, null]);
       rows.push([`總工時: ${totalWorkHours} 小時`, null, null, null, null, null, null, null]);
-      rows.push(["工作天數", workingDays, null, null, null, null, null, null]);
-      rows.push(["日薪（元／天）", HR_EXPORT_DAILY_WAGE_YUAN, null, null, null, null, null, null]);
-      // 列索引：0 標題、1 表頭、2..1+daysInMonth 每日列、空白、總工時、工作天數、日薪、月薪
-      const workDaysRow0 = 4 + daysInMonth;
-      const dailyWageRow0 = workDaysRow0 + 1;
-      const refWorkDaysB = XLSX.utils.encode_cell({ r: workDaysRow0, c: 1 });
-      const refDailyB = XLSX.utils.encode_cell({ r: dailyWageRow0, c: 1 });
-      const monthlySalary = workingDays * HR_EXPORT_DAILY_WAGE_YUAN;
-      const monthlyFormula = `${refWorkDaysB}*${refDailyB}`;
+
+      // 請假時數：僅計正式請假紀錄；全日請假 = hoursPerDay（心怡 4 小時）
+      let leaveDays = 0;
+      let leaveHours = 0;
+      if (wage.mode === "fixed_monthly_leave_deduct") {
+        const hoursPerDay = wage.hoursPerDay ?? 4;
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dateStr = format(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), d), "yyyy-MM-dd");
+          if (holidayMap.has(dateStr)) continue;
+          if (leaveRecords.has(`${emp.id}-${dateStr}`)) {
+            leaveDays += 1;
+            leaveHours += hoursPerDay;
+          }
+        }
+      }
+
+      let salarySubtotal = 0;
+      let refSalarySubtotalB = "B1";
+      const cellComments: { addr: string; author: string; text: string }[] = [];
+
+      if (wage.mode === "fixed_monthly_leave_deduct") {
+        const fixedMonthly = wage.fixedMonthlyYuan ?? 22000;
+        const dayDiv = wage.workDaysDivisor ?? 20;
+        const hoursPerDay = wage.hoursPerDay ?? 4;
+        const insurance = wage.laborHealthInsuranceYuan ?? 0;
+        const dailyRate = fixedMonthly / dayDiv;
+        const hourlyRate = dailyRate / hoursPerDay;
+        const leaveDeduction = leaveHours * hourlyRate;
+        const afterLeave = fixedMonthly - leaveDeduction;
+        salarySubtotal = afterLeave + insurance;
+
+        rows.push(["請假天數", leaveDays, null, null, null, null, null, null]);
+        rows.push(["請假時數", leaveHours, null, null, null, null, null, null]);
+        rows.push(["固定月薪（元）", fixedMonthly, null, null, null, null, null, null]);
+
+        // 列：空白、總工時、請假天數、請假時數、固定月薪、日薪、時薪、請假扣薪、勞健保、應發
+        const blankAfterDays = 2 + daysInMonth;
+        const totalHoursRow0 = blankAfterDays + 1;
+        const leaveDaysRow0 = totalHoursRow0 + 1;
+        const leaveHoursRow0 = leaveDaysRow0 + 1;
+        const fixedRow0 = leaveHoursRow0 + 1;
+        const dailyRow0 = fixedRow0 + 1;
+        const hourlyRow0 = dailyRow0 + 1;
+        const deductRow0 = hourlyRow0 + 1;
+        const insuranceRow0 = deductRow0 + 1;
+        const netRow0 = insuranceRow0 + 1;
+
+        const refFixed = XLSX.utils.encode_cell({ r: fixedRow0, c: 1 });
+        const refLeaveH = XLSX.utils.encode_cell({ r: leaveHoursRow0, c: 1 });
+        const refDaily = XLSX.utils.encode_cell({ r: dailyRow0, c: 1 });
+        const refHourly = XLSX.utils.encode_cell({ r: hourlyRow0, c: 1 });
+        const refDeduct = XLSX.utils.encode_cell({ r: deductRow0, c: 1 });
+        const refInsurance = XLSX.utils.encode_cell({ r: insuranceRow0, c: 1 });
+        const refNet = XLSX.utils.encode_cell({ r: netRow0, c: 1 });
+
+        rows.push([
+          `日薪（月薪/${dayDiv}個工作天）`,
+          { t: "n", v: dailyRate, f: `${refFixed}/${dayDiv}` },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+        ]);
+        rows.push([
+          `時薪（日薪/${hoursPerDay}小時）`,
+          { t: "n", v: hourlyRate, f: `${refDaily}/${hoursPerDay}` },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+        ]);
+        rows.push([
+          "請假扣薪（元）",
+          { t: "n", v: leaveDeduction, f: `${refLeaveH}*${refHourly}` },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+        ]);
+        rows.push(["勞健保（元）", insurance, null, null, null, null, null, null]);
+        rows.push([
+          "應發薪資（元）",
+          {
+            t: "n",
+            v: salarySubtotal,
+            f: `${refFixed}-${refDeduct}+${refInsurance}`,
+          },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+        ]);
+
+        refSalarySubtotalB = refNet;
+        if (wage.leaveDeductComment) {
+          cellComments.push({ addr: refFixed, author: "薪資說明", text: wage.leaveDeductComment });
+        }
+        if (wage.laborHealthInsuranceComment) {
+          cellComments.push({
+            addr: refInsurance,
+            author: "勞健保說明",
+            text: wage.laborHealthInsuranceComment,
+          });
+        }
+      } else {
+        // Betty：工作天數 × 日薪
+        const dailyWage = wage.dailyWageYuan ?? 1262;
+        const dailyLabel = wage.dailyWageLabel ?? "日薪（元／天）";
+        rows.push(["工作天數", workingDays, null, null, null, null, null, null]);
+        rows.push([dailyLabel, dailyWage, null, null, null, null, null, null]);
+        const attendanceSalary = workingDays * dailyWage;
+        salarySubtotal = attendanceSalary;
+
+        const workDaysRow0 = 4 + daysInMonth;
+        const dailyWageRow0 = workDaysRow0 + 1;
+        const salaryRow0 = dailyWageRow0 + 1;
+        const refWorkDaysB = XLSX.utils.encode_cell({ r: workDaysRow0, c: 1 });
+        const refDailyB = XLSX.utils.encode_cell({ r: dailyWageRow0, c: 1 });
+        rows.push([
+          "月薪（元）",
+          { t: "n", v: attendanceSalary, f: `${refWorkDaysB}*${refDailyB}` },
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+        ]);
+        refSalarySubtotalB = XLSX.utils.encode_cell({ r: salaryRow0, c: 1 });
+        if (wage.dailyWageComment) {
+          cellComments.push({ addr: refDailyB, author: "薪資說明", text: wage.dailyWageComment });
+        }
+      }
+
+      rows.push([null, null, null, null, null, null, null, null]);
+      rows.push(["請款報帳", null, null, null, null, null, null, null]);
+      rows.push(["報帳名目", "請款金額", "證明文件", null, null, null, null, null]);
+
+      if (empClaims.length === 0) {
+        rows.push(["（無）", 0, null, null, null, null, null, null]);
+      } else {
+        empClaims.forEach((c) => {
+          rows.push([c.title, c.amount, c.proofUrl || null, null, null, null, null, null]);
+        });
+      }
+
+      const claimsTotalRow0 = rows.length;
+      rows.push(["請款合計（元）", claimsTotal, null, null, null, null, null, null]);
+      const refClaimsB = XLSX.utils.encode_cell({ r: claimsTotalRow0, c: 1 });
+      const finalAmount = salarySubtotal + claimsTotal;
       rows.push([
-        "月薪（元）",
-        { t: "n", v: monthlySalary, f: monthlyFormula },
+        "最終金額（薪水＋請款）",
+        {
+          t: "n",
+          v: finalAmount,
+          f: `${refSalarySubtotalB}+${refClaimsB}`,
+        },
         null,
         null,
         null,
@@ -458,21 +679,34 @@ const AdminHRPanel = () => {
       ]);
 
       const ws = XLSX.utils.aoa_to_sheet(rows);
-      const dailyCell = ws[refDailyB];
-      if (dailyCell) {
-        if (!dailyCell.c) dailyCell.c = [];
-        dailyCell.c.push({ a: "薪資說明", t: HR_EXPORT_DAILY_WAGE_COMMENT });
-      }
+      cellComments.forEach(({ addr, author, text }) => {
+        const cell = ws[addr];
+        if (!cell) return;
+        if (!cell.c) cell.c = [];
+        cell.c.push({ a: author, t: text });
+      });
       ws["!cols"] = [
-        { wch: 14 }, { wch: 8 }, { wch: 8 }, { wch: 10 },
+        { wch: 26 }, { wch: 12 }, { wch: 28 }, { wch: 10 },
         { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 20 },
       ];
+      return ws;
+    };
+
+    targets.forEach((emp, index) => {
+      const wb = XLSX.utils.book_new();
+      const ws = buildSheetForEmployee(emp);
       XLSX.utils.book_append_sheet(wb, ws, emp.name);
+      const fileName = `${monthStr}${emp.name}薪資.xlsx`;
+      window.setTimeout(() => {
+        XLSX.writeFile(wb, fileName);
+      }, index * 350);
     });
 
-    const fileName = `${monthStr}員工打卡.xlsx`;
-    XLSX.writeFile(wb, fileName);
-    toast({ title: `✅ 已匯出 ${fileName}` });
+    setExportDialogOpen(false);
+    toast({
+      title: `✅ 已匯出 ${targets.length} 份檔案`,
+      description: targets.map((e) => `${monthStr}${e.name}薪資.xlsx`).join("、"),
+    });
   };
 
   // ── 週分組 ──
@@ -521,9 +755,9 @@ const AdminHRPanel = () => {
               <Button variant="outline" size="icon" onClick={() => switchMonth(1)}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
-              <Button onClick={exportExcel} className="ml-4">
+              <Button onClick={openExportDialog} className="ml-4">
                 <Download className="h-4 w-4 mr-2" />
-                匯出 Excel
+                匯出
               </Button>
             </div>
           </div>
@@ -696,6 +930,84 @@ const AdminHRPanel = () => {
           ))}
         </CardContent>
       </Card>
+
+      <HrExpenseClaimsCard
+        yearMonth={yearMonth}
+        monthLabel={format(currentMonth, "yyyy年 M月", { locale: zhTW })}
+        employees={EMPLOYEES}
+        claims={expenseClaims}
+        onClaimsChange={setExpenseClaims}
+      />
+
+      {/* 匯出人選 Dialog */}
+      <Dialog open={exportDialogOpen} onOpenChange={setExportDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>選擇匯出人員</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              每位勾選的員工會各下載一份薪資檔（含請款報帳）。
+            </p>
+            <div className="space-y-2">
+              {EMPLOYEES.map((emp) => {
+                const checked = exportSelectedIds.includes(emp.id);
+                return (
+                  <label
+                    key={emp.id}
+                    className={cn(
+                      "flex items-center gap-3 rounded-md border px-3 py-2.5 cursor-pointer transition-colors",
+                      checked ? "border-foreground/30 bg-muted/40" : "hover:bg-muted/20",
+                    )}
+                  >
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-foreground"
+                      checked={checked}
+                      onChange={() => toggleExportEmployee(emp.id)}
+                    />
+                    <span
+                      className="inline-block h-3 w-3 rounded"
+                      style={{ backgroundColor: emp.color, border: `1px solid ${emp.textColor}` }}
+                    />
+                    <span className="text-sm font-medium">{emp.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setExportSelectedIds(EMPLOYEES.map((e) => e.id))}
+              >
+                全選
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setExportSelectedIds([])}
+              >
+                清除
+              </Button>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setExportDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              disabled={exportSelectedIds.length === 0}
+              onClick={() => exportExcel(exportSelectedIds)}
+            >
+              <Download className="h-4 w-4 mr-1.5" />
+              匯出 {exportSelectedIds.length > 0 ? `(${exportSelectedIds.length})` : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* 刪除理由 Dialog */}
       <Dialog open={!!pendingDelete} onOpenChange={(open) => !open && setPendingDelete(null)}>
