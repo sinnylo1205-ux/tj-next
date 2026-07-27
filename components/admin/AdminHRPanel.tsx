@@ -210,19 +210,14 @@ const AdminHRPanel = () => {
       slot: Number(r.slot),
     }));
 
-    const holidayMap = getTaiwanPublicHolidaysInCalendarMonth(month);
-    const cleanedBlocks = dbBlocks.filter((b) => !holidayMap.has(b.date));
-
-    // If no schedule data for this month, generate defaults and save
+    // Loading a month must not write back to the database; otherwise simply opening
+    // the panel can permanently delete holiday rows or seed/overwrite an empty month.
+    // Keep holiday-dated rows in state so a later intentional save does not wipe them
+    // (the grid already renders holidays via taiwanHolidays, ignoring those blocks).
     if (dbBlocks.length === 0) {
-      const defaults = generateDefaultBlocks(month);
-      setBlocks(defaults);
-      await saveBlocksToDB(defaults, month);
+      setBlocks(generateDefaultBlocks(month));
     } else {
-      setBlocks(cleanedBlocks);
-      if (cleanedBlocks.length !== dbBlocks.length) {
-        await saveBlocksToDB(cleanedBlocks, month);
-      }
+      setBlocks(dbBlocks);
     }
 
     const leaves = new Set<string>();

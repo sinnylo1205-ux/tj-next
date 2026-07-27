@@ -21,9 +21,13 @@ CREATE INDEX IF NOT EXISTS idx_hr_expense_claims_emp_month
 
 ALTER TABLE public.hr_expense_claims ENABLE ROW LEVEL SECURITY;
 
+-- Admin-only: expense claims include payroll amounts and proof URLs.
+-- Do not grant broad authenticated access (frontend /admin is not a DB boundary).
 DROP POLICY IF EXISTS "Authenticated users full access on hr_expense_claims"
   ON public.hr_expense_claims;
-CREATE POLICY "Authenticated users full access on hr_expense_claims"
+DROP POLICY IF EXISTS "Admins and service_role can manage hr_expense_claims"
+  ON public.hr_expense_claims;
+CREATE POLICY "Admins and service_role can manage hr_expense_claims"
   ON public.hr_expense_claims FOR ALL
-  USING (auth.role() = 'authenticated')
-  WITH CHECK (auth.role() = 'authenticated');
+  USING (auth.role() = 'service_role' OR public.has_role(auth.uid(), 'admin'))
+  WITH CHECK (auth.role() = 'service_role' OR public.has_role(auth.uid(), 'admin'));
