@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { parseAndVerifyLineOAuthState } from "../_shared/line-oauth-state.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,12 +19,12 @@ Deno.serve(async (req) => {
   try {
     const url = new URL(req.url);
     const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state"); // This contains "user_id|order_id"
+    const state = url.searchParams.get("state"); // signed: user_id|order_id|exp|sig
     const error = url.searchParams.get("error");
     const errorDescription = url.searchParams.get("error_description");
 
     console.log("[line-auth-callback] Received callback with code:", code ? "present" : "missing");
-    console.log("[line-auth-callback] State:", state);
+    console.log("[line-auth-callback] State present:", Boolean(state));
 
     if (error) {
       console.error("[line-auth-callback] LINE login error:", error, errorDescription);
@@ -35,16 +36,19 @@ Deno.serve(async (req) => {
       return Response.redirect(`${SITE_URL}/?error=missing_params`, 302);
     }
 
-    // Parse state to get user_id and order_id
-    const decodedState = decodeURIComponent(state);
-    const [userId, orderId] = decodedState.split("|");
-    console.log("[line-auth-callback] Parsed userId:", userId, "orderId:", orderId);
-
     const LINE_CHANNEL_SECRET = Deno.env.get("LINE_CHANNEL_SECRET");
     if (!LINE_CHANNEL_SECRET) {
       console.error("[line-auth-callback] LINE_CHANNEL_SECRET not configured");
       return Response.redirect(`${SITE_URL}/?error=config_error`, 302);
     }
+
+    const parsedState = await parseAndVerifyLineOAuthState(LINE_CHANNEL_SECRET, state);
+    if (!parsedState) {
+      console.error("[line-auth-callback] Invalid or expired OAuth state");
+      return Response.redirect(`${SITE_URL}/?error=invalid_state`, 302);
+    }
+    const { userId, orderId } = parsedState;
+    console.log("[line-auth-callback] Verified userId:", userId, "orderId:", orderId);
 
     // Get the redirect URI (this edge function URL)
     const redirectUri = `https://akrxbdoxiopiubksgcrl.supabase.co/functions/v1/line-auth-callback`;
@@ -113,10 +117,22 @@ Deno.serve(async (req) => {
       console.error("[line-auth-callback] Friendship check error:", friendshipError);
     }
 
-    // Step 4: Update user_log_in with line_user_id
+    // Step 4: Update user_log_in with line_user_id (only after signed state + order ownership)
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    const { data: ownedOrder, error: ownershipError } = await supabase
+      .from("orders")
+      .select("id, user_id")
+      .eq("id", orderId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (ownershipError || !ownedOrder) {
+      console.error("[line-auth-callback] Order ownership check failed:", ownershipError);
+      return Response.redirect(`${SITE_URL}/?error=order_mismatch`, 302);
+    }
 
     // Get user name for the notification
     const { data: userData } = await supabase.from("user_log_in").select("name").eq("id", userId).single();
@@ -147,17 +163,18 @@ Deno.serve(async (req) => {
       console.log("[line-auth-callback] User is not a friend, redirecting to add-friend page...");
       return Response.redirect(`${SITE_URL}/add-line-friend?orderId=${orderId}&userId=${userId}`, 302);
     }
-    // Step 4: If orderId exists, send order notification (ALWAYS, even if LINE link failed)
+    // Step 6: Send order notification for the owned order only
     if (orderId) {
       console.log("[line-auth-callback] Processing order notification for order:", orderId);
 
-      // Query order details
+      // Query order details (bound to owning user)
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .select(
-          "id, order_status, payment_step, subtotal, expected_pickup_date, notes, total_amount, shipping_fee, shipping_way, who_receive, Email",
+          "id, order_status, payment_step, subtotal, expected_pickup_date, notes, total_amount, shipping_fee, shipping_way, who_receive, Email, user_id",
         )
         .eq("id", orderId)
+        .eq("user_id", userId)
         .single();
 
       if (orderError) {
@@ -188,7 +205,7 @@ Deno.serve(async (req) => {
             console.error("[line-auth-callback] Failed to fetch products:", productsError);
           }
 
-          (productsData ?? []).forEach((p: any) => {
+          (productsData ?? []).forEach((p: { id?: string; name?: string | null }) => {
             if (p?.id) productNameById.set(p.id, p.name ?? "");
           });
         }

@@ -1000,11 +1000,42 @@ export default function CheckoutPage() {
               不，我在網站上查看訂單狀況
             </Button>
             <Button
-              onClick={() => {
+              onClick={async () => {
                 trackLineClick("checkout_line_login");
-                const redirectUri = encodeURIComponent("https://akrxbdoxiopiubksgcrl.supabase.co/functions/v1/line-auth-callback");
-                const state = encodeURIComponent(`${user?.id || ""}|${createdOrderId || ""}`);
-                window.location.href = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=2008793012&redirect_uri=${redirectUri}&state=${state}&scope=profile%20openid`;
+                if (!createdOrderId) {
+                  toast({
+                    title: "無法開始 LINE 登入",
+                    description: "找不到訂單，請重新結帳後再試。",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                try {
+                  const { data, error } = await supabase.functions.invoke("line-auth-start", {
+                    body: { order_id: createdOrderId },
+                  });
+                  const authorizeUrl =
+                    data && typeof data === "object" && "authorize_url" in data
+                      ? String((data as { authorize_url?: string }).authorize_url || "")
+                      : "";
+                  if (error || !authorizeUrl) {
+                    console.error("[Checkout] line-auth-start failed:", error, data);
+                    toast({
+                      title: "無法開始 LINE 登入",
+                      description: "請稍後再試，或改從會員中心查看訂單。",
+                      variant: "destructive",
+                    });
+                    return;
+                  }
+                  window.location.href = authorizeUrl;
+                } catch (err) {
+                  console.error("[Checkout] LINE login start error:", err);
+                  toast({
+                    title: "無法開始 LINE 登入",
+                    description: "請稍後再試。",
+                    variant: "destructive",
+                  });
+                }
               }}
               className="w-full sm:w-auto bg-[#06C755] hover:bg-[#05a847] text-white"
             >
