@@ -15,6 +15,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { getEdgeFunctionErrorDetail } from "@/lib/edge-function-error";
+import { buildForceProcessingOrderPatch } from "@/lib/force-processing";
 import { buildReceiptHtml, ntdIntegerToChineseCapital, triggerDownloadHtmlFile } from "@/lib/receipt-html";
 import ManualOrderForm from "./ManualOrderForm";
 import { AdminOrderDetailPanel } from "./AdminOrderDetailPanel";
@@ -766,20 +767,20 @@ const OrderStatusManager = () => {
     await handleStatusUpdate(orderId, "returned", "return");
   };
 
-  /** 未匯款先出貨：僅更新 order_status → processing，payment_step 維持不變 */
+  /** 未匯款先出貨：order_status → processing，並豁免 24h 自動取消；payment_step 維持不變 */
   const handleForceProcessing = async (orderId: string) => {
     if (loadingAction) return;
     setLoadingAction({ orderId, action: "force_processing" });
     try {
       const { error } = await supabase
         .from("orders")
-        .update({ order_status: "processing" })
+        .update(buildForceProcessingOrderPatch())
         .eq("id", orderId);
       if (error) {
         toast({ title: "操作失敗", description: error.message, variant: "destructive" });
         return;
       }
-      toast({ title: "✅ 已轉為處理中（付款狀態不變）" });
+      toast({ title: "✅ 已轉為處理中（付款狀態不變，已豁免自動取消）" });
       loadOrders();
     } catch {
       toast({ title: "操作失敗", description: "請稍後再試", variant: "destructive" });
