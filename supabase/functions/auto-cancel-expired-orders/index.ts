@@ -34,12 +34,16 @@ Deno.serve(async (req) => {
 
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+  // Only cancel unpaid orders still waiting for payment. Orders already moved into
+  // fulfillment (e.g. admin「未匯款，先出貨」→ processing) must not be wiped by cron,
+  // even if auto_cancel_exempt was not set.
   const { data: expiredOrders, error: fetchError } = await supabase
     .from("orders")
     .select(
       "id, user_id, created_at, order_status, payment_step, payment_method, total_amount, subtotal, shipping_fee, shipping_way, expected_pickup_date, who_receive, phone, shipping_address_text, line_user_id, Email, is_manual_order, auto_cancel_exempt"
     )
     .eq("payment_step", "pending")
+    .eq("order_status", "awaiting_payment")
     .eq("is_manual_order", false)
     .eq("auto_cancel_exempt", false)
     .lt("created_at", twentyFourHoursAgo);
