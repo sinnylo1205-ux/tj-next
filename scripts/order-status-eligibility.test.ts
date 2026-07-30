@@ -4,7 +4,7 @@ import {
   autoCancelCreatedBeforeIso,
   isEligibleForUserAutoCancel,
   isEligibleForUserPaymentSubmitted,
-} from "../lib/order-status-eligibility.ts";
+} from "../lib/order-status-eligibility";
 
 const basePending = {
   order_status: "awaiting_payment",
