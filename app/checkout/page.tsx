@@ -30,6 +30,11 @@ import { trackInitiateCheckout } from "@/lib/meta-pixel";
 import { ga4BeginCheckout } from "@/lib/ga4";
 import { CUSTOMER_SOURCE_OPTIONS, type CustomerSource } from "@/lib/customer-source";
 import { CHECKOUT_INTENT_KEY, type CheckoutIntent } from "@/lib/checkout-create-quotation";
+import {
+  buildOrderItemInsertFromCartRow,
+  matchCheckoutCartRows,
+  type CheckoutCartRow,
+} from "@/lib/checkout-submit-cart";
 import { buildQuotationPdfHtml, type QuotationPdfWebhookPayload } from "@/lib/quotation-pdf-html";
 import { cn } from "@/lib/utils";
 
@@ -219,8 +224,9 @@ export default function CheckoutPage() {
           .eq("user_id", user.id)
           .eq("is_submitted", false)
           .in("id", selectedIds);
-        const cartItemIds = dbCartRows?.map((r) => r.id) || [];
-        if (cartItemIds.length === 0) return null;
+        const matched = matchCheckoutCartRows(selectedIds, (dbCartRows ?? []) as CheckoutCartRow[]);
+        if (!matched.ok) return null;
+        const cartItemIds = matched.cartItemIds;
         if (reqId !== recalcRef.current) return null;
         const { data, error } = await supabase.functions.invoke("calculate-checkout", {
           body: {
@@ -429,13 +435,47 @@ export default function CheckoutPage() {
     if (!validateCheckoutForm()) return;
     setLoading(true);
     try {
+      // 權威來源：DB cart（不可信任 sessionStorage 品項／數量／單價）
+      const selectedIds = items.map((i) => i.id);
+      const { data: dbCartRows, error: cartReadError } = await supabase
+        .from("cart")
+        .select(
+          "id, product_id, quantity, total_price, preview_url, customizations_json, is_package_design, linked_item_id, expected_pickup_date",
+        )
+        .eq("user_id", user.id)
+        .eq("is_submitted", false)
+        .in("id", selectedIds);
+      if (cartReadError) throw cartReadError;
+
+      const matched = matchCheckoutCartRows(selectedIds, (dbCartRows ?? []) as CheckoutCartRow[]);
+      if (!matched.ok) {
+        toast({ title: "❌ 無法送出訂單", description: matched.error, variant: "destructive" });
+        return;
+      }
+      const authoritativeItems = matched.rows;
+
+      const pricing = await recalculateCheckout(shippingMethod, couponCode || undefined);
+      if (
+        !pricing ||
+        typeof pricing.subtotal !== "number" ||
+        typeof pricing.shipping_fee !== "number" ||
+        typeof pricing.total_amount !== "number"
+      ) {
+        toast({
+          title: "❌ 無法重新計算金額",
+          description: "請確認購物車內容後再試一次",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .insert({
           user_id: user.id,
-          total_amount: totalAmount,
-          subtotal,
-          shipping_fee: shippingFee,
+          total_amount: pricing.total_amount,
+          subtotal: pricing.subtotal,
+          shipping_fee: pricing.shipping_fee,
           shipping_way: shippingMethod,
           shipping_address_text: `${phone}\n${address}`,
           who_receive: recipientName,
@@ -443,7 +483,7 @@ export default function CheckoutPage() {
           notes,
           payment_step: "pending",
           order_status: "awaiting_payment",
-          expected_pickup_date: items[0]?.expected_pickup_date || null,
+          expected_pickup_date: authoritativeItems[0]?.expected_pickup_date || null,
           Email: email || null,
           TAX_title: taxTitle || null,
           TAX_id: taxId ? parseInt(taxId) : null,
@@ -453,7 +493,13 @@ export default function CheckoutPage() {
         .single();
       if (orderError || !orderData) throw orderError;
 
-      const productIds = [...new Set(items.map((i) => i.product_id))];
+      const productIds = [
+        ...new Set(
+          authoritativeItems
+            .map((i) => i.product_id)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
+        ),
+      ];
       const { data: productData } = await supabase.from("products").select("id, name").in("id", productIds);
       const productNameMap: Record<string, string> = {};
       productData?.forEach((p: { id: string; name: string }) => {
@@ -461,29 +507,20 @@ export default function CheckoutPage() {
       });
 
       const itemIdMapping: Record<string, number> = {};
-      for (const item of items) {
+      for (const item of authoritativeItems) {
+        const productId = item.product_id ? String(item.product_id) : "";
+        const productName = productNameMap[productId] || productId || "未命名商品";
         const { data: orderItemData, error: itemError } = await supabase
           .from("order_items")
-          .insert({
-            order_id: orderData.id,
-            product_id: item.product_id,
-            product_name: productNameMap[item.product_id as string] || item.name || item.product_id,
-            quantity: item.quantity,
-            unit_price: (item.total_price || item.price || 0) / (item.quantity || 1),
-            preview_url: item.preview_url,
-            customizations_json: (item as any).customizations_json || item.customizations,
-            is_package_design: (item as any).is_package_design ?? item.name?.includes("包裝設計"),
-            linked_item_id: null,
-            quantity_description: (item as any).is_package_design ? "與訂購之甜點數量一致，如有加購盒子，則與禮盒數量一致。" : null,
-          })
+          .insert(buildOrderItemInsertFromCartRow(item, orderData.id, productName))
           .select()
           .single();
         if (itemError || !orderItemData) throw itemError;
-        itemIdMapping[item.id] = (orderItemData as any).order_item_id;
+        itemIdMapping[item.id] = (orderItemData as { order_item_id: number }).order_item_id;
       }
 
-      for (const item of items) {
-        const linkedId = (item as any).linked_item_id;
+      for (const item of authoritativeItems) {
+        const linkedId = item.linked_item_id;
         if (linkedId && itemIdMapping[linkedId]) {
           await supabase
             .from("order_items")
@@ -492,16 +529,20 @@ export default function CheckoutPage() {
         }
       }
 
-      for (const item of items) {
-        const customizations = (item as any).customizations_json || item.customizations;
-        if (customizations?.length) {
-          const optionsToInsert = (customizations as any[])
-            .filter((c: any) => c.option_id && c.option_id > 0)
-            .map((c: any) => ({
+      for (const item of authoritativeItems) {
+        const customizations = item.customizations_json;
+        if (Array.isArray(customizations) && customizations.length) {
+          const optionsToInsert = customizations
+            .filter(
+              (c): c is Record<string, unknown> =>
+                !!c && typeof c === "object" && typeof (c as { option_id?: unknown }).option_id === "number" &&
+                ((c as { option_id: number }).option_id > 0),
+            )
+            .map((c) => ({
               order_item_id: itemIdMapping[item.id],
-              option_id: c.option_id,
-              option_type: c.group || "custom",
-              option_name_zh: c.group_name_zh || "",
+              option_id: c.option_id as number,
+              option_type: (typeof c.group === "string" && c.group) || "custom",
+              option_name_zh: (typeof c.group_name_zh === "string" && c.group_name_zh) || "",
               option_value: JSON.stringify(c),
             }));
           if (optionsToInsert.length) {
@@ -511,15 +552,15 @@ export default function CheckoutPage() {
         }
       }
 
-      if (checkoutData?.coupon_code) {
+      if (pricing.coupon_code) {
         const { data: currentUser } = await supabase.from("user_log_in").select("used_coupons").eq("id", user.id).single();
         const existingCoupons: string[] = currentUser?.used_coupons || [];
-        if (!existingCoupons.includes(checkoutData.coupon_code)) {
-          await supabase.from("user_log_in").update({ used_coupons: [...existingCoupons, checkoutData.coupon_code] }).eq("id", user.id);
+        if (!existingCoupons.includes(pricing.coupon_code)) {
+          await supabase.from("user_log_in").update({ used_coupons: [...existingCoupons, pricing.coupon_code] }).eq("id", user.id);
         }
       }
 
-      const submittedItemIds = items.map((item) => item.id);
+      const submittedItemIds = matched.cartItemIds;
       removeItemsByIds(submittedItemIds);
 
       void supabase.functions
