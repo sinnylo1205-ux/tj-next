@@ -1,5 +1,11 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import {
+  ECPAY_BLOCKED_ORDER_STATUSES,
+  ECPAY_CLAIMABLE_PAYMENT_STEPS,
+  buildEcpayVerifiedOrderPatch,
+  evaluateEcpayPaymentClaim,
+} from "../_shared/ecpay-payment-claim.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -136,7 +142,7 @@ serve(async (req) => {
     const { data: order, error: findError } = await supabase
       .from("orders")
       .select(
-        "id, user_id, total_amount, who_receive, expected_pickup_date, shipping_way, notes, order_status, payment_step, TAX_id, TAX_title, Email, shipping_fee",
+        "id, user_id, total_amount, who_receive, expected_pickup_date, shipping_way, notes, order_status, payment_step, is_hide, TAX_id, TAX_title, Email, shipping_fee",
       )
       .eq("id", orderId)
       .single();
@@ -204,9 +210,46 @@ serve(async (req) => {
       });
     }
 
-    // ========== 冪等性檢查：防止重複處理 ==========
-    if (order.payment_step === "verified") {
+    // ========== 冪等／資格檢查：不可復活已取消或軟刪訂單 ==========
+    const claimDecision = evaluateEcpayPaymentClaim(order);
+    if (claimDecision.action === "already_verified") {
       console.log("⚠️ 訂單已完成付款，跳過重複處理:", orderId);
+      return new Response("1|OK", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    if (claimDecision.action === "ineligible") {
+      console.error("❌ ECPay success on ineligible order:", {
+        orderId,
+        reason: claimDecision.reason,
+        order_status: order.order_status,
+        payment_step: order.payment_step,
+        is_hide: order.is_hide,
+      });
+      await supabase.from("system_events").insert({
+        event_type: "payment_mismatch",
+        source: "ecpay-payment-callback",
+        ref_id: order.id,
+        payload: {
+          action_type: "late_payment_ineligible_order",
+          status_message: "綠界付款成功但訂單已取消/不可認領，需人工對帳",
+          reason: claimDecision.reason,
+          order_status: order.order_status,
+          payment_step: order.payment_step,
+          is_hide: order.is_hide,
+          ecpay: {
+            TradeNo: params.TradeNo,
+            MerchantTradeNo: merchantTradeNo,
+            RtnCode: rtnCode,
+            RtnMsg: params.RtnMsg,
+            TradeAmt: params.TradeAmt,
+          },
+        },
+        sent_to_n8n: false,
+      });
+      // Acknowledge to stop ECPay retries; money was captured — ops must reconcile.
       return new Response("1|OK", {
         status: 200,
         headers: { "Content-Type": "text/plain" },
@@ -216,23 +259,74 @@ serve(async (req) => {
     // 記錄之前的狀態
     const previousStatus = order.order_status;
     const previousPaymentStep = order.payment_step;
+    const verifiedPatch = buildEcpayVerifiedOrderPatch(order.order_status, new Date().toISOString());
 
-    // 更新訂單狀態
-    const { error: updateError } = await supabase
+    // 原子認領：僅當仍為可付款狀態時更新，避免與取消／併發回呼競態
+    const { data: claimedOrder, error: updateError } = await supabase
       .from("orders")
-      .update({
-        payment_step: "verified",
-        order_status: "processing",
-        payment_method: "credit_card",
-        admin_verified_at: new Date().toISOString(),
-      })
-      .eq("id", order.id);
+      .update(verifiedPatch)
+      .eq("id", order.id)
+      .in("payment_step", [...ECPAY_CLAIMABLE_PAYMENT_STEPS])
+      .not("order_status", "in", `(${ECPAY_BLOCKED_ORDER_STATUSES.join(",")})`)
+      .or("is_hide.is.null,is_hide.eq.false")
+      .select("id, order_status, payment_step")
+      .maybeSingle();
 
     if (updateError) {
       console.error("更新訂單狀態失敗:", updateError);
-    } else {
-      console.log("訂單狀態更新成功:", order.id);
+      // Ask ECPay to retry so a transient DB failure cannot silently drop a paid order.
+      return new Response("0|Update Error", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
     }
+
+    if (!claimedOrder) {
+      const { data: latest } = await supabase
+        .from("orders")
+        .select("id, order_status, payment_step, is_hide")
+        .eq("id", order.id)
+        .maybeSingle();
+
+      if (latest?.payment_step === "verified") {
+        console.log("⚠️ 併發回呼：訂單已被其他請求標記為已付款:", orderId);
+        return new Response("1|OK", {
+          status: 200,
+          headers: { "Content-Type": "text/plain" },
+        });
+      }
+
+      console.error("❌ ECPay claim lost race / became ineligible:", {
+        orderId,
+        latest,
+      });
+      await supabase.from("system_events").insert({
+        event_type: "payment_mismatch",
+        source: "ecpay-payment-callback",
+        ref_id: order.id,
+        payload: {
+          action_type: "late_payment_claim_race",
+          status_message: "綠界付款成功但原子認領失敗，需人工對帳",
+          latest_order_status: latest?.order_status ?? null,
+          latest_payment_step: latest?.payment_step ?? null,
+          latest_is_hide: latest?.is_hide ?? null,
+          ecpay: {
+            TradeNo: params.TradeNo,
+            MerchantTradeNo: merchantTradeNo,
+            RtnCode: rtnCode,
+            RtnMsg: params.RtnMsg,
+            TradeAmt: params.TradeAmt,
+          },
+        },
+        sent_to_n8n: false,
+      });
+      return new Response("1|OK", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      });
+    }
+
+    console.log("訂單狀態更新成功:", order.id, verifiedPatch);
 
     // 取得用戶資訊
     const { data: userInfo } = await supabase
@@ -268,13 +362,15 @@ serve(async (req) => {
         .join("、");
     }
 
+    const resultingOrderStatus = verifiedPatch.order_status ?? previousStatus ?? "processing";
+
     // 組裝 eventPayload（與 update-order-status 對齊）
     const eventPayload = {
       action_type: "verify_payment",
       status_message: "信用卡付款成功，訂單處理中",
       payment_method: "credit_card",
       order_id: order.id,
-      order_status: "processing",
+      order_status: resultingOrderStatus,
       previous_status: previousStatus,
       previous_payment_step: previousPaymentStep,
       user_id: order.user_id,
@@ -351,7 +447,7 @@ serve(async (req) => {
 
       const calendarPayload = {
         order_id: order.id,
-        order_status: "processing",
+        order_status: resultingOrderStatus,
         member_name: userInfo?.name || null,
         recipient_name: order.who_receive || null,
         pickup_date: order.expected_pickup_date,
