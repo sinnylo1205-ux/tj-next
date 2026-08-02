@@ -254,7 +254,8 @@ export default function CheckoutPage() {
   );
 
   useEffect(() => {
-    recalculateCheckout(shippingMethod);
+    // Preserve applied coupon across shipping-method recalculation (preview only; no claim).
+    recalculateCheckout(shippingMethod, couponCode.trim() || undefined);
   }, [shippingMethod]);
 
   const handleApplyCoupon = async () => {
@@ -429,13 +430,50 @@ export default function CheckoutPage() {
     if (!validateCheckoutForm()) return;
     setLoading(true);
     try {
+      // Re-price at submit. If a coupon is applied, claim_coupon atomically consumes it
+      // server-side so clients cannot skip/clear used_coupons and reuse deep discounts.
+      // Only claim codes that calculate-checkout actually applied (not merely typed).
+      const couponToClaim = (checkoutData?.coupon_code || "").trim();
+      let finalSubtotal = subtotal;
+      let finalShippingFee = shippingFee;
+      let finalTotalAmount = totalAmount;
+      if (couponToClaim) {
+        const selectedIds = items.map((i) => i.id);
+        const { data: dbCartRows } = await supabase
+          .from("cart")
+          .select("id")
+          .eq("user_id", user.id)
+          .eq("is_submitted", false)
+          .in("id", selectedIds);
+        const cartItemIds = dbCartRows?.map((r) => r.id) || [];
+        if (cartItemIds.length === 0) {
+          throw new Error("購物車內容已變更，請返回購物車重新結帳");
+        }
+        const { data: priced, error: priceError } = await supabase.functions.invoke("calculate-checkout", {
+          body: {
+            cart_item_ids: cartItemIds,
+            shipping_method: shippingMethod,
+            expected_pickup_date: items[0]?.expected_pickup_date || undefined,
+            coupon_code: couponToClaim,
+            claim_coupon: true,
+          },
+        });
+        if (priceError || !priced?.success || !priced.data) {
+          throw new Error(priced?.error || "優惠碼核銷失敗，請重新套用後再送出");
+        }
+        finalSubtotal = priced.data.subtotal;
+        finalShippingFee = priced.data.shipping_fee;
+        finalTotalAmount = priced.data.total_amount;
+        setCheckoutData(priced.data);
+      }
+
       const { data: orderData, error: orderError } = await supabase
         .from("orders")
         .insert({
           user_id: user.id,
-          total_amount: totalAmount,
-          subtotal,
-          shipping_fee: shippingFee,
+          total_amount: finalTotalAmount,
+          subtotal: finalSubtotal,
+          shipping_fee: finalShippingFee,
           shipping_way: shippingMethod,
           shipping_address_text: `${phone}\n${address}`,
           who_receive: recipientName,
@@ -508,14 +546,6 @@ export default function CheckoutPage() {
             const { error: optionError } = await supabase.from("order_item_options").insert(optionsToInsert);
             if (optionError) throw optionError;
           }
-        }
-      }
-
-      if (checkoutData?.coupon_code) {
-        const { data: currentUser } = await supabase.from("user_log_in").select("used_coupons").eq("id", user.id).single();
-        const existingCoupons: string[] = currentUser?.used_coupons || [];
-        if (!existingCoupons.includes(checkoutData.coupon_code)) {
-          await supabase.from("user_log_in").update({ used_coupons: [...existingCoupons, checkoutData.coupon_code] }).eq("id", user.id);
         }
       }
 
