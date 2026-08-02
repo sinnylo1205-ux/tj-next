@@ -4,6 +4,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import { z } from "https://esm.sh/zod@3.22.4";
+import { planCouponClaim } from "../_shared/coupon-claim.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,6 +41,8 @@ const CheckoutRequestSchema = z.object({
   shipping_method: z.enum(["自取", "黑貓宅配", "專件配送"]),
   expected_pickup_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "日期格式錯誤").optional(),
   coupon_code: z.string().max(32).optional(),
+  /** When true, atomically consume a one-time coupon before returning success. */
+  claim_coupon: z.boolean().optional(),
 });
 
 // ========== 硬編碼優惠碼 ==========
@@ -152,7 +155,8 @@ Deno.serve(async (req) => {
       );
     }
 
-    const { cart_item_ids, shipping_method, expected_pickup_date, coupon_code } = parseResult.data;
+    const { cart_item_ids, shipping_method, expected_pickup_date, coupon_code, claim_coupon } =
+      parseResult.data;
     const uniqueCartIds = [...new Set(cart_item_ids)];
     if (uniqueCartIds.length !== cart_item_ids.length) {
       return new Response(JSON.stringify({ success: false, error: "購物車項目不可重複" }), {
@@ -165,8 +169,10 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // ========== 優惠碼重複使用檢查 ==========
-    if (coupon_code) {
+    // Preview path: reject already-used coupons early. Submit path (claim_coupon)
+    // relies on the atomic RPC instead to avoid TOCTOU gaps.
+    let usedCoupons: string[] = [];
+    if (coupon_code && !claim_coupon) {
       const { data: userData, error: userError } = await supabase
         .from("user_log_in")
         .select("used_coupons")
@@ -174,13 +180,18 @@ Deno.serve(async (req) => {
         .single();
 
       if (!userError && userData?.used_coupons) {
-        const usedCoupons: string[] = userData.used_coupons || [];
-        if (usedCoupons.includes(coupon_code.toUpperCase())) {
-          return new Response(
-            JSON.stringify({ success: false, error: "此優惠碼已使用過，每人限用一次" }),
-            { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
-          );
-        }
+        usedCoupons = userData.used_coupons || [];
+      }
+      const earlyPlan = planCouponClaim({
+        appliedCouponCode: coupon_code,
+        claimCoupon: false,
+        usedCoupons,
+      });
+      if (earlyPlan.action === "reject_used") {
+        return new Response(
+          JSON.stringify({ success: false, error: "此優惠碼已使用過，每人限用一次" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
+        );
       }
     }
 
@@ -362,6 +373,32 @@ Deno.serve(async (req) => {
         }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
       );
+    }
+
+    // Submit-time one-time coupon consumption (service-role RPC). Preview never claims.
+    const claimPlan = planCouponClaim({
+      appliedCouponCode: appliedCouponCode,
+      claimCoupon: Boolean(claim_coupon),
+      usedCoupons,
+    });
+    if (claimPlan.action === "claim") {
+      const { data: claimed, error: claimError } = await supabase.rpc("claim_user_coupon_for_user", {
+        p_user_id: user.id,
+        p_coupon_code: claimPlan.code,
+      });
+      if (claimError) {
+        console.error("❌ Coupon claim RPC failed:", claimError);
+        return new Response(
+          JSON.stringify({ success: false, error: "優惠碼核銷失敗，請稍後再試" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 },
+        );
+      }
+      if (claimed !== true) {
+        return new Response(
+          JSON.stringify({ success: false, error: "此優惠碼已使用過，每人限用一次" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
+        );
+      }
     }
 
     return new Response(
