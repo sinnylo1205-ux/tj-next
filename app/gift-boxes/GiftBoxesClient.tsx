@@ -299,8 +299,8 @@ export function GiftBoxesClient({ navigate }: { navigate: NavigateFn }) {
         return (
           <section key={section.id} className="relative isolate w-full overflow-hidden">
             <GiftBoxBackgroundMedia section={section} priority={isFirstSection} />
-            <div className="absolute inset-0 z-10 flex flex-col pt-0 pb-[6%] md:pb-[9%]">
-              <header className="pointer-events-none absolute left-2.5 top-2.5 z-20 max-w-[11rem] select-none text-left md:left-4 md:top-4 md:max-w-[13rem]">
+            <div className="absolute inset-0 z-10 flex flex-col pt-14 pb-[10%] md:pt-0 md:pb-[9%]">
+              <header className="pointer-events-none absolute left-2.5 top-2.5 z-40 max-w-[11rem] select-none text-left md:left-4 md:top-4 md:max-w-[13rem]">
                 <h1 className="text-[10px] font-medium leading-snug tracking-wide text-white [text-shadow:0_1px_4px_rgba(0,0,0,0.32)] md:text-[11px]">
                   T&J 客製化禮盒
                 </h1>
@@ -309,12 +309,8 @@ export function GiftBoxesClient({ navigate }: { navigate: NavigateFn }) {
                 </p>
               </header>
 
-              <div
-                className="flex min-h-[240px] flex-1 flex-col items-center px-2 pt-0 md:min-h-[300px]"
-                style={{
-                  transform: "translateY(-130px)",
-                }}
-              >
+              {/* 手機上移 75px；筆電維持 130px；手機另以 scale 負 margin 收斂空白 */}
+              <div className="flex min-h-[200px] flex-1 flex-col items-center justify-center px-2 -translate-y-[75px] md:min-h-[300px] md:-translate-y-[130px]">
                 {products.length > 0 ? (
                   <>
                     <nav
@@ -348,7 +344,16 @@ export function GiftBoxesClient({ navigate }: { navigate: NavigateFn }) {
                             priorityActiveImage
                           />
                         </div>
-                        <div className="md:hidden" style={{ transform: "scale(0.38)", transformOrigin: "center center" }}>
+                        {/* scale 後 layout 仍佔 360px，用負 margin 收成視覺高度，手機才不會偏高／偏低 */}
+                        <div
+                          className="md:hidden"
+                          style={{
+                            transform: "scale(0.38)",
+                            transformOrigin: "center center",
+                            marginTop: `${-((1 - 0.38) * 360) / 2}px`,
+                            marginBottom: `${-((1 - 0.38) * 360) / 2}px`,
+                          }}
+                        >
                           <OrbitalSelector
                             items={orbitalItems}
                             onSelect={handleProductSelect}

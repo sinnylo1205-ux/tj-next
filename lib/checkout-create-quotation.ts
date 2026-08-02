@@ -1,6 +1,7 @@
 import type { QuotationPdfLineItem, QuotationPdfWebhookPayload } from "@/lib/quotation-pdf-html";
-import type { CustomerSource } from "@/lib/customer-source";
-import { CUSTOMER_SOURCE_OPTIONS } from "@/lib/customer-source";
+import { isCustomerSource, type CustomerSource } from "@/lib/customer-source";
+
+export { isCustomerSource, type CustomerSource };
 
 export const CHECKOUT_INTENT_KEY = "tj_checkout_intent";
 export type CheckoutIntent = "order" | "quotation";
@@ -34,12 +35,6 @@ export type CreateQuotationInput = {
   items: CreateQuotationItemInput[];
   product_name_map?: Record<string, string>;
 };
-
-const ALLOWED_SOURCES = new Set(CUSTOMER_SOURCE_OPTIONS.map((o) => o.value));
-
-export function isCustomerSource(v: unknown): v is CustomerSource {
-  return typeof v === "string" && ALLOWED_SOURCES.has(v as CustomerSource);
-}
 
 /** 從客製陣列抽出純文字摘要（不含圖片 URL） */
 export function summarizeCustomizationsText(raw: unknown): string {

@@ -38,6 +38,7 @@ const ALLOWED_KEYS = new Set([
   "is_from_quotation",
   "auto_cancel_exempt",
   "customer_type",
+  "customer_source",
   "orderer_name",
   "admin_verified_at",
   "shipped_at",

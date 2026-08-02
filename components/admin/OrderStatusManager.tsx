@@ -28,6 +28,7 @@ import {
   LINE_LINKED_BUYER_CLASS,
   resolveOrderLineUserId,
 } from "@/lib/order-display";
+import { CUSTOMER_SOURCE_OPTIONS } from "@/lib/customer-source";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -349,6 +350,7 @@ const OrderStatusManager = () => {
       auto_cancel_exempt: !!order.auto_cancel_exempt,
       is_hide: !!order.is_hide,
       customer_type: order.customer_type ?? "",
+      customer_source: order.customer_source ?? "",
     });
   };
 
@@ -540,6 +542,7 @@ const OrderStatusManager = () => {
       if (patch.admin_note === "") patch.admin_note = null;
       if (patch.expected_pickup_date === "") patch.expected_pickup_date = null;
       if (patch.customer_type === "") patch.customer_type = null;
+      if (patch.customer_source === "") patch.customer_source = null;
       delete patch.orderer_name;
 
       const { data, error } = await supabase.functions.invoke("admin-update-order", {
@@ -1564,6 +1567,21 @@ const OrderStatusManager = () => {
             >
               <option value="">未設定</option>
               {CUSTOMER_TYPE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="space-y-1 col-span-2">
+            <span className="text-sm text-muted-foreground">客戶來源（如何認識我們）</span>
+            <select
+              className="w-full border rounded-md px-3 py-2 text-sm bg-background"
+              value={editDraft.customer_source ?? ""}
+              onChange={(e) => setEditDraft((p) => ({ ...p, customer_source: e.target.value }))}
+            >
+              <option value="">未設定</option>
+              {CUSTOMER_SOURCE_OPTIONS.map((opt) => (
                 <option key={opt.value} value={opt.value}>
                   {opt.label}
                 </option>

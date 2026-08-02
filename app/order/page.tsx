@@ -15,10 +15,11 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, Images, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Images, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QUERY_KEYS } from "@/lib/react-query-keys";
 import { trackLineClick } from "@/lib/track-line-click";
+import { optimizeImage } from "@/lib/supabase-image-url";
 
 interface ProductItem {
   id: string;
@@ -49,6 +50,15 @@ const ORDER_QUERY_KEYS = {
   orderProducts: QUERY_KEYS.orderProducts,
 };
 
+/** 依視窗寬度解析範例圖；桌機／手機互為 fallback，避免切到空 src */
+function resolveExampleSrc(slide: OrderExampleSlide | undefined, isNarrow: boolean): string {
+  if (!slide) return "";
+  const desktop = (slide.photo_url ?? "").trim();
+  const mobile = (slide.photo_url_mobile ?? "").trim();
+  const raw = isNarrow ? mobile || desktop : desktop || mobile;
+  return raw ? optimizeImage(raw, isNarrow ? 720 : 960, 82) : "";
+}
+
 export default function OrderPage() {
   const router = useRouter();
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
@@ -56,10 +66,13 @@ export default function OrderPage() {
   const [showCakeDialog, setShowCakeDialog] = useState(false);
   const [showExamplesDialog, setShowExamplesDialog] = useState(false);
   const [exampleSlideIndex, setExampleSlideIndex] = useState(0);
+  const [exampleImageLoaded, setExampleImageLoaded] = useState(false);
+  const [exampleImageError, setExampleImageError] = useState(false);
   const [isNarrowViewport, setIsNarrowViewport] = useState(false);
   const exampleTouchStartX = useRef<number | null>(null);
   /** 每次進入本頁只自動開一次；離開再進或資料清空後會重置 */
   const examplesAutoOpenedRef = useRef(false);
+  const examplePrefetchCacheRef = useRef<Set<string>>(new Set());
 
   const DESIGN_WIDTH = 1680;
   const DESIGN_HEIGHT = 1050;
@@ -153,9 +166,6 @@ export default function OrderPage() {
     return () => clearTimeout(id);
   }, [exampleSlides.length]);
 
-  const exampleDisplayIndex =
-    exampleSlides.length === 0 ? 0 : Math.min(exampleSlideIndex, exampleSlides.length - 1);
-
   const handleExamplesOpenChange = useCallback((open: boolean) => {
     setShowExamplesDialog(open);
   }, []);
@@ -210,6 +220,33 @@ export default function OrderPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [showExamplesDialog, exampleSlides.length, goExamplePrev, goExampleNext]);
 
+  const exampleDisplayIndex =
+    exampleSlides.length === 0 ? 0 : Math.min(exampleSlideIndex, exampleSlides.length - 1);
+
+  const currentExample = exampleSlides[exampleDisplayIndex];
+  const currentExampleSrc = resolveExampleSrc(currentExample, isNarrowViewport);
+
+  // 切換幻燈片時重置載入狀態
+  useEffect(() => {
+    setExampleImageLoaded(false);
+    setExampleImageError(false);
+  }, [currentExampleSrc, exampleDisplayIndex]);
+
+  // 預載目前與鄰近幻燈片，縮短切換等待
+  useEffect(() => {
+    if (!showExamplesDialog || exampleSlides.length === 0) return;
+    const len = exampleSlides.length;
+    const indices = [exampleDisplayIndex, (exampleDisplayIndex + 1) % len, (exampleDisplayIndex - 1 + len) % len];
+    for (const idx of indices) {
+      const src = resolveExampleSrc(exampleSlides[idx], isNarrowViewport);
+      if (!src || examplePrefetchCacheRef.current.has(src)) continue;
+      examplePrefetchCacheRef.current.add(src);
+      const img = new window.Image();
+      img.decoding = "async";
+      img.src = src;
+    }
+  }, [showExamplesDialog, exampleSlides, exampleDisplayIndex, isNarrowViewport]);
+
   const { data: nonGiftboxItems = [], isLoading } = useQuery({
     queryKey: ORDER_QUERY_KEYS.orderProducts,
     queryFn: async () => {
@@ -249,13 +286,6 @@ export default function OrderPage() {
 
   const baseScaleClass = "scale-[2]";
   const hoverScaleClass = "hover:scale-[2.05]";
-
-  const currentExample = exampleSlides[exampleDisplayIndex];
-  const currentExampleSrc = currentExample
-    ? isNarrowViewport
-      ? (currentExample.photo_url_mobile ?? "").trim() || (currentExample.photo_url ?? "").trim()
-      : (currentExample.photo_url ?? "").trim()
-    : "";
 
   return (
     <div className="relative min-h-screen overflow-x-hidden overflow-y-auto bg-background">
@@ -450,7 +480,7 @@ export default function OrderPage() {
             </DialogDescription>
           </DialogHeader>
 
-          {currentExample && currentExampleSrc ? (
+          {currentExample ? (
             <div className="relative flex min-h-0 min-w-0 flex-1 flex-col bg-white">
               <div
                 role="region"
@@ -460,15 +490,56 @@ export default function OrderPage() {
                 onTouchStart={onExampleTouchStart}
                 onTouchEnd={onExampleTouchEnd}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element -- 輪播外連 Supabase Storage，與本頁畫布區塊一致 */}
-                <img
-                  src={currentExampleSrc}
-                  alt={currentExample.item_name || `客製範例 ${exampleDisplayIndex + 1}`}
-                  className="h-auto max-h-[min(78vh,640px)] w-full max-w-none object-contain sm:max-h-[min(70vh,520px)] sm:max-w-full sm:rounded-md"
-                  loading="eager"
-                  decoding="async"
-                  draggable={false}
-                />
+                <div className="relative flex h-full min-h-[min(48vh,380px)] w-full items-center justify-center sm:min-h-[min(44vh,400px)]">
+                  {/* 載入中骨架 + spinner */}
+                  {!exampleImageLoaded && !exampleImageError && (
+                    <div
+                      className="absolute inset-4 z-0 flex flex-col items-center justify-center gap-3 rounded-md bg-[hsl(var(--color-brand-50))] sm:inset-6"
+                      aria-busy="true"
+                      aria-live="polite"
+                    >
+                      <div className="absolute inset-0 animate-pulse rounded-md bg-gradient-to-r from-[hsl(var(--color-brand-50))] via-[hsl(var(--color-brand-100))] to-[hsl(var(--color-brand-50))]" />
+                      <Loader2
+                        className="relative z-[1] h-8 w-8 animate-spin text-[hsl(var(--color-brand-500))]"
+                        aria-hidden
+                      />
+                      <p className="relative z-[1] text-xs text-[hsl(var(--color-ink))]/60 sm:text-sm">
+                        圖片載入中…
+                      </p>
+                    </div>
+                  )}
+
+                  {exampleImageError || !currentExampleSrc ? (
+                    <p className="px-6 text-center text-sm text-[hsl(var(--color-ink))]/55">
+                      此張圖片暫時無法顯示，請切換下一張
+                    </p>
+                  ) : (
+                    /* eslint-disable-next-line @next/next/no-img-element -- 輪播外連 Supabase Storage，與本頁畫布區塊一致 */
+                    <img
+                      key={currentExample.id}
+                      src={currentExampleSrc}
+                      alt={currentExample.item_name || `客製範例 ${exampleDisplayIndex + 1}`}
+                      className={cn(
+                        "h-auto max-h-[min(78vh,640px)] w-full max-w-none object-contain transition-opacity duration-300 sm:max-h-[min(70vh,520px)] sm:max-w-full sm:rounded-md",
+                        exampleImageLoaded ? "opacity-100" : "opacity-0",
+                      )}
+                      loading="eager"
+                      decoding="async"
+                      fetchPriority="high"
+                      draggable={false}
+                      onLoad={(e) => {
+                        if (e.currentTarget.naturalWidth > 0) {
+                          setExampleImageLoaded(true);
+                          setExampleImageError(false);
+                        }
+                      }}
+                      onError={() => {
+                        setExampleImageLoaded(false);
+                        setExampleImageError(true);
+                      }}
+                    />
+                  )}
+                </div>
 
                 {exampleSlides.length > 1 && (
                   <>
