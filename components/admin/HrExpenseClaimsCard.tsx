@@ -17,6 +17,12 @@ import { Loader2, Plus, Trash2, ExternalLink, Receipt } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import {
+  HR_EXPENSE_PROOF_BUCKET,
+  HR_EXPENSE_PROOF_SIGNED_URL_SECONDS,
+  buildHrExpenseProofObjectPath,
+  resolveHrExpenseProofRefCandidates,
+} from "@/lib/hr-expense-proof-storage";
 
 export interface HrExpenseClaim {
   id: number;
@@ -109,19 +115,51 @@ export default function HrExpenseClaimsCard({
     setOpen(true);
   }, [resetForm]);
 
-  const uploadProof = async (empId: string, f: File): Promise<{ url: string; path: string }> => {
+  const uploadProof = async (empId: string, f: File): Promise<{ path: string }> => {
     // Supabase Storage key 僅允許 ASCII；中文檔名會觸發 Invalid key
-    const extMatch = f.name.match(/(\.[a-zA-Z0-9]{1,8})$/);
-    const ext = extMatch ? extMatch[1].toLowerCase() : "";
-    const path = `hr-expenses/${yearMonth}/${empId}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}${ext}`;
-    const { error } = await supabase.storage.from("custom_asset").upload(path, f, {
+    const path = buildHrExpenseProofObjectPath({
+      yearMonth,
+      employeeId: empId,
+      uniqueSuffix: `${Date.now()}-${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`,
+      fileName: f.name,
+    });
+    const { error } = await supabase.storage.from(HR_EXPENSE_PROOF_BUCKET).upload(path, f, {
       upsert: false,
       contentType: f.type || "application/octet-stream",
-      cacheControl: "604800",
+      cacheControl: "3600",
     });
     if (error) throw error;
-    const { data } = supabase.storage.from("custom_asset").getPublicUrl(path);
-    return { url: data.publicUrl, path };
+    // Do not store getPublicUrl — bucket is private; view via signed URL.
+    return { path };
+  };
+
+  const openProof = async (claim: HrExpenseClaim) => {
+    const candidates = resolveHrExpenseProofRefCandidates({
+      proofPath: claim.proofPath,
+      proofUrl: claim.proofUrl,
+    });
+    if (candidates.length === 0) {
+      toast({ title: "找不到證明文件", variant: "destructive" });
+      return;
+    }
+
+    let lastError: string | null = null;
+    for (const ref of candidates) {
+      const { data, error } = await supabase.storage
+        .from(ref.bucket)
+        .createSignedUrl(ref.path, HR_EXPENSE_PROOF_SIGNED_URL_SECONDS);
+      if (!error && data?.signedUrl) {
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+      lastError = error?.message ?? "建立下載連結失敗";
+    }
+
+    toast({
+      title: "無法開啟證明文件",
+      description: lastError ?? "請稍後再試",
+      variant: "destructive",
+    });
   };
 
   const handleSave = async () => {
@@ -142,11 +180,9 @@ export default function HrExpenseClaimsCard({
 
     setSaving(true);
     try {
-      let proofUrl: string | null = null;
       let proofPath: string | null = null;
       if (file) {
         const up = await uploadProof(employeeId, file);
-        proofUrl = up.url;
         proofPath = up.path;
       }
 
@@ -157,7 +193,7 @@ export default function HrExpenseClaimsCard({
           year_month: yearMonth,
           title: t,
           amount: amt,
-          proof_url: proofUrl,
+          proof_url: null,
           proof_path: proofPath,
         })
         .select("*")
@@ -184,8 +220,12 @@ export default function HrExpenseClaimsCard({
     try {
       const { error } = await supabase.from("hr_expense_claims").delete().eq("id", claim.id);
       if (error) throw error;
-      if (claim.proofPath) {
-        await supabase.storage.from("custom_asset").remove([claim.proofPath]);
+      const proofRefs = resolveHrExpenseProofRefCandidates({
+        proofPath: claim.proofPath,
+        proofUrl: claim.proofUrl,
+      });
+      for (const ref of proofRefs) {
+        await supabase.storage.from(ref.bucket).remove([ref.path]);
       }
       onClaimsChange(claims.filter((c) => c.id !== claim.id));
       toast({ title: "已刪除報帳項目" });
@@ -263,16 +303,15 @@ export default function HrExpenseClaimsCard({
                           ${c.amount.toLocaleString("zh-TW")}
                         </td>
                         <td className="px-3 py-2">
-                          {c.proofUrl ? (
-                            <a
-                              href={c.proofUrl}
-                              target="_blank"
-                              rel="noreferrer"
+                          {c.proofPath || c.proofUrl ? (
+                            <button
+                              type="button"
+                              onClick={() => void openProof(c)}
                               className="inline-flex items-center gap-1 text-primary hover:underline"
                             >
                               查看
                               <ExternalLink className="h-3 w-3" />
-                            </a>
+                            </button>
                           ) : (
                             <span className="text-muted-foreground">—</span>
                           )}
