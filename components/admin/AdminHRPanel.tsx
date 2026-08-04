@@ -27,6 +27,7 @@ import HrExpenseClaimsCard, {
   fetchHrExpenseClaims,
   type HrExpenseClaim,
 } from "@/components/admin/HrExpenseClaimsCard";
+import { hrExpenseProofExportLabel } from "@/lib/hr-expense-proof-storage";
 
 // ── 型別 ──
 
@@ -655,7 +656,16 @@ const AdminHRPanel = () => {
         rows.push(["（無）", 0, null, null, null, null, null, null]);
       } else {
         empClaims.forEach((c) => {
-          rows.push([c.title, c.amount, c.proofUrl || null, null, null, null, null, null]);
+          rows.push([
+            c.title,
+            c.amount,
+            hrExpenseProofExportLabel({ proofPath: c.proofPath, proofUrl: c.proofUrl }),
+            null,
+            null,
+            null,
+            null,
+            null,
+          ]);
         });
       }
 
