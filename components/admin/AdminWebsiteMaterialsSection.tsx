@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Save, Upload, Loader2 } from "lucide-react";
 import BatchUploadTab from "./BatchUploadTab";
+import AdminPopupMaterialsSection from "./AdminPopupMaterialsSection";
 import { SafeImage } from "@/components/SafeImage";
 
 interface Product {
@@ -143,7 +144,7 @@ const AdminWebsiteMaterialsSection = () => {
 
   return (
     <div className="space-y-6">
-      <p className="text-sm text-muted-foreground">管理產品圖片、首頁／頁面用素材與批次上傳。</p>
+      <p className="text-sm text-muted-foreground">管理產品圖片、首頁／頁面用素材、彈跳視窗照片與批次上傳。</p>
 
       <Tabs defaultValue="batch-upload">
         <TabsList className="flex h-auto w-full flex-wrap justify-start gap-1 rounded-md bg-secondary p-1 text-secondary-foreground">
@@ -151,6 +152,7 @@ const AdminWebsiteMaterialsSection = () => {
           <TabsTrigger value="sea-upload">海巡素材上傳</TabsTrigger>
           <TabsTrigger value="products">產品圖片與文字</TabsTrigger>
           <TabsTrigger value="materials">頁面素材</TabsTrigger>
+          <TabsTrigger value="popup">彈跳視窗照片管理</TabsTrigger>
         </TabsList>
 
         <TabsContent value="batch-upload" className="mt-6">
@@ -289,6 +291,10 @@ const AdminWebsiteMaterialsSection = () => {
               </div>
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="popup" className="mt-6">
+          <AdminPopupMaterialsSection />
         </TabsContent>
       </Tabs>
     </div>

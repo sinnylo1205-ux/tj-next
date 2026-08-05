@@ -19,6 +19,8 @@ export const QUERY_KEYS = {
   home: ["home"],
   homeBackground: ["home", "background"],
   homeForeground: ["home", "foreground"],
+  /** 首頁精選案例：product_articles.show_on_homepage = true */
+  homeBlogShowcase: ["home", "blogShowcase", "show_on_homepage"] as const,
   about: ["about"],
   aboutBackground: ["about", "background"],
 } as const;

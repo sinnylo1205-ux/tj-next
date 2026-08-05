@@ -20,6 +20,8 @@ type ArticlePick = {
   related_reading: unknown;
   is_published: boolean | null;
   seo_noindex: boolean | null;
+  show_on_homepage: boolean | null;
+  homepage_sort_order: number | null;
   og_image_url: string | null;
   meta_title: string | null;
   meta_description: string | null;
@@ -39,7 +41,7 @@ export default function ArticleRichTab() {
     const { data, error } = await supabase
       .from("product_articles")
       .select(
-        "id, item_name, slug, content_mode, body_json, faq, related_reading, is_published, seo_noindex, og_image_url, meta_title, meta_description, editor_path",
+        "id, item_name, slug, content_mode, body_json, faq, related_reading, is_published, seo_noindex, show_on_homepage, homepage_sort_order, og_image_url, meta_title, meta_description, editor_path",
       )
       .order("updated_at", { ascending: false });
     if (error) {
@@ -78,6 +80,7 @@ export default function ArticleRichTab() {
         og_image_url: null,
         is_published: false,
         seo_noindex: false,
+        show_on_homepage: false,
         content_mode: "richtext",
         body_json: EMPTY_DOC,
       })
@@ -135,6 +138,9 @@ export default function ArticleRichTab() {
                       {!a.is_published && (
                         <span className="text-[10px] text-amber-700 bg-amber-50 px-1 rounded">未發布</span>
                       )}
+                      {a.show_on_homepage && (
+                        <span className="text-[10px] text-emerald-800 bg-emerald-50 px-1 rounded">首頁</span>
+                      )}
                     </span>
                   </button>
                 </li>
@@ -170,6 +176,8 @@ export default function ArticleRichTab() {
               initialContentMode={selected.content_mode}
               initialIsPublished={!!selected.is_published}
               initialSeoNoindex={!!selected.seo_noindex}
+              initialShowOnHomepage={!!selected.show_on_homepage}
+              initialHomepageSortOrder={selected.homepage_sort_order}
               initialOgImageUrl={selected.og_image_url}
               onSaved={loadList}
             />

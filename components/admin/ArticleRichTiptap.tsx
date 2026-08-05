@@ -69,6 +69,9 @@ interface ArticleRichTiptapProps {
   initialContentMode: string | null;
   initialIsPublished: boolean;
   initialSeoNoindex: boolean;
+  /** 是否顯示於網站首頁彈窗 */
+  initialShowOnHomepage: boolean;
+  initialHomepageSortOrder: number | null;
   initialOgImageUrl: string | null;
   onSaved: () => void;
 }
@@ -101,6 +104,8 @@ export default function ArticleRichTiptap({
   initialContentMode,
   initialIsPublished,
   initialSeoNoindex,
+  initialShowOnHomepage,
+  initialHomepageSortOrder,
   initialOgImageUrl,
   onSaved,
 }: ArticleRichTiptapProps) {
@@ -118,6 +123,7 @@ export default function ArticleRichTiptap({
   /** 內文圖：可直接貼 Supabase 公開 URL，無需再上傳 */
   const [imgExternalUrl, setImgExternalUrl] = useState("");
   const [isPublished, setIsPublished] = useState(initialIsPublished);
+  const [showOnHomepage, setShowOnHomepage] = useState(initialShowOnHomepage);
   const [seoNoindex, setSeoNoindex] = useState(initialSeoNoindex);
   const [ogImageUrl, setOgImageUrl] = useState<string | null>(initialOgImageUrl);
   const [ogUploading, setOgUploading] = useState(false);
@@ -146,6 +152,10 @@ export default function ArticleRichTiptap({
   useEffect(() => {
     setSeoNoindex(initialSeoNoindex);
   }, [articleId, initialSeoNoindex]);
+
+  useEffect(() => {
+    setShowOnHomepage(initialShowOnHomepage);
+  }, [articleId, initialShowOnHomepage]);
 
   useEffect(() => {
     setOgImageUrl(initialOgImageUrl);
@@ -307,6 +317,23 @@ export default function ArticleRichTiptap({
           .map((row) => ({ href: row.href.trim(), label: row.label.trim() }))
           .filter((row) => row.href.length > 0)
       : [];
+    let homepageSortOrder: number | null = initialHomepageSortOrder;
+    if (showOnHomepage) {
+      if (homepageSortOrder == null || !initialShowOnHomepage) {
+        const { data: maxRow } = await supabase
+          .from("product_articles")
+          .select("homepage_sort_order")
+          .eq("show_on_homepage", true)
+          .not("homepage_sort_order", "is", null)
+          .order("homepage_sort_order", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        homepageSortOrder = (maxRow?.homepage_sort_order ?? 0) + 1;
+      }
+    } else {
+      homepageSortOrder = null;
+    }
+
     const { error } = await supabase
       .from("product_articles")
       .update({
@@ -321,6 +348,8 @@ export default function ArticleRichTiptap({
         content_mode: "richtext",
         is_published: isPublished,
         seo_noindex: seoNoindex,
+        show_on_homepage: showOnHomepage,
+        homepage_sort_order: homepageSortOrder,
         og_image_url: ogImageUrl,
       })
       .eq("id", articleId);
@@ -688,19 +717,6 @@ export default function ArticleRichTiptap({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => setImgOpen(true)}
-        className="flex w-full flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-border bg-muted/20 px-4 py-6 text-center transition-colors hover:border-primary hover:bg-muted/40"
-      >
-        <ImagePlus className="h-8 w-8 text-muted-foreground" />
-        <span className="text-sm font-medium text-foreground">上傳圖片插入內文</span>
-        <span className="text-xs text-muted-foreground max-w-md">
-          檔案會上傳至 Storage 路徑：<code className="rounded bg-muted px-1 py-0.5 text-[11px]">{ARTICLE_SELF_UPLOAD_STORAGE_PREFIX}/</code>
-          請填寫 alt 以利 SEO。
-        </span>
-      </button>
-
       <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/20 p-4">
         <div className="flex items-center gap-3">
           <Switch id="article-publish" checked={isPublished} onCheckedChange={setIsPublished} />
@@ -717,6 +733,21 @@ export default function ArticleRichTiptap({
           </div>
           <p className="text-xs text-muted-foreground pl-10">
             新文章建議不要勾選，以利搜尋引擎收录；舊文或不想參與排名時可勾選。
+          </p>
+        </div>
+        <div className="flex flex-col gap-1 rounded-md border border-border bg-background/80 p-3">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="article-show-on-homepage"
+              checked={showOnHomepage}
+              onCheckedChange={setShowOnHomepage}
+            />
+            <Label htmlFor="article-show-on-homepage" className="cursor-pointer leading-snug">
+              是否顯示在網站首頁
+            </Label>
+          </div>
+          <p className="text-xs text-muted-foreground pl-10">
+            開啟後，已發布文章會以縮圖彈窗出現在網站首頁（需同時「發布至前台」，並建議設定下方 OG 封面圖）。
           </p>
         </div>
         {!isPublished && (

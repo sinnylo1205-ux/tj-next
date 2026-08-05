@@ -15,6 +15,11 @@ const HomePaymentResultDialog = dynamic(
   { ssr: false },
 );
 
+const HomeBlogShowcaseDialog = dynamic(
+  () => import("@/components/home/HomeBlogShowcaseDialog").then((m) => m.HomeBlogShowcaseDialog),
+  { ssr: false },
+);
+
 const HomeSection2DesktopCarousel = dynamic(
   () => import("@/components/home/HomeSection2DesktopCarousel").then((m) => m.HomeSection2DesktopCarousel),
   { ssr: false },
@@ -268,6 +273,8 @@ function HomePageContent() {
         paymentMessage={paymentMessage}
       />
 
+      <HomeBlogShowcaseDialog suppressAutoOpen={showPaymentResult} />
+
       <div className="relative w-full">
         <section className="relative w-full overflow-hidden">
           {/* 桌機：全幅背景圖（勿在行動載入大圖） */}
@@ -296,7 +303,7 @@ function HomePageContent() {
           )}
 
           <div
-            className="absolute z-[500] hidden pointer-events-none md:block"
+            className="absolute z-[35] hidden pointer-events-none md:block"
             style={{
               width: DESIGN_WIDTH,
               height: DESIGN_HEIGHT,
@@ -371,7 +378,7 @@ function HomePageContent() {
                         left: `${px}px`,
                         width: `${item.ui_width ?? 200}px`,
                         height: `${item.ui_height ?? 200}px`,
-                        zIndex: isActive ? 1000 : 30,
+                        zIndex: isActive ? 40 : 30,
                         opacity: hoveredId && !isActive ? 0.15 : 1,
                       }}
                     >
