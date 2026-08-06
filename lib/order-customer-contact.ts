@@ -1,5 +1,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isAdminLineUserId } from "@/lib/admin-line-ids";
+import { buildClearCustomerCompanyNamePatch } from "@/lib/crm-company-name-patch";
+
+export { buildClearCustomerCompanyNamePatch } from "@/lib/crm-company-name-patch";
 
 export type OrderCustomerContactPatch = {
   email?: string;
@@ -183,6 +186,7 @@ export async function updateOrdersMetaForCustomer(
 /**
  * 寫入訂單客戶總覽的手寫公司名稱（order_customer_crm）。
  * 不會改動 orders.TAX_title／訂單管理。
+ * 清除時只把 company_name 設為 null，保留 wakeup_opt_out 等其他 CRM 欄位。
  */
 export async function upsertCustomerCompanyName(
   supabase: SupabaseClient,
@@ -197,9 +201,22 @@ export async function upsertCustomerCompanyName(
   const {
     data: { user },
   } = await supabase.auth.getUser();
+  const updatedBy = user?.id ?? null;
+  const now = new Date().toISOString();
 
   if (!trimmed) {
-    const { error } = await supabase.from("order_customer_crm").delete().eq("customer_key", customerKey);
+    const { data: existing, error: fetchError } = await supabase
+      .from("order_customer_crm")
+      .select("customer_key")
+      .eq("customer_key", customerKey)
+      .maybeSingle();
+    if (fetchError) throw fetchError;
+    if (!existing) return;
+
+    const { error } = await supabase
+      .from("order_customer_crm")
+      .update(buildClearCustomerCompanyNamePatch(updatedBy, now))
+      .eq("customer_key", customerKey);
     if (error) throw error;
     return;
   }
@@ -208,8 +225,8 @@ export async function upsertCustomerCompanyName(
     {
       customer_key: customerKey,
       company_name: trimmed,
-      updated_at: new Date().toISOString(),
-      updated_by: user?.id ?? null,
+      updated_at: now,
+      updated_by: updatedBy,
     },
     { onConflict: "customer_key" },
   );
