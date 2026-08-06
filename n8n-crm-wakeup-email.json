@@ -1,0 +1,84 @@
+{
+  "name": "CRM Wakeup Email (Gmail)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "crm-wakeup-email",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-crm-wakeup-email",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "crm-wakeup-email"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = items[0].json;\nconst body = raw.body || raw;\nconst email = (body.customer_email || body.user_email || '').trim();\nconst text = (body.message_text || body.status_message || '').trim();\nconst name = body.customer_name || '顧客';\nconst subject = body.subject || 'T&J 關心您上次的訂購';\nif (!email || !text) {\n  return [{ json: { skip: true, reason: 'missing email or text' } }];\n}\nreturn [{\n  json: {\n    skip: false,\n    customer_email: email,\n    subject,\n    message_text: text,\n    customer_name: name,\n    html: `<p>${text.replace(/\\n/g, '<br/>')}</p><p style=\"color:#888;font-size:12px\">— T&J Cookies</p>`\n  }\n}];"
+      },
+      "id": "code-normalize",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ !$json.skip }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-send",
+      "name": "Should Send",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.customer_email }}",
+        "subject": "={{ $json.subject }}",
+        "emailType": "html",
+        "message": "={{ $json.html }}",
+        "options": {}
+      },
+      "id": "gmail-send",
+      "name": "Gmail Send",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [900, 220],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REPLACE_WITH_GMAIL_CREDENTIAL_ID",
+          "name": "Gmail account"
+        }
+      },
+      "notes": "Import 後請改為實際 Gmail OAuth 憑證；與訂單通知共用同一帳號即可。"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{ "node": "Normalize", "type": "main", "index": 0 }]]
+    },
+    "Normalize": {
+      "main": [[{ "node": "Should Send", "type": "main", "index": 0 }]]
+    },
+    "Should Send": {
+      "main": [
+        [{ "node": "Gmail Send", "type": "main", "index": 0 }],
+        []
+      ]
+    }
+  },
+  "meta": {
+    "templateNote": "匯入 n8n Cloud 後啟用 webhook：https://tjcookies.app.n8n.cloud/webhook/crm-wakeup-email"
+  }
+}

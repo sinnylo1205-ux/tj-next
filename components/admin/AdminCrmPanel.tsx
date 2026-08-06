@@ -17,10 +17,11 @@ import {
 import { cn } from "@/lib/utils";
 import AdminCrmAnalysisPanel from "./AdminCrmAnalysisPanel";
 import AdminOrderCustomersPanel from "./AdminOrderCustomersPanel";
+import AdminWakeupDraftsPanel from "./AdminWakeupDraftsPanel";
 import { fetchCrmOrdersForLineUser } from "@/lib/crm-order-attribution";
 import { isCrmVerifiedOrder } from "@/lib/crm-order-scope";
 
-type CrmView = "line-crm" | "line-analysis" | "order-customers";
+type CrmView = "line-crm" | "line-analysis" | "order-customers" | "ai-wakeup-drafts";
 
 const LINE_LOG_POLL_MS = 12_000;
 
@@ -132,7 +133,7 @@ export default function AdminCrmPanel() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const carouselRef = useRef<HTMLDivElement>(null);
   const [mobileTab, setMobileTab] = useState(0);
-  const [crmView, setCrmView] = useState<CrmView>("line-crm");
+  const [crmView, setCrmView] = useState<CrmView>("order-customers");
 
   const goToTab = useCallback((index: number) => {
     setMobileTab(index);
@@ -505,11 +506,31 @@ export default function AdminCrmPanel() {
       <div className="mb-4">
         <h1 className="text-xl md:text-3xl font-bold">客戶 CRM</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          LINE 接線經營、LINE 整體分析，以及全訂單客戶名冊。
+          預設為訂單客戶總覽；另有 AI 喚醒草稿、LINE 接線經營與整體分析。
         </p>
       </div>
 
       <div className="mb-4 inline-flex flex-wrap gap-1 rounded-lg border p-1 bg-muted/40">
+        <button
+          type="button"
+          onClick={() => setCrmView("order-customers")}
+          className={cn(
+            "px-3 py-1.5 text-sm rounded-md transition-colors",
+            crmView === "order-customers" ? "bg-background shadow font-medium" : "text-muted-foreground",
+          )}
+        >
+          訂單客戶總覽
+        </button>
+        <button
+          type="button"
+          onClick={() => setCrmView("ai-wakeup-drafts")}
+          className={cn(
+            "px-3 py-1.5 text-sm rounded-md transition-colors",
+            crmView === "ai-wakeup-drafts" ? "bg-background shadow font-medium" : "text-muted-foreground",
+          )}
+        >
+          AI喚醒客戶草稿
+        </button>
         <button
           type="button"
           onClick={() => setCrmView("line-crm")}
@@ -530,22 +551,14 @@ export default function AdminCrmPanel() {
         >
           LINE 整體分析
         </button>
-        <button
-          type="button"
-          onClick={() => setCrmView("order-customers")}
-          className={cn(
-            "px-3 py-1.5 text-sm rounded-md transition-colors",
-            crmView === "order-customers" ? "bg-background shadow font-medium" : "text-muted-foreground",
-          )}
-        >
-          訂單客戶總覽
-        </button>
       </div>
 
       {crmView === "line-analysis" ? (
         <AdminCrmAnalysisPanel onSelectCustomer={handleSelectFromAnalysis} />
       ) : crmView === "order-customers" ? (
         <AdminOrderCustomersPanel onOpenLineCustomer={handleOpenLineCustomer} />
+      ) : crmView === "ai-wakeup-drafts" ? (
+        <AdminWakeupDraftsPanel onOpenLineCustomer={handleOpenLineCustomer} />
       ) : (
         <>
       <div className="xl:hidden mb-3 grid grid-cols-3 gap-1 rounded-lg border p-1 bg-muted/40">

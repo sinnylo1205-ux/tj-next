@@ -25,8 +25,18 @@ import {
   updateOrdersMetaForCustomer,
   upsertCustomerCompanyName,
 } from "@/lib/order-customer-contact";
+import AdminOrderCustomerDetailSheet from "@/components/admin/AdminOrderCustomerDetailSheet";
+import { isPoniCareEmail } from "@/lib/customer-wakeup";
 
-type ContactFilter = "all" | "has_line" | "has_email" | "no_contact" | "repeat" | "unpaid";
+type ContactFilter =
+  | "all"
+  | "has_line"
+  | "has_email"
+  | "no_contact"
+  | "repeat"
+  | "unpaid"
+  | "poni_care";
+type TypeFilter = "all" | "general" | "flash_ip" | "pr_agent" | "company_self" | "unset";
 
 const CUSTOMER_TYPE_OPTIONS = [
   { value: "general", label: "一般用戶" },
@@ -131,6 +141,7 @@ export default function AdminOrderCustomersPanel({
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [contactFilter, setContactFilter] = useState<ContactFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
 
   const [editOpen, setEditOpen] = useState(false);
   const [editRow, setEditRow] = useState<OrderCustomerRow | null>(null);
@@ -139,6 +150,9 @@ export default function AdminOrderCustomersPanel({
   const [editLineUserId, setEditLineUserId] = useState("");
   const [saving, setSaving] = useState(false);
   const [savingMetaKey, setSavingMetaKey] = useState<string | null>(null);
+
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailRow, setDetailRow] = useState<OrderCustomerRow | null>(null);
 
   const fetchRows = useCallback(async () => {
     setLoading(true);
@@ -166,6 +180,11 @@ export default function AdminOrderCustomersPanel({
   useEffect(() => {
     void fetchRows();
   }, [fetchRows]);
+
+  const openDetail = useCallback((row: OrderCustomerRow) => {
+    setDetailRow(row);
+    setDetailOpen(true);
+  }, []);
 
   const openEdit = useCallback((row: OrderCustomerRow) => {
     setEditRow(row);
@@ -322,6 +341,16 @@ export default function AdminOrderCustomersPanel({
     if (contactFilter === "no_contact") list = list.filter((r) => !r.has_line && !r.has_email && !r.has_phone);
     if (contactFilter === "repeat") list = list.filter((r) => r.is_repeat_customer);
     if (contactFilter === "unpaid") list = list.filter((r) => r.has_unpaid_orders);
+    if (contactFilter === "poni_care") list = list.filter((r) => isPoniCareEmail(r.primary_email));
+
+    if (typeFilter === "unset") {
+      list = list.filter((r) => !r.customer_type);
+    } else if (typeFilter !== "all") {
+      list = list.filter((r) => {
+        const t = r.customer_type === "pr_agency" ? "pr_agent" : r.customer_type;
+        return t === typeFilter;
+      });
+    }
 
     const q = search.trim().toLowerCase();
     if (!q) return list;
@@ -340,7 +369,7 @@ export default function AdminOrderCustomersPanel({
         .toLowerCase();
       return blob.includes(q);
     });
-  }, [rows, search, contactFilter]);
+  }, [rows, search, contactFilter, typeFilter]);
 
   const filterButtons: { id: ContactFilter; label: string }[] = [
     { id: "all", label: "全部" },
@@ -349,13 +378,24 @@ export default function AdminOrderCustomersPanel({
     { id: "no_contact", label: "無聯絡" },
     { id: "repeat", label: "回購客" },
     { id: "unpaid", label: "有待付款" },
+    { id: "poni_care", label: "需要波尼自己去關心" },
+  ];
+
+  const typeButtons: { id: TypeFilter; label: string }[] = [
+    { id: "all", label: "全部類型" },
+    { id: "general", label: "一般用戶" },
+    { id: "flash_ip", label: "快閃店/IP" },
+    { id: "pr_agent", label: "公關代理" },
+    { id: "company_self", label: "公司自己" },
+    { id: "unset", label: "未標類型" },
   ];
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
         依有效訂單彙整所有客戶（含未匯款、待確認匯款；不含已取消、退貨、隱藏單）。會員以 user_id
-        合併；手動單以收件人姓名（完全一致）合併。點擊聯絡標籤可檢視／編輯聯絡方式；客戶類型與備注會批次寫入該客戶的所有訂單。
+        合併；手動單以收件人姓名（完全一致）合併。點擊客戶名稱可看訂單概況與手動喚醒；點擊聯絡標籤可編輯聯絡方式。AI
+        喚醒草稿請至「AI喚醒客戶草稿」分頁。
       </p>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -374,18 +414,33 @@ export default function AdminOrderCustomersPanel({
         </Button>
       </div>
 
-      <div className="flex flex-wrap gap-1">
-        {filterButtons.map((f) => (
-          <Button
-            key={f.id}
-            type="button"
-            size="sm"
-            variant={contactFilter === f.id ? "default" : "outline"}
-            onClick={() => setContactFilter(f.id)}
-          >
-            {f.label}
-          </Button>
-        ))}
+      <div className="space-y-2">
+        <div className="flex flex-wrap gap-1">
+          {filterButtons.map((f) => (
+            <Button
+              key={f.id}
+              type="button"
+              size="sm"
+              variant={contactFilter === f.id ? "default" : "outline"}
+              onClick={() => setContactFilter(f.id)}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </div>
+        <div className="flex flex-wrap gap-1">
+          {typeButtons.map((f) => (
+            <Button
+              key={f.id}
+              type="button"
+              size="sm"
+              variant={typeFilter === f.id ? "secondary" : "outline"}
+              onClick={() => setTypeFilter(f.id)}
+            >
+              {f.label}
+            </Button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
@@ -424,14 +479,28 @@ export default function AdminOrderCustomersPanel({
                     const companyFromTaxOnly =
                       !row.company_name_override?.trim() && Boolean(row.tax_title?.trim());
                     return (
-                      <TableRow key={row.customer_key}>
+                      <TableRow key={row.customer_key} className="hover:bg-muted/40">
                         <TableCell className="font-medium">
-                          <div>{row.customer_name || "—"}</div>
-                          {membershipLabel(row.customer_key) ? (
-                            <span className="text-xs text-muted-foreground">
-                              {membershipLabel(row.customer_key)}
-                            </span>
-                          ) : null}
+                          <button
+                            type="button"
+                            className="text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                            onClick={() => openDetail(row)}
+                          >
+                            <div>{row.customer_name || "—"}</div>
+                            {membershipLabel(row.customer_key) ? (
+                              <span className="text-xs text-muted-foreground">
+                                {membershipLabel(row.customer_key)}
+                              </span>
+                            ) : null}
+                            {isPoniCareEmail(row.primary_email) ? (
+                              <Badge
+                                variant="outline"
+                                className="mt-0.5 text-[10px] text-rose-700 border-rose-300 bg-rose-50"
+                              >
+                                波尼關心
+                              </Badge>
+                            ) : null}
+                          </button>
                         </TableCell>
                         <TableCell>
                           <ContactTags row={row} onClick={() => openEdit(row)} />
@@ -519,7 +588,9 @@ export default function AdminOrderCustomersPanel({
                           />
                         </TableCell>
                         <TableCell className="text-center font-semibold">
-                          <div>{row.order_count}</div>
+                          <button type="button" className="hover:underline" onClick={() => openDetail(row)}>
+                            <div>{row.order_count}</div>
+                          </button>
                           {row.has_unpaid_orders ? (
                             <Badge
                               variant="outline"
@@ -544,8 +615,20 @@ export default function AdminOrderCustomersPanel({
 
       <p className="text-xs text-muted-foreground">
         共 {filtered.length} 位客戶
-        {search || contactFilter !== "all" ? `（已篩選，總計 ${rows.length} 位）` : ""}
+        {search || contactFilter !== "all" || typeFilter !== "all"
+          ? `（已篩選，總計 ${rows.length} 位）`
+          : ""}
       </p>
+
+      <AdminOrderCustomerDetailSheet
+        open={detailOpen}
+        row={detailRow}
+        onOpenChange={(open) => {
+          setDetailOpen(open);
+          if (!open) setDetailRow(null);
+        }}
+        onSent={undefined}
+      />
 
       <Dialog open={editOpen} onOpenChange={(open) => !open && closeEdit()}>
         <DialogContent className="sm:max-w-md">

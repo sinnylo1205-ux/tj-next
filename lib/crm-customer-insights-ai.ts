@@ -189,33 +189,79 @@ export async function generateCrmMessageDraft(params: {
   insights: CrmInsights;
   orderFact: OrderFactInput;
   objective?: string;
+  extraContext?: Record<string, unknown>;
 }): Promise<{ draft: CrmMessageDraft; model: string }> {
   const model = process.env.OPENAI_CRM_MODEL?.trim() || "gpt-4o-mini";
   const objective = params.objective?.trim() || "回購關懷";
   const hasKey = Boolean(process.env.OPENAI_API_KEY?.trim());
+  const isWakeup = objective.includes("喚醒") || objective.includes("訂後關懷");
   if (!hasKey) {
     const summary = params.insights.recommended_products.join("、") || "熱門品項";
+    const rawName =
+      typeof params.extraContext?.customer_name === "string" && params.extraContext.customer_name.trim()
+        ? params.extraContext.customer_name.trim()
+        : "";
+    const greeting = rawName && rawName !== "您好" ? `${rawName}您好～` : "您好～";
+    const occasions = Array.isArray(params.extraContext?.mentioned_occasions_hint)
+      ? (params.extraContext!.mentioned_occasions_hint as string[]).filter(Boolean)
+      : [];
+    const occasionBit = occasions.length > 0 ? `還記得您提到的${occasions.join("、")}，希望一切順利！` : "";
+    const draft_text = isWakeup
+      ? `${greeting}感謝您上次選擇我們的${summary}！${occasionBit}近期若有需要，歡迎再跟我們說。`
+      : `${greeting}我們看到您之前對 ${summary} 有興趣，最近若有送禮或活動需求，我們可以協助您快速安排。若方便我可先幫您整理本週可出貨時段與建議組合。`;
     return {
       model: "fallback-rule",
       draft: {
-        draft_text: `您好，我們看到您之前對 ${summary} 有興趣，最近若有送禮或活動需求，我們可以協助您快速安排。若方便我可先幫您整理本週可出貨時段與建議組合。`,
+        draft_text,
         tone: "溫暖、專業",
         objective,
       },
     };
   }
 
-  const systemPrompt =
-    "你是品牌 CRM 文案助理，撰寫 LINE 短訊。請回傳 JSON：draft_text,tone,objective。避免過度銷售，語氣真誠。";
+  const systemPrompt = isWakeup
+    ? "你是品牌 CRM 文案助理，撰寫訂後關懷短訊（LINE 或 Email 皆可）。請回傳 JSON：draft_text,tone,objective。" +
+      "語氣真誠感謝，避免過度銷售。" +
+      "開頭稱呼一律「{姓名}您好～」，禁止「親愛的」。無姓名則用「您好～」。" +
+      "務必閱讀 customer_line_messages／對話紀錄：若客人提過生日、婚禮、收涎、公司活動、送禮場合等，請自然融入關心（不要生硬列表）。" +
+      "感謝時必須帶「上次」，例如「感謝您上次選擇我們的{品項}」（取件約 14 天後關心）；可提品項名稱，但絕對不要提到訂購數量（如幾個、幾盒、×N）。" +
+      "必須自然帶入：感謝上次訂購、邀請再次訂購。" +
+      "禁止寫「希望您喜歡這些美味的產品」「期待聽到您的回饋」「若有任何回饋」「不知道實際體驗如何」這類套話。"
+    : "你是品牌 CRM 文案助理，撰寫 LINE 短訊。請回傳 JSON：draft_text,tone,objective。避免過度銷售，語氣真誠。開頭稱呼用「{姓名}您好～」，不要用「親愛的」。";
   const userPrompt = JSON.stringify(
     {
       line_user_id: params.lineUserId,
       objective,
       insights: params.insights,
-      order_fact: params.orderFact,
+      order_fact: {
+        ...params.orderFact,
+        // 喚醒文案不強調訂單筆數／金額，避免模型扯到數量
+        order_count: undefined,
+        lifetime_value: undefined,
+      },
+      extra_context: params.extraContext ?? null,
       constraints: {
-        max_chars: 180,
-        must_include: ["關懷語氣", "下一步邀請"],
+        max_chars: isWakeup ? 240 : 180,
+        greeting_format: "{姓名}您好～",
+        thank_you_format: "感謝您上次選擇我們的{品項}",
+        forbid: isWakeup
+          ? [
+              "親愛的",
+              "訂購數量",
+              "幾個",
+              "幾盒",
+              "×",
+              "數量",
+              "希望您喜歡這些美味的產品",
+              "期待聽到您的回饋",
+              "若有任何回饋",
+              "不知道實際體驗如何",
+            ]
+          : ["親愛的"],
+        must_include: isWakeup
+          ? ["感謝您上次…", "若有對話活動則自然關心", "邀請再次訂購"]
+          : ["關懷語氣", "下一步邀請"],
+        product_mention: isWakeup ? "只寫品項名稱，不寫數量；感謝句必須含「上次」" : undefined,
       },
     },
     null,
