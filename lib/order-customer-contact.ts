@@ -46,25 +46,6 @@ export function customerKeyForOrder(
   return `name:${coalesceReceiveName(row)}`;
 }
 
-/**
- * 與 order_customer_rollup SQL 完全一致：
- * `'name:' || COALESCE(who_receive, orderer_name, '')`（不做 trim）。
- * 喚醒草稿／opt-out 必須用此鍵，才能對上 rollup 與 order_customer_crm。
- */
-export function customerKeyForOrderExact(
-  row: Pick<OrderRowForKey, "is_manual_order" | "is_from_quotation" | "user_id" | "who_receive" | "orderer_name">,
-  adminUserIds: Set<string>,
-): string {
-  const name = row.who_receive || row.orderer_name || "";
-  if (isSpecialOrderRow(row)) {
-    return `name:${name}`;
-  }
-  if (row.user_id && !adminUserIds.has(row.user_id)) {
-    return `user:${row.user_id}`;
-  }
-  return `name:${name}`;
-}
-
 export function parseCustomerKey(customerKey: string): { type: "user" | "name"; value: string } | null {
   if (customerKey.startsWith("user:")) {
     const value = customerKey.slice(5).trim();

@@ -1,12 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateCrmMessageDraft, type CrmInsights } from "@/lib/crm-customer-insights-ai";
-import {
-  fetchOrderIdsForCustomerKey,
-  parseCustomerKey,
-  customerKeyForOrderExact,
-} from "@/lib/order-customer-contact";
+import { fetchOrderIdsForCustomerKey, parseCustomerKey } from "@/lib/order-customer-contact";
 import { isAdminLineUserId } from "@/lib/admin-line-ids";
 import {
+  customerKeyForWakeupOrder,
   mergeWakeupContactsFromOrderAndRollup,
   resolveWakeupChannelFromDraft,
   type WakeupChannel,
@@ -15,7 +12,11 @@ import {
 export const WAKEUP_OBJECTIVE = "訂後關懷喚醒";
 
 export type { WakeupChannel };
-export { mergeWakeupContactsFromOrderAndRollup, resolveWakeupChannelFromDraft };
+export {
+  customerKeyForWakeupOrder,
+  mergeWakeupContactsFromOrderAndRollup,
+  resolveWakeupChannelFromDraft,
+};
 export type WakeupDraftStatus = "pending_review" | "approved" | "sent" | "dismissed" | "failed";
 export type WakeupSource = "backfill" | "cron_30d" | "cron_14d_pickup" | "admin_compose";
 
@@ -543,7 +544,7 @@ export async function listEligibleRollupCustomers(
       mode === "backfill" ? isBackfillEligible(pickup, now) : isCronWindowEligible(pickup, now);
     if (!eligible) continue;
 
-    const key = customerKeyForOrderExact(raw, adminUserIds);
+    const key = customerKeyForWakeupOrder(raw, adminUserIds);
     if (!key || key === "name:") continue;
     const pickupMs = parsePickupDateMs(pickup);
     if (pickupMs == null) continue;

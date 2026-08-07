@@ -1,6 +1,32 @@
-import { isAdminLineUserId } from "@/lib/admin-line-ids";
+import { isAdminLineUserId } from "./admin-line-ids";
 
 export type WakeupChannel = "line" | "email";
+
+type OrderRowForWakeupKey = {
+  is_manual_order?: boolean | null;
+  is_from_quotation?: boolean | null;
+  user_id?: string | null;
+  who_receive?: string | null;
+  orderer_name?: string | null;
+};
+
+/**
+ * 與 order_customer_rollup SQL 完全一致：
+ * `'name:' || COALESCE(who_receive, orderer_name, '')`（不做 trim）。
+ */
+export function customerKeyForWakeupOrder(
+  row: OrderRowForWakeupKey,
+  adminUserIds: Set<string>,
+): string {
+  const name = row.who_receive || row.orderer_name || "";
+  if (row.is_manual_order || row.is_from_quotation) {
+    return `name:${name}`;
+  }
+  if (row.user_id && !adminUserIds.has(row.user_id)) {
+    return `user:${row.user_id}`;
+  }
+  return `name:${name}`;
+}
 
 /**
  * 觸發訂單自己的聯絡優先於 rollup 聚合。
