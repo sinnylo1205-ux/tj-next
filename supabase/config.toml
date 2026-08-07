@@ -44,3 +44,7 @@ verify_jwt = false
 
 [functions.cleanup-customizer-uploads]
 verify_jwt = false
+
+# pg_cron 只帶 x-cron-secret，無 Authorization JWT；與 auto-cancel 相同需關閉閘道驗證
+[functions.wakeup-draft-cron]
+verify_jwt = false
