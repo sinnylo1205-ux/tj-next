@@ -42,6 +42,44 @@ function resolveChannel(row: RollupRow): { channel: "line" | "email"; line_user_
   return null;
 }
 
+/** 與 order_customer_rollup SQL 一致：COALESCE 不做 trim */
+function customerKeyForOrderExact(
+  o: {
+    is_manual_order: boolean | null;
+    is_from_quotation: boolean | null;
+    user_id: string | null;
+    who_receive: string | null;
+    orderer_name: string | null;
+  },
+  adminUserIds: Set<string>,
+): string {
+  const name = o.who_receive || o.orderer_name || "";
+  if (o.is_manual_order || o.is_from_quotation) return `name:${name}`;
+  if (o.user_id && !adminUserIds.has(o.user_id)) return `user:${o.user_id}`;
+  return `name:${name}`;
+}
+
+/** 觸發訂單聯絡優先，避免同名 rollup MAX 掛錯 LINE／Email */
+function mergeContacts(params: {
+  orderEmail?: string | null;
+  orderLineUserId?: string | null;
+  rollupEmail?: string | null;
+  rollupLineUserId?: string | null;
+}): { primary_email: string | null; line_user_id: string | null; has_line: boolean; has_email: boolean } {
+  const orderLine = params.orderLineUserId?.trim() || null;
+  const orderEmail = params.orderEmail?.trim() || null;
+  const rollupLine = params.rollupLineUserId?.trim() || null;
+  const rollupEmail = params.rollupEmail?.trim() || null;
+  const line_user_id = orderLine || rollupLine;
+  const primary_email = orderEmail || rollupEmail;
+  return {
+    line_user_id,
+    primary_email,
+    has_line: Boolean(line_user_id),
+    has_email: Boolean(primary_email),
+  };
+}
+
 function fallbackDraft(
   name: string | null,
   products: string[],
@@ -220,14 +258,6 @@ Deno.serve(async (req) => {
     is_hide: boolean | null;
   };
 
-  const customerKeyFor = (o: OrderRow): string => {
-    if (o.is_manual_order || o.is_from_quotation) {
-      return `name:${(o.who_receive || o.orderer_name || "").trim()}`;
-    }
-    if (o.user_id && !adminUserIds.has(o.user_id)) return `user:${o.user_id}`;
-    return `name:${(o.who_receive || o.orderer_name || "").trim()}`;
-  };
-
   const bestByKey = new Map<string, { order: OrderRow; pickup: string; pickupMs: number }>();
   for (const o of (pickupOrders as OrderRow[]) ?? []) {
     if (o.is_hide) continue;
@@ -235,7 +265,7 @@ Deno.serve(async (req) => {
     if (!pickup) continue;
     const d = daysSince(pickup, now);
     if (d == null || d < 14 || d >= 15) continue;
-    const key = customerKeyFor(o);
+    const key = customerKeyForOrderExact(o, adminUserIds);
     if (!key || key === "name:") continue;
     const pickupMs = daysSince(pickup, 0) != null
       ? (() => {
@@ -268,20 +298,22 @@ Deno.serve(async (req) => {
   const eligible: Eligible[] = [];
   for (const [key, best] of bestByKey) {
     const rollup = rollupByKey.get(key);
-    const primary_email = rollup?.primary_email?.trim() || best.order.Email?.trim() || null;
-    const line_user_id = rollup?.line_user_id?.trim() || best.order.line_user_id?.trim() || null;
-    const has_line = Boolean(line_user_id) || Boolean(rollup?.has_line);
-    const has_email = Boolean(primary_email) || Boolean(rollup?.has_email);
-    if (!has_line && !has_email) continue;
+    const contacts = mergeContacts({
+      orderEmail: best.order.Email,
+      orderLineUserId: best.order.line_user_id,
+      rollupEmail: rollup?.primary_email,
+      rollupLineUserId: rollup?.line_user_id,
+    });
+    if (!contacts.has_line && !contacts.has_email) continue;
     eligible.push({
       customer_key: key,
       customer_name:
         rollup?.customer_name || best.order.who_receive || best.order.orderer_name || null,
       last_purchase_at: rollup?.last_purchase_at ?? best.order.created_at,
-      primary_email,
-      line_user_id,
-      has_line,
-      has_email,
+      primary_email: contacts.primary_email,
+      line_user_id: contacts.line_user_id,
+      has_line: contacts.has_line,
+      has_email: contacts.has_email,
       trigger_order_id: best.order.id,
       expected_pickup_date: best.pickup,
     });

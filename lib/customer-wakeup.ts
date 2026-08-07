@@ -1,11 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateCrmMessageDraft, type CrmInsights } from "@/lib/crm-customer-insights-ai";
-import { fetchOrderIdsForCustomerKey, parseCustomerKey, customerKeyForOrder } from "@/lib/order-customer-contact";
+import { fetchOrderIdsForCustomerKey, parseCustomerKey } from "@/lib/order-customer-contact";
 import { isAdminLineUserId } from "@/lib/admin-line-ids";
+import {
+  customerKeyForWakeupOrder,
+  mergeWakeupContactsFromOrderAndRollup,
+  resolveWakeupChannelFromDraft,
+  type WakeupChannel,
+} from "@/lib/wakeup-contact";
 
 export const WAKEUP_OBJECTIVE = "訂後關懷喚醒";
 
-export type WakeupChannel = "line" | "email";
+export type { WakeupChannel };
+export {
+  customerKeyForWakeupOrder,
+  mergeWakeupContactsFromOrderAndRollup,
+  resolveWakeupChannelFromDraft,
+};
 export type WakeupDraftStatus = "pending_review" | "approved" | "sent" | "dismissed" | "failed";
 export type WakeupSource = "backfill" | "cron_30d" | "cron_14d_pickup" | "admin_compose";
 
@@ -533,7 +544,7 @@ export async function listEligibleRollupCustomers(
       mode === "backfill" ? isBackfillEligible(pickup, now) : isCronWindowEligible(pickup, now);
     if (!eligible) continue;
 
-    const key = customerKeyForOrder(raw, adminUserIds);
+    const key = customerKeyForWakeupOrder(raw, adminUserIds);
     if (!key || key === "name:") continue;
     const pickupMs = parsePickupDateMs(pickup);
     if (pickupMs == null) continue;
@@ -559,13 +570,13 @@ export async function listEligibleRollupCustomers(
   const result: OrderCustomerRollupLite[] = [];
   for (const [key, best] of bestByKey) {
     const rollup = rollupByKey.get(key);
-    const orderEmail = best.order.Email?.trim() || null;
-    const orderLine = best.order.line_user_id?.trim() || null;
-    const primary_email = rollup?.primary_email?.trim() || orderEmail;
-    const line_user_id = rollup?.line_user_id?.trim() || orderLine;
-    const has_line = Boolean(line_user_id) || Boolean(rollup?.has_line);
-    const has_email = Boolean(primary_email) || Boolean(rollup?.has_email);
-    if (!has_line && !has_email) continue;
+    const contacts = mergeWakeupContactsFromOrderAndRollup({
+      orderEmail: best.order.Email,
+      orderLineUserId: best.order.line_user_id,
+      rollupEmail: rollup?.primary_email,
+      rollupLineUserId: rollup?.line_user_id,
+    });
+    if (!contacts.has_line && !contacts.has_email) continue;
 
     result.push({
       customer_key: key,
@@ -576,10 +587,10 @@ export async function listEligibleRollupCustomers(
         null,
       last_purchase_at: rollup?.last_purchase_at ?? best.order.created_at,
       expected_pickup_date: best.pickup,
-      primary_email,
-      line_user_id,
-      has_line,
-      has_email,
+      primary_email: contacts.primary_email,
+      line_user_id: contacts.line_user_id,
+      has_line: contacts.has_line,
+      has_email: contacts.has_email,
       trigger_order_id: best.order.id,
     });
   }
@@ -754,7 +765,14 @@ export async function sendWakeupMessage(params: {
   customerName?: string | null;
   lineUserId?: string | null;
   email?: string | null;
+  /** 明確指定通道時（通常來自 DB 草稿），略過 rollup 重解析 */
+  channel?: WakeupChannel | null;
   draftId?: string | null;
+  /**
+   * 另存 sent 紀錄時，仍從此草稿讀取凍結聯絡（例如 resend）。
+   * 不可信任前端隨意帶入的 line/email。
+   */
+  contactSourceDraftId?: string | null;
   source?: WakeupSource;
   reviewedBy?: string | null;
   /** 管理員 JWT（Bearer …），LINE 通道必須帶入以呼叫 admin-line-reply */
@@ -763,19 +781,50 @@ export async function sendWakeupMessage(params: {
   const text = params.messageText.trim();
   if (!text) throw new Error("訊息不可為空");
 
-  // 一律以 rollup 為準（避免前端傳錯／過期聯絡）
-  const { data: rollup } = await params.supabase
-    .from("order_customer_rollup")
-    .select("customer_key,customer_name,primary_email,line_user_id,has_line,has_email")
-    .eq("customer_key", params.customerKey)
-    .maybeSingle();
-  if (!rollup) throw new Error("找不到客戶");
+  let channelInfo: { channel: WakeupChannel; line_user_id: string | null; email: string | null } | null =
+    null;
+  let customerName = params.customerName ?? null;
 
-  const channelInfo = resolveWakeupChannel(rollup as OrderCustomerRollupLite);
+  const contactDraftId = params.draftId || params.contactSourceDraftId || null;
+  if (contactDraftId) {
+    const { data: draft, error: draftErr } = await params.supabase
+      .from("customer_wakeup_drafts")
+      .select("id, customer_key, channel, line_user_id, email, metadata")
+      .eq("id", contactDraftId)
+      .maybeSingle();
+    if (draftErr) throw draftErr;
+    if (!draft) throw new Error("找不到草稿");
+    if ((draft.customer_key as string) !== params.customerKey) {
+      throw new Error("草稿與客戶不一致");
+    }
+    channelInfo = resolveWakeupChannelFromDraft({
+      channel: draft.channel as string | null,
+      line_user_id: draft.line_user_id as string | null,
+      email: draft.email as string | null,
+    });
+    if (!customerName && draft.metadata && typeof draft.metadata === "object" && "customer_name" in draft.metadata) {
+      customerName = String((draft.metadata as { customer_name?: unknown }).customer_name ?? "") || null;
+    }
+  } else if (params.channel === "line" || params.channel === "email") {
+    channelInfo = resolveWakeupChannelFromDraft({
+      channel: params.channel,
+      line_user_id: params.lineUserId,
+      email: params.email,
+    });
+  } else {
+    // 手寫喚醒：以 rollup 為準
+    const { data: rollup } = await params.supabase
+      .from("order_customer_rollup")
+      .select("customer_key,customer_name,primary_email,line_user_id,has_line,has_email")
+      .eq("customer_key", params.customerKey)
+      .maybeSingle();
+    if (!rollup) throw new Error("找不到客戶");
+    channelInfo = resolveWakeupChannel(rollup as OrderCustomerRollupLite);
+    customerName =
+      customerName || (rollup as OrderCustomerRollupLite).customer_name || null;
+  }
+
   if (!channelInfo) throw new Error("此客戶沒有 LINE 或 Email，無法發送");
-
-  const customerName =
-    params.customerName || (rollup as OrderCustomerRollupLite).customer_name || null;
 
   if (channelInfo.channel === "line" && channelInfo.line_user_id) {
     if (!params.authHeader) {
@@ -800,7 +849,7 @@ export async function sendWakeupMessage(params: {
 
   const now = new Date().toISOString();
   if (params.draftId) {
-    const { error } = await params.supabase
+    const { data: updated, error } = await params.supabase
       .from("customer_wakeup_drafts")
       .update({
         draft_text: text,
@@ -814,8 +863,14 @@ export async function sendWakeupMessage(params: {
         updated_at: now,
         error_message: null,
       })
-      .eq("id", params.draftId);
+      .eq("id", params.draftId)
+      .in("status", ["pending_review", "approved", "failed"])
+      .select("id")
+      .maybeSingle();
     if (error) throw error;
+    if (!updated?.id) {
+      throw new Error("草稿狀態已變更，無法標記為已發送");
+    }
     return { channel: channelInfo.channel, draftId: params.draftId };
   }
 
