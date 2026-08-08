@@ -220,12 +220,18 @@ export function validateSpecialQuotationRoot(
 ): string | null {
   if (!root.orderer_name?.trim()) return "請填寫訂購人（單位）";
   if (!root.combos.length) return "至少需要一個訂單組合";
+  const seenComboIds = new Set<string>();
   for (let i = 0; i < root.combos.length; i += 1) {
     const combo = root.combos[i];
     if (!combo.id?.trim()) return `訂單組合 ${i + 1} 缺少 id`;
-    const comboItems = itemsByCombo.get(combo.id) ?? [];
+    const comboId = combo.id.trim();
+    if (seenComboIds.has(comboId)) {
+      return `訂單組合 id 重複（${comboId}）：每個組合必須有唯一 id，否則轉單會合併為一筆並遺失取件點`;
+    }
+    seenComboIds.add(comboId);
+    const comboItems = itemsByCombo.get(comboId) ?? [];
     if (comboItems.length === 0) {
-      return `訂單組合 ${i + 1}（${combo.pickup_location || combo.pickup_contact_name || combo.id}）尚無對應品項`;
+      return `訂單組合 ${i + 1}（${combo.pickup_location || combo.pickup_contact_name || comboId}）尚無對應品項`;
     }
     for (const it of comboItems) {
       const qty = Math.floor(Number(it.quantity ?? 1)) || 0;

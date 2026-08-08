@@ -670,8 +670,54 @@ async function handleConvertSpecialQuotationToOrders(
 
   const combosMeta: any[] = Array.isArray(special.combos) ? special.combos : [];
   const comboMetaById = new Map<string, any>();
+  const seenComboMetaIds = new Set<string>();
   for (const c of combosMeta) {
-    if (c && typeof c.id === "string") comboMetaById.set(c.id, c);
+    if (!c || typeof c.id !== "string" || !c.id.trim()) continue;
+    const cid = c.id.trim();
+    // 重複合法 UUID 時 Map 會覆寫為最後一個 combo meta → 少建訂單／錯取件點
+    if (seenComboMetaIds.has(cid)) {
+      return new Response(
+        JSON.stringify({
+          error: `特殊報價訂單組合 id 重複（${cid}），無法拆單；請修正 combos[].id 後再轉單`,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    seenComboMetaIds.add(cid);
+    comboMetaById.set(cid, c);
+  }
+
+  for (const comboId of byCombo.keys()) {
+    if (!comboMetaById.has(comboId)) {
+      return new Response(
+        JSON.stringify({
+          error: `特殊報價品項 combo_id（${comboId}）無對應訂單組合，無法拆單`,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+  }
+
+  for (const c of combosMeta) {
+    if (!c || typeof c.id !== "string" || !c.id.trim()) continue;
+    const cid = c.id.trim();
+    if (!byCombo.has(cid)) {
+      return new Response(
+        JSON.stringify({
+          error: `特殊報價訂單組合（${cid}）尚無對應品項，無法拆單`,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
   }
 
   const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1";

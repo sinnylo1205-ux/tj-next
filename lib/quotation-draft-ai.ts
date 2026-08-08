@@ -425,27 +425,44 @@ export function normalizeQuotationDraft(
       allReq.quotation_kind = QUOTATION_KIND_SPECIAL;
       const combosRaw = asArray(sq.combos);
       const idMap = new Map<string, string>();
+      const seenComboIds = new Set<string>();
 
-      const combosWithIds = combosRaw.map((c, idx) => {
-        const cr = asRecord(c) ?? {};
-        let id = typeof cr.id === "string" ? cr.id.trim() : "";
-        if (!isUuid(id)) {
-          const old = id || `legacy-${idx}`;
-          id = randomUUID();
-          idMap.set(old, id);
-          if (!isUuid(cr.id as string)) {
-            warnings.push(`combo id 非 UUID 已重新產生：${old} → ${id}`);
+      const combosWithIds = combosRaw
+        .map((c, idx) => {
+          const cr = asRecord(c) ?? {};
+          let id = typeof cr.id === "string" ? cr.id.trim() : "";
+          if (!isUuid(id)) {
+            const old = id || `legacy-${idx}`;
+            id = randomUUID();
+            idMap.set(old, id);
+            if (!isUuid(cr.id as string)) {
+              warnings.push(`combo id 非 UUID 已重新產生：${old} → ${id}`);
+            }
+          } else if (seenComboIds.has(id)) {
+            // 合法但重複的 UUID：不可保留第二筆（process-quotation Map 會覆寫 meta），
+            // 也不可寫入 idMap（會把第一組品項改指走）。丟棄重複列並警告，迫使人工重拆。
+            const pickupHint =
+              typeof cr.pickup_location === "string" && cr.pickup_location.trim()
+                ? cr.pickup_location.trim()
+                : typeof cr.pickup_contact_name === "string" && cr.pickup_contact_name.trim()
+                  ? cr.pickup_contact_name.trim()
+                  : id;
+            warnings.push(
+              `訂單組合 id 重複（${id}，${pickupHint}）已略過；請重新產生草稿或手動拆成不同 id，否則會少建訂單／錯取件點`,
+            );
+            return null;
           }
-        }
-        return {
-          ...cr,
-          id,
-          expected_pickup_date: cr.expected_pickup_date ?? null,
-          pickup_location: cr.pickup_location ?? null,
-          pickup_contact_name: cr.pickup_contact_name ?? null,
-          pickup_contact_phone: cr.pickup_contact_phone ?? null,
-        };
-      });
+          seenComboIds.add(id);
+          return {
+            ...cr,
+            id,
+            expected_pickup_date: cr.expected_pickup_date ?? null,
+            pickup_location: cr.pickup_location ?? null,
+            pickup_contact_name: cr.pickup_contact_name ?? null,
+            pickup_contact_phone: cr.pickup_contact_phone ?? null,
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => c != null);
 
       const items = asArray(parsed.quotation_order_items).map((row, i) => {
         const r = asRecord(row) ?? {};
