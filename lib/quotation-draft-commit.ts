@@ -1,4 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  getSpecialQuotationRoot,
+  groupItemsByComboId,
+  isSpecialQuotation,
+  validateSpecialQuotationRoot,
+} from "@/lib/special-quotation";
 
 /** 允許寫入 quotation_orders 的欄位（防任意鍵插入） */
 const ORDER_INSERT_KEYS = new Set([
@@ -101,6 +107,32 @@ export async function insertQuotationFromDraft(
   },
 ): Promise<{ quotation_order_id: string }> {
   const orderInsert = pickQuotationOrderInsert(params.quotation_order);
+  const items = params.quotation_order_items.map((raw) => pickQuotationItemInsert(asRecord(raw) ?? {}));
+
+  if (items.length === 0) {
+    throw new Error("quotation_order_items 不可為空");
+  }
+
+  // 特殊報價：寫入前攔截重複 combo id／空組合，避免後續轉單 Map 靜默合併。
+  if (isSpecialQuotation(orderInsert.all_requirement)) {
+    const root = getSpecialQuotationRoot(orderInsert.all_requirement);
+    if (!root) {
+      throw new Error("特殊報價資料不完整");
+    }
+    const { byComboId } = groupItemsByComboId(
+      items.map((it, idx) => ({
+        id: `draft-${idx}`,
+        unit_price: (it.unit_price as number | null | undefined) ?? null,
+        quantity: (it.quantity as number | null | undefined) ?? 1,
+        customizations_json: it.customizations_json,
+      })),
+    );
+    const validationError = validateSpecialQuotationRoot(root, byComboId);
+    if (validationError) {
+      throw new Error(validationError);
+    }
+  }
+
   const { data: row, error: orderErr } = await sb
     .from("quotation_orders")
     .insert(orderInsert)
@@ -112,16 +144,12 @@ export async function insertQuotationFromDraft(
   }
 
   const qid = row.id as string;
-  const items = params.quotation_order_items.map((raw) => ({
-    ...pickQuotationItemInsert(asRecord(raw) ?? {}),
+  const itemsWithOrder = items.map((it) => ({
+    ...it,
     quotation_order_id: qid,
   }));
 
-  if (items.length === 0) {
-    throw new Error("quotation_order_items 不可為空");
-  }
-
-  const { error: itemsErr } = await sb.from("quotation_order_items").insert(items);
+  const { error: itemsErr } = await sb.from("quotation_order_items").insert(itemsWithOrder);
   if (itemsErr) {
     await sb.from("quotation_orders").delete().eq("id", qid);
     throw new Error(itemsErr.message || "建立 quotation_order_items 失敗");

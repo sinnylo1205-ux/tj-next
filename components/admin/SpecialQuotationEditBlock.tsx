@@ -118,7 +118,7 @@ export function SpecialQuotationEditBlock({
         const comboItems = itemsByComboId.get(combo.id) ?? [];
         const amounts = recomputeComboAmounts(combo, comboItems);
         return (
-          <div key={combo.id} className="p-4 border rounded-lg bg-background space-y-3">
+          <div key={`${combo.id}-${comboIdx}`} className="p-4 border rounded-lg bg-background space-y-3">
             <p className="text-sm font-semibold">訂單組合{ordinal}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1">
