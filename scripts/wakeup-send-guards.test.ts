@@ -74,6 +74,13 @@ describe("source guards: claim before external send", () => {
 
   it("sendWakeupMessage claims draft before LINE/email side effects", () => {
     const src = readRepo("../lib/customer-wakeup.ts");
+    const claimFnStart = src.indexOf("async function claimWakeupDraftForSend");
+    assert.ok(claimFnStart >= 0);
+    const claimFn = src.slice(claimFnStart, claimFnStart + 1800);
+    assert.match(claimFn, /WAKEUP_SEND_IN_FLIGHT_STATUS/);
+    assert.match(claimFn, /WAKEUP_SEND_CLAIMABLE_STATUSES/);
+    assert.match(claimFn, /草稿狀態已變更或正在發送中/);
+
     const fnStart = src.indexOf("export async function sendWakeupMessage");
     assert.ok(fnStart >= 0);
     const fn = src.slice(fnStart, fnStart + 4500);
@@ -83,8 +90,6 @@ describe("source guards: claim before external send", () => {
     assert.ok(claimAt >= 0, "must claim draft");
     assert.ok(lineAt > claimAt, "LINE send must follow claim");
     assert.ok(emailAt > claimAt, "email send must follow claim");
-    assert.match(fn, /WAKEUP_SEND_IN_FLIGHT_STATUS|status:\s*WAKEUP_SEND_IN_FLIGHT_STATUS|"sending"/);
-    assert.match(fn, /草稿狀態已變更或正在發送中/);
   });
 
   it("migration allows sending status", () => {
