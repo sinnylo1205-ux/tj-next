@@ -5,7 +5,7 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "crm-wakeup-email",
-        "responseMode": "onReceived",
+        "responseMode": "responseNode",
         "options": {}
       },
       "id": "webhook-crm-wakeup-email",
@@ -13,11 +13,12 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [240, 300],
-      "webhookId": "crm-wakeup-email"
+      "webhookId": "crm-wakeup-email",
+      "notes": "必須用 responseNode：等 Gmail 成功後才回 200。App 端要求回應含 ok:true。可選：在 Normalize 設定 SHARED_SECRET，並於 App 設 N8N_WAKEUP_EMAIL_SECRET。"
     },
     {
       "parameters": {
-        "jsCode": "const raw = items[0].json;\nconst body = raw.body || raw;\nconst email = (body.customer_email || body.user_email || '').trim();\nconst text = (body.message_text || body.status_message || '').trim();\nconst name = body.customer_name || '顧客';\nconst subject = body.subject || 'T&J 關心您上次的訂購';\nif (!email || !text) {\n  return [{ json: { skip: true, reason: 'missing email or text' } }];\n}\nreturn [{\n  json: {\n    skip: false,\n    customer_email: email,\n    subject,\n    message_text: text,\n    customer_name: name,\n    html: `<p>${text.replace(/\\n/g, '<br/>')}</p><p style=\"color:#888;font-size:12px\">— T&J Cookies</p>`\n  }\n}];"
+        "jsCode": "const raw = items[0].json;\nconst body = raw.body || raw;\nconst headers = raw.headers || {};\nconst headerSecret = headers['x-wakeup-secret'] || headers['X-Wakeup-Secret'] || '';\nconst bodySecret = body.webhook_secret || '';\n// 匯入後若要鎖定公開 webhook，把下一行改成實際密鑰；維持空字串則不驗證（相容舊流程）。\nconst SHARED_SECRET = '';\nif (SHARED_SECRET) {\n  const got = String(headerSecret || bodySecret || '').trim();\n  if (got !== SHARED_SECRET) {\n    return [{ json: { skip: true, ok: false, reason: 'unauthorized' } }];\n  }\n}\nconst email = String(body.customer_email || body.user_email || '').trim();\nconst text = String(body.message_text || body.status_message || '').trim();\nconst name = body.customer_name || '顧客';\nconst subject = body.subject || 'T&J 關心您上次的訂購';\nif (!email || !text) {\n  return [{ json: { skip: true, ok: false, reason: 'missing email or text' } }];\n}\nconst escapeHtml = (s) => String(s)\n  .replace(/&/g, '&amp;')\n  .replace(/</g, '&lt;')\n  .replace(/>/g, '&gt;')\n  .replace(/\"/g, '&quot;')\n  .replace(/'/g, '&#39;');\nconst safeText = escapeHtml(text).replace(/\\n/g, '<br/>');\nreturn [{\n  json: {\n    skip: false,\n    ok: true,\n    customer_email: email,\n    subject,\n    message_text: text,\n    customer_name: name,\n    html: `<p>${safeText}</p><p style=\"color:#888;font-size:12px\">— T&J Cookies</p>`\n  }\n}];"
       },
       "id": "code-normalize",
       "name": "Normalize",
@@ -62,6 +63,44 @@
         }
       },
       "notes": "Import 後請改為實際 Gmail OAuth 憑證；與訂單通知共用同一帳號即可。"
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ok: true, delivered: true } }];"
+      },
+      "id": "code-ok",
+      "name": "Mark Delivered",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "respond-ok",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [1340, 220]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, skip: true, reason: $json.reason || 'skipped' } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "respond-skip",
+      "name": "Respond Skip",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [900, 420]
     }
   ],
   "connections": {
@@ -74,11 +113,17 @@
     "Should Send": {
       "main": [
         [{ "node": "Gmail Send", "type": "main", "index": 0 }],
-        []
+        [{ "node": "Respond Skip", "type": "main", "index": 0 }]
       ]
+    },
+    "Gmail Send": {
+      "main": [[{ "node": "Mark Delivered", "type": "main", "index": 0 }]]
+    },
+    "Mark Delivered": {
+      "main": [[{ "node": "Respond OK", "type": "main", "index": 0 }]]
     }
   },
   "meta": {
-    "templateNote": "匯入 n8n Cloud 後啟用 webhook：https://tjcookies.app.n8n.cloud/webhook/crm-wakeup-email"
+    "templateNote": "匯入 n8n Cloud 後啟用 webhook：https://tjcookies.app.n8n.cloud/webhook/crm-wakeup-email。必須保留 responseMode=responseNode，App 才會在 Gmail 成功後標記 sent。"
   }
 }

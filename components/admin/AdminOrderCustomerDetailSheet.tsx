@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -75,15 +75,23 @@ export default function AdminOrderCustomerDetailSheet({
   const [aiBusy, setAiBusy] = useState(false);
   const [sendBusy, setSendBusy] = useState(false);
   const [reviewBusy, setReviewBusy] = useState(false);
+  const loadSeqRef = useRef(0);
+  const activeCustomerKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeCustomerKeyRef.current = row?.customer_key ?? null;
+  }, [row?.customer_key]);
 
   const loadDetail = useCallback(async () => {
     if (!row) return;
+    const requestKey = row.customer_key;
+    const seq = ++loadSeqRef.current;
     setLoading(true);
     try {
       const header = await getAuthHeader();
       if (!header) throw new Error("請重新登入");
       const res = await fetch(
-        `/api/admin/wakeup-customer?customer_key=${encodeURIComponent(row.customer_key)}`,
+        `/api/admin/wakeup-customer?customer_key=${encodeURIComponent(requestKey)}`,
         { headers: { Authorization: header } },
       );
       const json = (await res.json()) as {
@@ -94,6 +102,10 @@ export default function AdminOrderCustomerDetailSheet({
         details?: string;
       };
       if (!res.ok) throw new Error(json.details || json.error || "載入失敗");
+      // 忽略過期回應，避免客戶 A 的草稿覆寫到目前檢視的客戶 B
+      if (seq !== loadSeqRef.current || activeCustomerKeyRef.current !== requestKey) {
+        return;
+      }
       setOrders(json.orders ?? []);
       setPendingDraft(json.pending_draft ?? null);
       setOptOut(Boolean(json.wakeup_opt_out));
@@ -103,13 +115,18 @@ export default function AdminOrderCustomerDetailSheet({
         setMessage("");
       }
     } catch (error) {
+      if (seq !== loadSeqRef.current || activeCustomerKeyRef.current !== requestKey) {
+        return;
+      }
       toast({
         title: "載入客戶詳情失敗",
         description: error instanceof Error ? error.message : String(error),
         variant: "destructive",
       });
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, [row, toast]);
 
@@ -145,29 +162,44 @@ export default function AdminOrderCustomerDetailSheet({
 
   const sendNow = useCallback(async () => {
     if (!row || !message.trim()) return;
+    const customerKey = row.customer_key;
+    const draftId = pendingDraft?.id ?? null;
+    if (draftId && pendingDraft?.customer_key && pendingDraft.customer_key !== customerKey) {
+      toast({
+        title: "發送失敗",
+        description: "草稿與目前客戶不一致，請重新載入後再試",
+        variant: "destructive",
+      });
+      return;
+    }
     setSendBusy(true);
     try {
       const header = await getAuthHeader();
       if (!header) throw new Error("請重新登入");
+      if (activeCustomerKeyRef.current !== customerKey) {
+        throw new Error("客戶已切換，已取消發送");
+      }
       const res = await fetch("/api/admin/wakeup-send", {
         method: "POST",
         headers: { Authorization: header, "Content-Type": "application/json" },
         body: JSON.stringify({
-          customer_key: row.customer_key,
+          customer_key: customerKey,
           message_text: message.trim(),
           customer_name: row.customer_name,
           line_user_id: row.line_user_id,
           email: row.primary_email,
-          draft_id: pendingDraft?.id ?? null,
+          draft_id: draftId,
         }),
       });
       const json = (await res.json()) as { channel?: string; error?: string; details?: string };
       if (!res.ok) throw new Error(json.details || json.error || "發送失敗");
+      if (activeCustomerKeyRef.current !== customerKey) return;
       toast({ title: "已發送", description: `通道：${json.channel === "line" ? "LINE" : "Email"}` });
       setPendingDraft(null);
       onSent?.();
       await loadDetail();
     } catch (error) {
+      if (activeCustomerKeyRef.current !== customerKey) return;
       toast({
         title: "發送失敗",
         description: error instanceof Error ? error.message : String(error),
@@ -179,22 +211,37 @@ export default function AdminOrderCustomerDetailSheet({
   }, [row, message, pendingDraft, toast, onSent, loadDetail]);
 
   const dismissDraft = useCallback(async () => {
-    if (!pendingDraft) return;
+    if (!pendingDraft || !row) return;
+    if (pendingDraft.customer_key !== row.customer_key) {
+      toast({
+        title: "操作失敗",
+        description: "草稿與目前客戶不一致，請重新載入後再試",
+        variant: "destructive",
+      });
+      return;
+    }
+    const draftId = pendingDraft.id;
+    const customerKey = row.customer_key;
     setReviewBusy(true);
     try {
       const header = await getAuthHeader();
       if (!header) throw new Error("請重新登入");
+      if (activeCustomerKeyRef.current !== customerKey) {
+        throw new Error("客戶已切換，已取消略過");
+      }
       const res = await fetch("/api/admin/wakeup-review", {
         method: "POST",
         headers: { Authorization: header, "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "dismiss", draft_id: pendingDraft.id }),
+        body: JSON.stringify({ action: "dismiss", draft_id: draftId }),
       });
       const json = (await res.json()) as { error?: string; details?: string };
       if (!res.ok) throw new Error(json.details || json.error || "略過失敗");
+      if (activeCustomerKeyRef.current !== customerKey) return;
       toast({ title: "已略過此草稿" });
       setPendingDraft(null);
       onSent?.();
     } catch (error) {
+      if (activeCustomerKeyRef.current !== customerKey) return;
       toast({
         title: "操作失敗",
         description: error instanceof Error ? error.message : String(error),
@@ -203,7 +250,7 @@ export default function AdminOrderCustomerDetailSheet({
     } finally {
       setReviewBusy(false);
     }
-  }, [pendingDraft, toast, onSent]);
+  }, [pendingDraft, row, toast, onSent]);
 
   const toggleOptOut = useCallback(async () => {
     if (!row) return;
