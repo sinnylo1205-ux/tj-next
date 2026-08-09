@@ -2,11 +2,23 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { generateCrmMessageDraft, type CrmInsights } from "@/lib/crm-customer-insights-ai";
 import { fetchOrderIdsForCustomerKey, parseCustomerKey, customerKeyForOrder } from "@/lib/order-customer-contact";
 import { isAdminLineUserId } from "@/lib/admin-line-ids";
+import {
+  interpretWakeupEmailN8nResponse,
+  WAKEUP_SEND_CLAIMABLE_STATUSES,
+  WAKEUP_SEND_IN_FLIGHT_STATUS,
+  wakeupSendClaimStaleBefore,
+} from "@/lib/wakeup-send-guards";
 
 export const WAKEUP_OBJECTIVE = "訂後關懷喚醒";
 
 export type WakeupChannel = "line" | "email";
-export type WakeupDraftStatus = "pending_review" | "approved" | "sent" | "dismissed" | "failed";
+export type WakeupDraftStatus =
+  | "pending_review"
+  | "approved"
+  | "sending"
+  | "sent"
+  | "dismissed"
+  | "failed";
 export type WakeupSource = "backfill" | "cron_30d" | "cron_14d_pickup" | "admin_compose";
 
 export const PONI_CARE_EMAILS = ["tjcookies99@gmail.com", "sinnylo1205@gmail.com"] as const;
@@ -684,9 +696,15 @@ export async function sendEmailViaN8n(params: {
   customerName?: string | null;
   subject?: string;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const sharedSecret = process.env.N8N_WAKEUP_EMAIL_SECRET?.trim();
+  if (sharedSecret) {
+    headers["x-wakeup-secret"] = sharedSecret;
+  }
+
   const res = await fetch(N8N_WAKEUP_EMAIL_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       source: "crm_wakeup",
       event_type: "customer_wakeup_email",
@@ -695,13 +713,112 @@ export async function sendEmailViaN8n(params: {
       message_text: params.messageText,
       customer_name: params.customerName || "顧客",
       subject: params.subject || "T&J 關心您上次的訂購",
+      ...(sharedSecret ? { webhook_secret: sharedSecret } : {}),
     }),
   });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    return { ok: false, error: `Email 發送失敗 (${res.status}): ${body.slice(0, 300)}` };
+  const bodyText = await res.text().catch(() => "");
+  return interpretWakeupEmailN8nResponse({ httpStatus: res.status, bodyText });
+}
+
+async function claimWakeupDraftForSend(params: {
+  supabase: SupabaseClient;
+  draftId: string;
+  customerKey: string;
+  messageText: string;
+  reviewedBy?: string | null;
+}): Promise<WakeupDraftRow> {
+  const now = new Date().toISOString();
+  const patch = {
+    status: WAKEUP_SEND_IN_FLIGHT_STATUS,
+    draft_text: params.messageText,
+    reviewed_by: params.reviewedBy ?? null,
+    reviewed_at: now,
+    updated_at: now,
+    error_message: null,
+  };
+
+  const { data: claimed, error } = await params.supabase
+    .from("customer_wakeup_drafts")
+    .update(patch)
+    .eq("id", params.draftId)
+    .eq("customer_key", params.customerKey)
+    .in("status", [...WAKEUP_SEND_CLAIMABLE_STATUSES])
+    .select("*")
+    .maybeSingle();
+  if (error) throw error;
+  if (claimed) return claimed as WakeupDraftRow;
+
+  const staleBefore = wakeupSendClaimStaleBefore();
+  const { data: staleClaimed, error: staleErr } = await params.supabase
+    .from("customer_wakeup_drafts")
+    .update(patch)
+    .eq("id", params.draftId)
+    .eq("customer_key", params.customerKey)
+    .eq("status", WAKEUP_SEND_IN_FLIGHT_STATUS)
+    .lt("updated_at", staleBefore)
+    .select("*")
+    .maybeSingle();
+  if (staleErr) throw staleErr;
+  if (!staleClaimed) {
+    throw new Error("草稿狀態已變更或正在發送中，請勿重複核准");
   }
-  return { ok: true };
+  return staleClaimed as WakeupDraftRow;
+}
+
+async function markWakeupDraftSendResult(params: {
+  supabase: SupabaseClient;
+  draftId: string;
+  customerKey: string;
+  ok: boolean;
+  channel: WakeupChannel;
+  lineUserId: string | null;
+  email: string | null;
+  reviewedBy?: string | null;
+  errorMessage?: string | null;
+}): Promise<void> {
+  const now = new Date().toISOString();
+  if (params.ok) {
+    const { data, error } = await params.supabase
+      .from("customer_wakeup_drafts")
+      .update({
+        status: "sent",
+        channel: params.channel,
+        line_user_id: params.lineUserId,
+        email: params.email,
+        sent_at: now,
+        reviewed_at: now,
+        reviewed_by: params.reviewedBy ?? null,
+        updated_at: now,
+        error_message: null,
+      })
+      .eq("id", params.draftId)
+      .eq("customer_key", params.customerKey)
+      .eq("status", WAKEUP_SEND_IN_FLIGHT_STATUS)
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    if (!data?.id) {
+      throw new Error("草稿狀態已變更，無法標記為已發送");
+    }
+    return;
+  }
+
+  const { error } = await params.supabase
+    .from("customer_wakeup_drafts")
+    .update({
+      status: "failed",
+      channel: params.channel,
+      line_user_id: params.lineUserId,
+      email: params.email,
+      reviewed_at: now,
+      reviewed_by: params.reviewedBy ?? null,
+      updated_at: now,
+      error_message: params.errorMessage?.slice(0, 500) ?? "發送失敗",
+    })
+    .eq("id", params.draftId)
+    .eq("customer_key", params.customerKey)
+    .eq("status", WAKEUP_SEND_IN_FLIGHT_STATUS);
+  if (error) throw error;
 }
 
 export async function notifyAdminsWakeupDrafts(params: {
@@ -763,62 +880,106 @@ export async function sendWakeupMessage(params: {
   const text = params.messageText.trim();
   if (!text) throw new Error("訊息不可為空");
 
+  // 有草稿時先互斥 claim，避免兩位管理員同時核准造成雙重推送
+  if (params.draftId) {
+    await claimWakeupDraftForSend({
+      supabase: params.supabase,
+      draftId: params.draftId,
+      customerKey: params.customerKey,
+      messageText: text,
+      reviewedBy: params.reviewedBy,
+    });
+  }
+
   // 一律以 rollup 為準（避免前端傳錯／過期聯絡）
   const { data: rollup } = await params.supabase
     .from("order_customer_rollup")
     .select("customer_key,customer_name,primary_email,line_user_id,has_line,has_email")
     .eq("customer_key", params.customerKey)
     .maybeSingle();
-  if (!rollup) throw new Error("找不到客戶");
+  if (!rollup) {
+    if (params.draftId) {
+      await markWakeupDraftSendResult({
+        supabase: params.supabase,
+        draftId: params.draftId,
+        customerKey: params.customerKey,
+        ok: false,
+        channel: "email",
+        lineUserId: null,
+        email: null,
+        reviewedBy: params.reviewedBy,
+        errorMessage: "找不到客戶",
+      });
+    }
+    throw new Error("找不到客戶");
+  }
 
   const channelInfo = resolveWakeupChannel(rollup as OrderCustomerRollupLite);
-  if (!channelInfo) throw new Error("此客戶沒有 LINE 或 Email，無法發送");
+  if (!channelInfo) {
+    if (params.draftId) {
+      await markWakeupDraftSendResult({
+        supabase: params.supabase,
+        draftId: params.draftId,
+        customerKey: params.customerKey,
+        ok: false,
+        channel: "email",
+        lineUserId: null,
+        email: null,
+        reviewedBy: params.reviewedBy,
+        errorMessage: "此客戶沒有 LINE 或 Email，無法發送",
+      });
+    }
+    throw new Error("此客戶沒有 LINE 或 Email，無法發送");
+  }
 
   const customerName =
     params.customerName || (rollup as OrderCustomerRollupLite).customer_name || null;
 
-  if (channelInfo.channel === "line" && channelInfo.line_user_id) {
-    if (!params.authHeader) {
-      throw new Error("缺少授權，無法經 LINE 發送");
+  let sendError: string | null = null;
+  try {
+    if (channelInfo.channel === "line" && channelInfo.line_user_id) {
+      if (!params.authHeader) {
+        throw new Error("缺少授權，無法經 LINE 發送");
+      }
+      const sent = await sendLineMessageViaAdminReply({
+        lineUserId: channelInfo.line_user_id,
+        messageText: text,
+        authHeader: params.authHeader,
+      });
+      if (!sent.ok) throw new Error(sent.error);
+    } else if (channelInfo.channel === "email" && channelInfo.email) {
+      const sent = await sendEmailViaN8n({
+        email: channelInfo.email,
+        messageText: text,
+        customerName,
+      });
+      if (!sent.ok) throw new Error(sent.error);
+    } else {
+      throw new Error("無法決定發送通道");
     }
-    const sent = await sendLineMessageViaAdminReply({
-      lineUserId: channelInfo.line_user_id,
-      messageText: text,
-      authHeader: params.authHeader,
-    });
-    if (!sent.ok) throw new Error(sent.error);
-  } else if (channelInfo.channel === "email" && channelInfo.email) {
-    const sent = await sendEmailViaN8n({
-      email: channelInfo.email,
-      messageText: text,
-      customerName,
-    });
-    if (!sent.ok) throw new Error(sent.error);
-  } else {
-    throw new Error("無法決定發送通道");
+  } catch (err) {
+    sendError = err instanceof Error ? err.message : String(err);
   }
 
-  const now = new Date().toISOString();
   if (params.draftId) {
-    const { error } = await params.supabase
-      .from("customer_wakeup_drafts")
-      .update({
-        draft_text: text,
-        status: "sent",
-        channel: channelInfo.channel,
-        line_user_id: channelInfo.line_user_id,
-        email: channelInfo.email,
-        sent_at: now,
-        reviewed_at: now,
-        reviewed_by: params.reviewedBy ?? null,
-        updated_at: now,
-        error_message: null,
-      })
-      .eq("id", params.draftId);
-    if (error) throw error;
+    await markWakeupDraftSendResult({
+      supabase: params.supabase,
+      draftId: params.draftId,
+      customerKey: params.customerKey,
+      ok: !sendError,
+      channel: channelInfo.channel,
+      lineUserId: channelInfo.line_user_id,
+      email: channelInfo.email,
+      reviewedBy: params.reviewedBy,
+      errorMessage: sendError,
+    });
+    if (sendError) throw new Error(sendError);
     return { channel: channelInfo.channel, draftId: params.draftId };
   }
 
+  if (sendError) throw new Error(sendError);
+
+  const now = new Date().toISOString();
   const triggerOrderId = await resolveTriggerOrderId(params.supabase, params.customerKey, null);
   const alreadySent = await hasSentForTriggerOrder(params.supabase, triggerOrderId);
   const { data, error } = await params.supabase
