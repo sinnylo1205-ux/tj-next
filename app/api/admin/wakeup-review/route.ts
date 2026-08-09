@@ -92,16 +92,22 @@ export async function POST(req: Request) {
     }
 
     if (body.action === "update_text") {
-      const { error } = await auth.supabase
+      const { data: updated, error } = await auth.supabase
         .from("customer_wakeup_drafts")
         .update({ draft_text: body.draft_text, updated_at: now })
-        .eq("id", body.draft_id);
+        .eq("id", body.draft_id)
+        .eq("status", "pending_review")
+        .select("id")
+        .maybeSingle();
       if (error) throw error;
+      if (!updated?.id) {
+        return NextResponse.json({ error: "僅待審草稿可編輯" }, { status: 409 });
+      }
       return NextResponse.json({ ok: true });
     }
 
     if (body.action === "dismiss") {
-      const { error } = await auth.supabase
+      const { data: updated, error } = await auth.supabase
         .from("customer_wakeup_drafts")
         .update({
           status: "dismissed",
@@ -109,13 +115,34 @@ export async function POST(req: Request) {
           reviewed_at: now,
           updated_at: now,
         })
-        .eq("id", body.draft_id);
+        .eq("id", body.draft_id)
+        .eq("status", "pending_review")
+        .select("id")
+        .maybeSingle();
       if (error) throw error;
+      if (!updated?.id) {
+        return NextResponse.json({ error: "僅待審草稿可略過" }, { status: 409 });
+      }
       return NextResponse.json({ ok: true });
     }
 
-    if (body.action === "approve_send" && draft.status === "sent") {
-      return NextResponse.json({ error: "此草稿已發送，請改用「重新發送」" }, { status: 400 });
+    if (body.action === "approve_send") {
+      if (draft.status === "sent") {
+        return NextResponse.json({ error: "此草稿已發送，請改用「重新發送」" }, { status: 400 });
+      }
+      if (
+        draft.status !== "pending_review" &&
+        draft.status !== "approved" &&
+        draft.status !== "failed" &&
+        draft.status !== "sending"
+      ) {
+        return NextResponse.json({ error: "此草稿狀態不可核准發送" }, { status: 400 });
+      }
+      // status=sending：交由 sendWakeupMessage 互斥 claim（僅逾時卡住可重試）
+    }
+
+    if (body.action === "resend" && draft.status !== "sent") {
+      return NextResponse.json({ error: "僅已發送草稿可重新發送" }, { status: 400 });
     }
 
     const text = (body.draft_text ?? (draft.draft_text as string)).trim();
