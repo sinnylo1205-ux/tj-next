@@ -44,7 +44,7 @@ export function getArticleEditorExtensions(): Extensions {
       inline: false,
       allowBase64: false,
       HTMLAttributes: {
-        class: "rounded-lg article-rich-body-img my-4",
+        class: "rounded-xl article-rich-body-img my-4",
       },
     }),
     ArticleExternalLink,

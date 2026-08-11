@@ -17,6 +17,7 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import { cn } from "@/lib/utils";
 import { ArticleTocNav, ArticleTocSidebar, type TocItem } from "@/components/blog/ArticleTocSidebar";
 import { scrollToArticleHeading } from "@/lib/article-heading-scroll";
+import { classifyArticleBodyImagesIn } from "@/lib/article-body-image-frame";
 import type { ArticleFaqItem } from "@/lib/article-faq";
 import type { ArticleRelatedLink } from "@/lib/article-related-reading";
 
@@ -114,6 +115,16 @@ export default function BlogArticleContent({
     }, 200);
     return () => window.clearTimeout(t);
   }, [tocItems.length, tocRebuildKey]);
+
+  /** 內文圖依實際比例套用橫式／直式外框 */
+  useEffect(() => {
+    const root = readableRef.current;
+    if (!root) return;
+    classifyArticleBodyImagesIn(root);
+    const mo = new MutationObserver(() => classifyArticleBodyImagesIn(root));
+    mo.observe(root, { childList: true, subtree: true });
+    return () => mo.disconnect();
+  }, [tocRebuildKey]);
 
   /** 左欄目錄頂端與本文第一行大致對齊（有頂圖時略過圖片區；僅富文本無圖時預留 header 下緣） */
   const tocAsidePtClass =

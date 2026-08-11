@@ -34,6 +34,7 @@ import type { ArticleFaqItem } from "@/lib/article-faq";
 import { normalizeArticleFaqJson } from "@/lib/article-faq";
 import type { ArticleRelatedLink } from "@/lib/article-related-reading";
 import { normalizeArticleRelatedReadingJson } from "@/lib/article-related-reading";
+import { classifyArticleBodyImagesIn } from "@/lib/article-body-image-frame";
 
 /** custom_asset bucket 內路徑（文章新排版自訂上傳） */
 export const ARTICLE_SELF_UPLOAD_STORAGE_PREFIX = "website_img/article/self_upload";
@@ -292,6 +293,22 @@ export default function ArticleRichTiptap({
       toast({ title: "已插入圖片" });
     }
   }, [editor, imgAlt, imgExternalUrl, toast, uploadFile]);
+
+  /** 編輯器內文圖依比例套用橫式／直式外框（與前台一致） */
+  useEffect(() => {
+    if (!editor) return;
+    const classify = () => classifyArticleBodyImagesIn(editor.view.dom);
+    classify();
+    editor.on("update", classify);
+    editor.on("create", classify);
+    const mo = new MutationObserver(classify);
+    mo.observe(editor.view.dom, { childList: true, subtree: true });
+    return () => {
+      editor.off("update", classify);
+      editor.off("create", classify);
+      mo.disconnect();
+    };
+  }, [editor]);
 
   const save = async () => {
     if (!editor) return;

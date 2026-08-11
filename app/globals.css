@@ -214,17 +214,45 @@ h3 {
 .article-rich-body p:has(> br:only-child) {
   min-height: 1.75em;
 }
+/* 內文圖外框：預設視為橫式（寬度與段落對齊）；JS 依比例加上 --portrait / --landscape */
 .article-tiptap-editor img.article-rich-body-img,
 .article-rich-body img {
-  width: min(100%, 36rem);
-  max-height: 18rem;
-  height: auto;
-  /* 載入前預留版面，降低 CLS（與 object-fit: contain 並用；比例僅為保守預設） */
-  aspect-ratio: 4 / 3;
-  object-fit: contain;
+  display: block;
   margin-left: auto;
   margin-right: auto;
-  display: block;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  border-radius: 0.75rem;
+  background-color: hsl(var(--muted) / 0.35);
+  /* 載入／分類前：先當橫式，寬度與段落對齊 */
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  object-fit: cover;
+}
+
+/* 橫式外框：與文字段落同寬，保留照片比例 */
+.article-tiptap-editor img.article-rich-body-img--landscape,
+.article-rich-body img.article-rich-body-img--landscape {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: cover;
+  border-radius: 0.75rem;
+}
+
+/* 直式外框：比例接近直式時置中、3:4 外框 */
+.article-tiptap-editor img.article-rich-body-img--portrait,
+.article-rich-body img.article-rich-body-img--portrait {
+  width: min(100%, 22rem);
+  max-width: min(100%, 22rem);
+  height: auto;
+  max-height: 36rem;
+  aspect-ratio: 3 / 4;
+  object-fit: cover;
+  border-radius: 0.75rem;
 }
 
 /* 文章內表格：凡在富文本區內的 table 皆套用（不依賴 article-editor-table class，避免舊文／序列化差異導致樣式消失） */
