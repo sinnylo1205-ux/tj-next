@@ -34,12 +34,16 @@ Deno.serve(async (req) => {
 
   const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
+  // Snapshot filter only — UPDATE must re-check the same predicates so a payment
+  // (or force-ship status change) that lands while this cron walks the list cannot
+  // cancel a no-longer-unpaid / in-fulfillment order.
   const { data: expiredOrders, error: fetchError } = await supabase
     .from("orders")
     .select(
       "id, user_id, created_at, order_status, payment_step, payment_method, total_amount, subtotal, shipping_fee, shipping_way, expected_pickup_date, who_receive, phone, shipping_address_text, line_user_id, Email, is_manual_order, auto_cancel_exempt"
     )
     .eq("payment_step", "pending")
+    .eq("order_status", "awaiting_payment")
     .eq("is_manual_order", false)
     .eq("auto_cancel_exempt", false)
     .lt("created_at", twentyFourHoursAgo);
@@ -85,13 +89,25 @@ Deno.serve(async (req) => {
     const effectiveLineUserId = order.line_user_id || null;
     const statusMessage = "訂單因超過 24 小時未付款已自動取消";
 
-    const { error: updateError } = await supabase
+    const { data: canceledRows, error: updateError } = await supabase
       .from("orders")
       .update({ is_hide: true, order_status: "canceled" })
-      .eq("id", order.id);
+      .eq("id", order.id)
+      .eq("payment_step", "pending")
+      .eq("order_status", "awaiting_payment")
+      .eq("is_manual_order", false)
+      .eq("auto_cancel_exempt", false)
+      .select("id");
 
     if (updateError) {
       console.error("[auto-cancel-expired-orders] Failed to update order:", order.id, updateError);
+      continue;
+    }
+    if (!canceledRows?.length) {
+      console.log(
+        "[auto-cancel-expired-orders] Skipped (no longer unpaid awaiting_payment):",
+        order.id,
+      );
       continue;
     }
 
