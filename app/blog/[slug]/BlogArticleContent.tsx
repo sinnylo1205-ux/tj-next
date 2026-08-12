@@ -200,7 +200,7 @@ export default function BlogArticleContent({
                         src={article.og_image_url}
                         alt={article.item_name}
                         fill
-                        className="object-cover"
+                        className="object-cover blog-photo-bright"
                         sizes="(max-width: 768px) 100vw, 768px"
                         priority
                       />
@@ -270,7 +270,7 @@ export default function BlogArticleContent({
                         src={article.og_image_url}
                         alt={article.item_name}
                         fill
-                        className="object-cover"
+                        className="object-cover blog-photo-bright"
                         sizes="(max-width: 768px) 100vw, 768px"
                         priority
                       />

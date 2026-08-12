@@ -100,7 +100,7 @@ export default async function BlogIndexPage() {
                     alt={article.item_name}
                     fill
                     priority={index === 0}
-                    className="object-cover transition-transform duration-300 group-hover:scale-105"
+                    className="object-cover transition-transform duration-300 group-hover:scale-105 blog-photo-bright"
                     sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
                   />
                 </div>
