@@ -229,13 +229,13 @@ h3 {
   max-width: 100%;
   height: auto;
   object-fit: cover;
-  /* 部落格照片統一調亮 15% */
-  filter: brightness(1.15);
+  /* 部落格照片：亮度 +10%；略降對比以減輕陰影、避免過曝 */
+  filter: brightness(1.1) contrast(0.94);
 }
 
-/* 部落格 OG／列表封面等同亮度 */
+/* 部落格 OG／列表封面等同調整 */
 .blog-photo-bright {
-  filter: brightness(1.15);
+  filter: brightness(1.1) contrast(0.94);
 }
 
 /* 橫式外框：與文字段落同寬，保留照片比例 */
