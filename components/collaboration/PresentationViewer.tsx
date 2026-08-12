@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, List, X } from "lucide-react";
+import { createPortal } from "react-dom";
+import { ChevronLeft, ChevronRight, List, MousePointer2, X } from "lucide-react";
 import type { PhotoSlot, ProposalSlide, TocItem } from "@/lib/enterprise-proposal-slides";
 import { SITE_CONFIG } from "@/lib/site";
 import { SafeImage } from "@/components/SafeImage";
@@ -11,12 +12,36 @@ import "./proposal-website.css";
 /** 指定頁面：案例／方案圖片放大 */
 const LARGE_PHOTO_SLIDE_IDS = new Set([14, 15, 16, 18]);
 
-function PhotoSlotView({ slot }: { slot: PhotoSlot }) {
+function PhotoSlotView({
+  slot,
+  onZoom,
+  showClickHint,
+}: {
+  slot: PhotoSlot;
+  onZoom?: (slot: PhotoSlot) => void;
+  /** 僅中間圖顯示「點擊可放大」+ 鼠標 */
+  showClickHint?: boolean;
+}) {
   if (slot.src) {
+    const zoomable = Boolean(onZoom);
     return (
-      <div className="tj-photo-slot">
+      <div className={cn("tj-photo-slot", zoomable && "tj-photo-slot--zoomable")}>
         {/* eslint-disable-next-line @next/next/no-img-element -- 使用者自訂外部圖片 URL */}
         <img src={slot.src} alt={slot.alt} className="tj-photo-slot__img" />
+        {zoomable && showClickHint ? (
+          <span className="tj-photo-slot__cursor-hint" aria-hidden>
+            <span className="tj-photo-slot__cursor-text">點擊可放大</span>
+            <MousePointer2 className="tj-photo-slot__cursor-icon" strokeWidth={2.25} />
+          </span>
+        ) : null}
+        {zoomable ? (
+          <button
+            type="button"
+            className="tj-photo-slot__zoom-hit"
+            aria-label={`放大檢視：${slot.alt}`}
+            onClick={() => onZoom?.(slot)}
+          />
+        ) : null}
       </div>
     );
   }
@@ -24,6 +49,97 @@ function PhotoSlotView({ slot }: { slot: PhotoSlot }) {
     <div className="tj-photo-slot" data-slot-id={slot.slotId}>
       <span className="tj-photo-slot__label">{slot.label}</span>
     </div>
+  );
+}
+
+/** 滿版三圖相簿：可點擊放大 */
+function ZoomablePhotoGallery({
+  slots,
+  threeCol,
+  photoOnly,
+  enabled,
+}: {
+  slots: (PhotoSlot & { span2?: boolean })[];
+  threeCol: boolean;
+  photoOnly: boolean;
+  /** 僅目前顯示的投影片允許放大層 */
+  enabled: boolean;
+}) {
+  const [active, setActive] = useState<PhotoSlot | null>(null);
+
+  useEffect(() => {
+    if (!enabled) setActive(null);
+  }, [enabled]);
+
+  useEffect(() => {
+    if (!active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopPropagation();
+        setActive(null);
+      }
+    };
+    document.body.dataset.proposalPhotoLightbox = "1";
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      delete document.body.dataset.proposalPhotoLightbox;
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [active]);
+
+  return (
+    <>
+      <div
+        className={cn(
+          "gallery min-h-0 flex-1",
+          threeCol && "gallery--three",
+          photoOnly && "gallery--photo-only",
+        )}
+      >
+        {slots.map((s, i) => {
+          const mid = Math.floor(slots.length / 2);
+          return (
+            <div key={s.slotId} className={cn(s.span2 && "span2")}>
+              <PhotoSlotView
+                slot={s}
+                onZoom={s.src ? setActive : undefined}
+                showClickHint={photoOnly && i === mid}
+              />
+            </div>
+          );
+        })}
+      </div>
+      {enabled && active?.src && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="tj-photo-lightbox"
+              data-proposal-photo-lightbox
+              role="dialog"
+              aria-modal="true"
+              aria-label={active.alt}
+              onClick={() => setActive(null)}
+            >
+              <button
+                type="button"
+                className="tj-photo-lightbox__close"
+                aria-label="關閉放大"
+                onClick={() => setActive(null)}
+              >
+                <X className="h-5 w-5" aria-hidden />
+              </button>
+              {/* eslint-disable-next-line @next/next/no-img-element -- 使用者自訂外部圖片 URL */}
+              <img
+                src={active.src}
+                alt={active.alt}
+                className="tj-photo-lightbox__img"
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
   );
 }
 
@@ -552,32 +668,49 @@ function ProposalSlideArticle({ slide, active }: { slide: ProposalSlide; active:
         );
       }
 
-      case "galleryWall":
+      case "galleryWall": {
+        const photoOnly = Boolean(slide.galleryPhotoOnly);
+        const threeCol =
+          (slide.gallerySlots?.length ?? 0) > 0 && (slide.gallerySlots?.length ?? 0) <= 3;
+        const slots = slide.gallerySlots ?? [];
         return (
-          <div className="frame">
-            <CornerBrand />
-            {slide.cornerRule ? <CornerRule text={slide.cornerRule} /> : null}
-            <div className="eyebrow">{slide.galleryEyebrow}</div>
-            <h2 className="stitle mt-3">
-              {slide.galleryTitleBeforeEm}
-              <em>{slide.galleryTitleEm}</em>
-            </h2>
-            {slide.galleryBody ? <p className="body mt-3 max-w-[1100px]">{slide.galleryBody}</p> : null}
-            <div
-              className={cn(
-                "gallery min-h-0 flex-1",
-                slide.id === 17 && slide.gallerySlots?.length === 3 && "gallery--three",
-              )}
-            >
-              {slide.gallerySlots?.map((s) => (
-                <div key={s.slotId} className={cn(s.span2 && "span2")}>
-                  <PhotoSlotView slot={s} />
-                </div>
-              ))}
-            </div>
+          <div className={cn("frame", photoOnly && "frame--gallery-photo-only")}>
+            {!photoOnly ? <CornerBrand /> : null}
+            {!photoOnly && slide.cornerRule ? <CornerRule text={slide.cornerRule} /> : null}
+            {photoOnly ? (
+              <div className="gallery-photo-only-chrome">
+                <div className="gallery-photo-only-label">{slide.galleryEyebrow || "合作作品"}</div>
+              </div>
+            ) : (
+              <>
+                <div className="eyebrow">{slide.galleryEyebrow}</div>
+                <h2 className="stitle mt-3">
+                  {slide.galleryTitleBeforeEm}
+                  <em>{slide.galleryTitleEm}</em>
+                </h2>
+                {slide.galleryBody ? <p className="body mt-3 max-w-[1100px]">{slide.galleryBody}</p> : null}
+              </>
+            )}
+            {photoOnly ? (
+              <ZoomablePhotoGallery slots={slots} threeCol={threeCol} photoOnly enabled={active} />
+            ) : (
+              <div
+                className={cn(
+                  "gallery min-h-0 flex-1",
+                  threeCol && "gallery--three",
+                )}
+              >
+                {slots.map((s) => (
+                  <div key={s.slotId} className={cn(s.span2 && "span2")}>
+                    <PhotoSlotView slot={s} />
+                  </div>
+                ))}
+              </div>
+            )}
             {slide.slideNum ? <SlideNum text={slide.slideNum} /> : null}
           </div>
         );
+      }
 
       case "whyGrid":
         return (
@@ -734,6 +867,7 @@ export function PresentationViewer({ slides, toc, deckTitle, tocBeforeDeck = fal
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (document.body.dataset.proposalPhotoLightbox === "1") return;
       if (e.key === "ArrowRight") {
         e.preventDefault();
         go(index + 1);

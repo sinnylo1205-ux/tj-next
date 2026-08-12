@@ -125,6 +125,8 @@ export type ProposalSlide = {
   galleryTitleEm?: string;
   galleryBody?: string;
   gallerySlots?: (PhotoSlot & { span2?: boolean })[];
+  /** 相簿滿版：僅左上小標，不顯示大標題／說明 */
+  galleryPhotoOnly?: boolean;
   /** why */
   whyEyebrow?: string;
   whyTitleBeforeEm?: string;

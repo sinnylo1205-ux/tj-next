@@ -1,18 +1,28 @@
-import type { Metadata } from "next";
-import Link from "next/link";
+import type { Metadata, Viewport } from "next";
+import { PresentationViewer } from "@/components/collaboration/PresentationViewer";
+import { ipProposalSlides, ipProposalToc } from "@/lib/ip-proposal-slides";
 import { getFullUrl, SITE_CONFIG } from "@/lib/site";
 
 const path = "/collaboration/ip";
 
-const pageDescription = "T&J 客製化甜點 IP 授權與聯名合作說明頁面建置中，敬請期待。";
+const pageDescription =
+  "T&J IP 授權與聯名甜點合作作品集：獵人、咒術迴戰、葬送的芙莉蓮、間諜家家酒等主題甜點實績。";
 
 export const metadata: Metadata = {
   title: "IP 授權",
   description: pageDescription,
+  keywords: [
+    "IP 授權",
+    "聯名甜點",
+    "主題甜點",
+    "動漫聯名",
+    "客製化甜點",
+    SITE_CONFIG.SITE_NAME,
+  ],
   openGraph: {
     title: `IP 授權｜${SITE_CONFIG.SITE_NAME}`,
     description: pageDescription,
-    type: "website",
+    type: "article",
     locale: "zh_TW",
     siteName: SITE_CONFIG.SITE_NAME,
     url: getFullUrl(path),
@@ -21,27 +31,40 @@ export const metadata: Metadata = {
   alternates: { canonical: getFullUrl(path) },
 };
 
+/** 簡報頁：避免 iOS 將版面當作可縮放文字、並配合瀏海安全區 */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
+
+const webPageJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  name: "IP 授權",
+  description: pageDescription,
+  url: getFullUrl(path),
+  inLanguage: "zh-TW",
+  isPartOf: { "@id": getFullUrl("/#website") },
+  about: { "@id": getFullUrl("/#local-business") },
+};
+
 export default function IpCollaborationPage() {
   return (
-    <main className="mx-auto max-w-2xl rounded-2xl border border-brand-300/40 bg-brand-50 p-8 md:p-10">
-      <h1 className="font-serif text-3xl font-semibold text-ink">IP 授權</h1>
-      <p className="mt-4 font-sans text-base leading-relaxed text-muted-foreground">
-        此單元內容尚在籌備中。若您已有企業合作或活動需求，可先參考「企業合作提案」簡報，或透過聯絡頁與我們討論。
-      </p>
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Link
-          href="/collaboration/enterprise"
-          className="inline-flex rounded-full bg-brand-500 px-5 py-2.5 font-sans text-sm font-medium text-ink-inverse hover:opacity-90"
-        >
-          前往企業合作提案
-        </Link>
-        <Link
-          href="/contact"
-          className="inline-flex rounded-full border border-brand-300 bg-white px-5 py-2.5 font-sans text-sm font-medium text-ink hover:bg-brand-50"
-        >
-          聯絡我們
-        </Link>
-      </div>
+    <main className="w-full min-w-0 max-w-full px-2 sm:px-4">
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageJsonLd) }} />
+      <header className="mb-6 max-w-3xl">
+        <h1 className="font-serif text-3xl font-semibold tracking-tight text-ink md:text-4xl">IP 授權</h1>
+        <p className="mt-3 font-sans text-base leading-relaxed text-muted-foreground">
+          T&J 具備多元 IP 聯名與主題甜點實作經驗，以下為合作作品集，歡迎洽詢授權與聯名方案。
+        </p>
+      </header>
+      <PresentationViewer
+        slides={ipProposalSlides}
+        toc={ipProposalToc}
+        deckTitle="IP 授權提案簡報"
+        tocBeforeDeck
+      />
     </main>
   );
 }
