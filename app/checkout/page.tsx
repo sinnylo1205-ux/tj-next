@@ -363,6 +363,7 @@ export default function CheckoutPage() {
             total_price: item.total_price ?? null,
             category: item.category || null,
             is_package_design: (item as { is_package_design?: boolean }).is_package_design ?? item.name?.includes("包裝設計"),
+            preview_url: item.preview_url || item.image_url || null,
             customizations: item.customizations,
             customizations_json: (item as { customizations_json?: unknown }).customizations_json,
           })),

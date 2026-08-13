@@ -15,9 +15,48 @@ export type CreateQuotationItemInput = {
   total_price?: number | null;
   category?: string | null;
   is_package_design?: boolean | null;
+  /** 購物車合成預覽圖公開 URL */
+  preview_url?: string | null;
   customizations?: unknown;
   customizations_json?: unknown;
 };
+
+function isHttpUrl(raw: unknown): raw is string {
+  return typeof raw === "string" && /^https?:\/\//i.test(raw.trim());
+}
+
+/** 從 cart 品項抽出合成圖 URL（preview_url 或 screenshot 客製項） */
+export function resolveCartItemPreviewUrl(item: CreateQuotationItemInput): string | null {
+  if (isHttpUrl(item.preview_url)) return item.preview_url.trim();
+
+  const raw = item.customizations_json ?? item.customizations;
+  let list: unknown[] = [];
+  if (Array.isArray(raw)) list = raw;
+  else if (raw && typeof raw === "object") {
+    const o = raw as Record<string, unknown>;
+    if (Array.isArray(o.options)) list = o.options;
+    else if (Array.isArray(o.customizations)) list = o.customizations;
+  }
+
+  for (const entry of list) {
+    if (!entry || typeof entry !== "object") continue;
+    const c = entry as Record<string, unknown>;
+    const group = typeof c.group === "string" ? c.group : "";
+    if (group !== "screenshot" && group !== "package_screenshot") continue;
+    if (isHttpUrl(c.url)) return c.url.trim();
+    if (Array.isArray(c.items)) {
+      for (const it of c.items) {
+        if (it && typeof it === "object") {
+          const u = (it as { url?: unknown }).url;
+          if (isHttpUrl(u)) return u.trim();
+        } else if (isHttpUrl(it)) {
+          return it.trim();
+        }
+      }
+    }
+  }
+  return null;
+}
 
 export type CreateQuotationInput = {
   user_id: string;
@@ -107,12 +146,13 @@ export function buildCartQuotationRows(input: CreateQuotationInput): {
       "未命名商品";
     const customization = summarizeCustomizationsText(item.customizations_json ?? item.customizations);
     const packageDesign = isPackageDesign(item);
+    const preview_url = resolveCartItemPreviewUrl(item);
 
     quotation_order_items.push({
       product_name,
       quantity: qty,
       unit_price,
-      preview_url: null,
+      preview_url,
       category: item.category || (packageDesign ? "package" : "custom_design"),
       all_requirement: {
         customization,
@@ -122,6 +162,7 @@ export function buildCartQuotationRows(input: CreateQuotationInput): {
         product_id: pid || null,
         role: "cart_prequote_line",
         summary: customization || null,
+        preview_url,
       },
       quantity_description: packageDesign
         ? "與訂購之甜點數量一致，如有加購盒子，則與禮盒數量一致。"
@@ -133,6 +174,7 @@ export function buildCartQuotationRows(input: CreateQuotationInput): {
       unit_price,
       quantity: qty,
       customization: customization || undefined,
+      preview_url: preview_url || undefined,
     });
   }
 

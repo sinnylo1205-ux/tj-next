@@ -402,18 +402,24 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
     })
     .join("");
 
-  const previewImagesHTML = quote.items
-    .filter((i) => i.preview_url && safeHttpUrl(i.preview_url))
+  /** 訂購內容下方：直接內嵌合成圖（小圖橫向排列，避免列印整塊被推到下一頁） */
+  const previewFigures = quote.items
     .map((item, index) => {
-      const href = escapeHtmlAttr(safeHttpUrl(item.preview_url!)!);
+      const src = item.preview_url ? safeHttpUrl(item.preview_url) : null;
+      if (!src) return "";
+      const href = escapeHtmlAttr(src);
+      const caption = escapeHtml(item.product_name?.trim() || `合成圖 ${index + 1}`);
       return `
-    <div style="margin-bottom:6px;">
-      合成圖 ${index + 1}：
-      <a href="${href}" target="_blank" rel="noopener noreferrer">點我查看</a>
-    </div>
+    <figure class="quote-preview-figure">
+      <img class="quote-preview-img" src="${href}" alt="${caption}" />
+      <figcaption class="quote-preview-caption">${caption}</figcaption>
+    </figure>
   `;
     })
-    .join("");
+    .filter(Boolean);
+  const previewImagesSectionHTML = previewFigures.length
+    ? `<div class="quote-preview-grid">${previewFigures.join("")}</div>`
+    : "";
 
   const totalNum = Number(quote.total_price);
   const subNum = Number(quote.subtotal);
@@ -448,7 +454,6 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
           ? `NT$ ${shipNum.toLocaleString("zh-TW")}`
           : "NT$ 0",
       ),
-      row("合成圖預覽", previewImagesHTML, { rawHtml: true }),
     ])}
   </table>
 `;
@@ -523,6 +528,41 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
 
   h3 {
     color: #7a4f52;
+  }
+
+  .quote-preview-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 12px;
+    align-items: flex-start;
+  }
+
+  .quote-preview-figure {
+    margin: 0;
+    padding: 0;
+    width: 120px;
+    max-width: 28%;
+    flex: 0 0 auto;
+  }
+
+  .quote-preview-img {
+    display: block;
+    width: 100%;
+    max-width: 120px;
+    max-height: 120px;
+    height: auto;
+    object-fit: contain;
+    border-radius: 8px;
+    border: 1px solid #ebd9da;
+    background: #fafafa;
+  }
+
+  .quote-preview-caption {
+    margin-top: 4px;
+    font-size: 11px;
+    color: #666;
+    line-height: 1.3;
+    word-break: break-word;
   }
 
   table.info-table {
@@ -709,6 +749,28 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
     box-shadow: none !important;
   }
 
+  .quote-preview-grid {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6pt 8pt !important;
+  }
+
+  .quote-preview-figure {
+    width: 88pt !important;
+    max-width: 28% !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .quote-preview-img {
+    max-width: 88pt !important;
+    max-height: 88pt !important;
+  }
+
+  .quote-preview-caption {
+    font-size: 8.5pt !important;
+  }
+
   .footer {
     overflow: visible !important;
     max-height: none !important;
@@ -796,6 +858,7 @@ export function buildQuotationPdfHtml(body: QuotationPdfWebhookPayload): string 
 
 ${section("基本資訊", basicInfo)}
 ${section(isSpecial ? "訂單組合說明" : "訂購內容", orderContent)}
+${section("合成圖預覽", previewImagesSectionHTML)}
 ${section("報價結果", quoteSection)}
 
 <div class="footer">

@@ -19,6 +19,7 @@ const itemSchema = z.object({
   total_price: z.number().finite().optional().nullable(),
   category: z.string().optional().nullable(),
   is_package_design: z.boolean().optional().nullable(),
+  preview_url: z.string().optional().nullable(),
   customizations: z.unknown().optional(),
   customizations_json: z.unknown().optional(),
 });
@@ -40,7 +41,7 @@ const bodySchema = z.object({
 
 /**
  * POST /api/checkout/create-quotation
- * 顧客從結帳頁預建報價單：寫入 quotation_orders（price_reply）、不存圖片、回傳 pdf_input。
+ * 顧客從結帳頁預建報價單：寫入 quotation_orders（price_reply）、帶入合成圖 preview_url、回傳 pdf_input。
  */
 export async function POST(req: Request) {
   try {
