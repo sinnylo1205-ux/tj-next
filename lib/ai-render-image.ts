@@ -12,6 +12,8 @@ import { processImageBufferWithSharp } from "@/lib/sharp-process-upload";
 
 export const AI_RENDER_DAILY_LIMIT = 3;
 export const AI_RENDER_BUCKET = "customizer_uploads";
+export const AI_RENDER_MAX_SOURCE_BYTES = 10 * 1024 * 1024;
+export const AI_RENDER_FETCH_TIMEOUT_MS = 20_000;
 
 export const AI_PHOTOREAL_PROMPT =
   "Transform this product customization mockup into a photorealistic studio photograph of the same dessert/gift product. " +
@@ -37,14 +39,49 @@ export function isAllowedCustomizerUploadUrl(raw: string): boolean {
   try {
     const u = new URL(raw.trim());
     if (u.protocol !== "https:" && u.protocol !== "http:") return false;
+    if (u.username || u.password) return false;
     const supabaseHost = process.env.NEXT_PUBLIC_SUPABASE_URL
-      ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).host
+      ? new URL(process.env.NEXT_PUBLIC_SUPABASE_URL).hostname
       : "";
-    if (supabaseHost && u.host !== supabaseHost) return false;
+    if (!supabaseHost || u.hostname !== supabaseHost) return false;
     return u.pathname.includes(`/${AI_RENDER_BUCKET}/`) || u.pathname.includes(`/${AI_RENDER_BUCKET}`);
   } catch {
     return false;
   }
+}
+
+function quotaExceededError(): Error {
+  const err = new Error(`今日 AI 擬真渲染已達上限（${AI_RENDER_DAILY_LIMIT} 次），請明天再試`);
+  (err as Error & { status?: number }).status = 429;
+  return err;
+}
+
+async function readResponseWithLimit(res: Response, maxBytes: number): Promise<Buffer> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) {
+    throw new Error("合成圖過大");
+  }
+
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.length > maxBytes) throw new Error("合成圖過大");
+    return buf;
+  }
+
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("合成圖過大");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks);
 }
 
 /** 今日已開始的渲染次數（含進行中／失敗／關閉分頁；一開始就占額度） */
@@ -106,37 +143,40 @@ export async function runAiPhotorealRender(params: {
   }
 
   const supabase = createClient(supabaseUrl, serviceKey);
-  const usedToday = await countUsageToday(supabase, params.userId);
-  if (usedToday >= AI_RENDER_DAILY_LIMIT) {
-    const err = new Error(`今日 AI 擬真渲染已達上限（${AI_RENDER_DAILY_LIMIT} 次），請明天再試`);
-    (err as Error & { status?: number }).status = 429;
-    throw err;
-  }
+  const { startIso, endIso } = getTaipeiDayBounds();
 
-  const srcRes = await fetch(params.sourceImageUrl);
+  // 先原子占額度，再下載／呼叫 OpenAI，避免並行請求突破每日上限
+  const { data: reservedId, error: reserveError } = await supabase.rpc("try_reserve_ai_render", {
+    p_user_id: params.userId,
+    p_source_image_url: params.sourceImageUrl,
+    p_daily_limit: AI_RENDER_DAILY_LIMIT,
+    p_start: startIso,
+    p_end: endIso,
+  });
+
+  if (reserveError) {
+    throw new Error(`無法鎖定渲染額度：${reserveError.message}`);
+  }
+  if (!reservedId) {
+    throw quotaExceededError();
+  }
+  const usageId = String(reservedId);
+
+  let srcRes: Response;
+  try {
+    srcRes = await fetch(params.sourceImageUrl, {
+      signal: AbortSignal.timeout(AI_RENDER_FETCH_TIMEOUT_MS),
+    });
+  } catch {
+    throw new Error("無法下載合成圖（逾時或網路錯誤）");
+  }
   if (!srcRes.ok) {
     throw new Error(`無法下載合成圖（HTTP ${srcRes.status}）`);
   }
-  const srcBuf = Buffer.from(await srcRes.arrayBuffer());
+  const srcBuf = await readResponseWithLimit(srcRes, AI_RENDER_MAX_SOURCE_BYTES);
   if (srcBuf.length < 100) throw new Error("合成圖檔案無效");
-  if (srcBuf.length > 50 * 1024 * 1024) throw new Error("合成圖過大");
 
-  // 一開始就占額度：關閉分頁／中斷連線仍計次（伺服器會繼續跑完或留下紀錄）
-  const { data: usageRow, error: reserveError } = await supabase
-    .from("ai_render_usage")
-    .insert({
-      user_id: params.userId,
-      source_image_url: params.sourceImageUrl,
-      result_image_url: null,
-    })
-    .select("id")
-    .single();
-
-  if (reserveError || !usageRow?.id) {
-    throw new Error(`無法鎖定渲染額度：${reserveError?.message || "未知錯誤"}`);
-  }
-
-  const newUsed = usedToday + 1;
+  const newUsed = await countUsageToday(supabase, params.userId);
   const mime = srcRes.headers.get("content-type")?.split(";")[0]?.trim() || guessMimeFromUrl(params.sourceImageUrl);
   const model = process.env.OPENAI_IMAGE_MODEL?.trim() || "gpt-image-2";
 
@@ -187,7 +227,7 @@ export async function runAiPhotorealRender(params: {
   const { error: updateError } = await supabase
     .from("ai_render_usage")
     .update({ result_image_url: resultUrl })
-    .eq("id", usageRow.id);
+    .eq("id", usageId);
 
   if (updateError) {
     throw new Error(`更新使用紀錄失敗：${updateError.message}`);
