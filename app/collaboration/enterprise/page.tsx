@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { PresentationViewer } from "@/components/collaboration/PresentationViewer";
+import { HomeWorkGallerySection } from "@/components/collaboration/HomeWorkGallerySection";
 import { enterpriseProposalSlides, enterpriseProposalToc } from "@/lib/enterprise-proposal-slides";
 import { getFullUrl, SITE_CONFIG } from "@/lib/site";
 
@@ -56,18 +57,28 @@ export default function EnterpriseCollaborationPage() {
   return (
     <main className="w-full min-w-0 max-w-full px-2 sm:px-4">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageJsonLd) }} />
-      <header className="mb-6 max-w-3xl">
+      <header className="mx-auto mb-6 max-w-3xl text-center">
         <h1 className="font-serif text-3xl font-semibold tracking-tight text-ink md:text-4xl">企業合作提案</h1>
         <p className="mt-3 font-sans text-base leading-relaxed text-muted-foreground">
           T&J 有豐富的企業合作經驗，從單品設計到甜點佈置，將甜點與活動完美整合，豐富的物流經驗，讓您下單後，甜點就會順利到客戶手上。
         </p>
       </header>
-      <PresentationViewer
-        slides={enterpriseProposalSlides}
-        toc={enterpriseProposalToc}
-        deckTitle="企業合作提案簡報"
-        tocBeforeDeck
-      />
+
+      {/* 首頁下方作品照片 → 企業頁上方 */}
+      <HomeWorkGallerySection className="mb-10 md:mb-14" />
+
+      {/* 簡報（已刪除原第 1–5 頁，自原第 6 頁合作一覽起） */}
+      <section aria-label="企業合作提案簡報" className="w-full">
+        <h2 className="mb-4 font-serif text-2xl font-semibold tracking-tight text-ink md:mb-6 md:text-3xl">
+          合作提案簡報
+        </h2>
+        <PresentationViewer
+          slides={enterpriseProposalSlides}
+          toc={enterpriseProposalToc}
+          deckTitle="企業合作提案簡報"
+          tocBeforeDeck
+        />
+      </section>
     </main>
   );
 }

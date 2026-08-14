@@ -53,7 +53,7 @@ export default function IpCollaborationPage() {
   return (
     <main className="w-full min-w-0 max-w-full px-2 sm:px-4">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(webPageJsonLd) }} />
-      <header className="mb-6 max-w-3xl">
+      <header className="mx-auto mb-6 max-w-3xl text-center">
         <h1 className="font-serif text-3xl font-semibold tracking-tight text-ink md:text-4xl">IP 授權</h1>
         <p className="mt-3 font-sans text-base leading-relaxed text-muted-foreground">
           T&J 具備多元 IP 聯名與主題甜點實作經驗，以下為合作作品集，歡迎洽詢授權與聯名方案。

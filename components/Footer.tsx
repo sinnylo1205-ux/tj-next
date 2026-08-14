@@ -111,6 +111,12 @@ const Footer = () => {
             >
               tj.tjump@gmail.com
             </a>
+            <div className="mt-4 space-y-1 text-ink-inverse/70 text-xs font-semibold leading-relaxed">
+              <p>統一編號：37868518</p>
+              <p>食品業者登錄字號：F-202290102-00000-0</p>
+              <p>公司地址：新北市新店區博愛街25巷3號1樓</p>
+              <p>本產品已投保南山產物保險產品責任險，敬請安心食用。</p>
+            </div>
           </div>
         </div>
 

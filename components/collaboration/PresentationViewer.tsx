@@ -931,7 +931,7 @@ export function PresentationViewer({ slides, toc, deckTitle, tocBeforeDeck = fal
 
       {!tocBeforeDeck ? tocNav : null}
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[900] flex justify-center pb-4 md:pb-6">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[40] flex justify-center pb-4 md:pb-6">
         <div className="pointer-events-auto flex items-center gap-2 rounded-full border border-brand-300/50 bg-white/95 px-2 py-2 shadow-lg backdrop-blur-sm md:gap-3 md:px-3">
           <button
             type="button"
@@ -968,7 +968,7 @@ export function PresentationViewer({ slides, toc, deckTitle, tocBeforeDeck = fal
 
       {tocOpen && (
         <div
-          className="fixed inset-0 z-[950] flex items-end justify-center bg-black/40 p-4 md:items-center"
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-black/40 p-4 md:items-center"
           role="dialog"
           aria-modal="true"
           aria-labelledby={`${tocTitleId}-modal`}

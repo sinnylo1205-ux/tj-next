@@ -191,7 +191,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
         .eq("is_submitted", false);
 
       if (cartErr) {
-        console.error("讀取 DB cart 失敗：", cartErr);
+        // 用 warn + 可序列化欄位，避免 Next.js 把 console.error(空物件) 打成全螢幕 overlay
+        console.warn("讀取 DB cart 失敗：", {
+          message: cartErr.message,
+          code: cartErr.code,
+          details: cartErr.details,
+          hint: cartErr.hint,
+        });
         setItems(tempItems);
         setHydrated(true);
         return;
