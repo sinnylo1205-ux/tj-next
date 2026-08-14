@@ -45,6 +45,18 @@ export function photoFrameShapeStyle(frameType: string): CSSProperties {
   return {};
 }
 
+/**
+ * 照片載體陰影：務必加在「裁切層的外層」父元素上。
+ * 與 clip-path／overflow-hidden 同一層時陰影會被裁掉看不見。
+ */
+export function photoFrameShadowStyle(frameType: string): CSSProperties {
+  if (!frameType || frameType === "none") return {};
+  return {
+    // 稍明顯一點，在粉紅奶油上仍能看出層次
+    filter: "drop-shadow(0 3px 5px rgba(30, 15, 25, 0.32)) drop-shadow(0 1px 2px rgba(30, 15, 25, 0.18))",
+  };
+}
+
 /** @deprecated 請改用 photoFrameShapeStyle（保留以免舊 bundle 引用報錯） */
 export function photoFrameFlatLayStyle(frameType: string): CSSProperties {
   return photoFrameShapeStyle(frameType);
@@ -56,14 +68,17 @@ export function photoFrameRoundedClass(frameType: string): string {
   return "";
 }
 
-/** 需要裁切的外層容器 class（ellipse 形狀由 photoFrameShapeStyle 負責） */
+/** 需要裁切的容器 class（ellipse 形狀由 photoFrameShapeStyle 負責）。diamond／irregular 僅靠 clip-path，勿 overflow-hidden 以免吃掉外層陰影。 */
 export function photoFrameClipContainerClass(frameType: string): string {
   const rounded = photoFrameRoundedClass(frameType);
   if (frameType === "circle" || frameType === "ellipse" || frameType === "square") {
     return `overflow-hidden ${rounded}`.trim();
   }
   if (frameType === "diamond" || frameType === "irregular") {
-    return "overflow-hidden";
+    return "";
+  }
+  if (frameType === "flag") {
+    return "overflow-hidden rounded-sm";
   }
   return "";
 }

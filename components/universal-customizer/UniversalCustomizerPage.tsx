@@ -10,7 +10,11 @@ import { useUniversalPackageCustomizer, type BoxColorOption } from "@/hooks/useU
 import { useHierarchicalOptions } from "@/hooks/useHierarchicalOptions";
 import { usePhotoUpload } from "@/hooks/usePhotoUpload";
 import { useTextInputRenderer } from "@/hooks/useTextInputRenderer";
-import { useAddToCart } from "@/components/universal-customizer/AddToCartButton";
+import { useAddToCart, type PreparedCustomizerCartItem } from "@/components/universal-customizer/AddToCartButton";
+import { useAiPhotorealRender } from "@/hooks/useAiPhotorealRender";
+import { LoadingOverlay } from "@/components/LoadingOverlay";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
 import { useOptionNames } from "@/hooks/useOptionNames";
 import { useGiftBoxColorCustomizer } from "@/hooks/useGiftBoxColorCustomizer";
 import { PreviewCanvas } from "@/components/universal-customizer/PreviewCanvas";
@@ -245,6 +249,21 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
 
   const { TextInputComponent, hasTextInput } = useTextInputRenderer(productType);
   const { addToCart } = useAddToCart();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const {
+    isRendering,
+    loadingMessage,
+    loadingHint,
+    confirmState,
+    showLoginRequired,
+    setShowLoginRequired,
+    runRenderFromPrepared,
+    resumePendingAiRender,
+    continueAfterLoginChoice,
+    confirmUseAiPreview,
+  } = useAiPhotorealRender();
+  const aiResumeStartedRef = useRef(false);
 
   const [textInputData, setTextInputData] = useState<any>(null);
   const [showTextInput, setShowTextInput] = useState(false);
@@ -1180,12 +1199,8 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
     setShowAddToCartConfirm(true);
   };
 
-  // ✅ 確認後實際執行加入購物車
-  const confirmAddToCart = async () => {
-    setShowAddToCartConfirm(false);
-    if (isAddingToCart) return;
-    setIsAddingToCart(true);
-
+  // 驗證價格並組裝／加入購物車；prepareOnly=true 時只回傳 payload（含合成圖上傳）
+  const runVerifiedAddToCart = async (prepareOnly = false): Promise<PreparedCustomizerCartItem | void> => {
     try {
       // ✅ 新增：提交前重新驗證價格（防止 race condition）
       const { calculatePrice } = await import("@/lib/priceApi");
@@ -1437,7 +1452,7 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
       }
 
       // ✅ 使用驗證後的價格
-      await addToCart(
+      return await addToCart(
         productType,
         productData.name,
         productData.category,
@@ -1461,11 +1476,78 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
         })), // ✅ 使用驗證後的條件費用（轉成 addToCart 所需格式）
         verifiedGrandTotal, // ✅ 使用驗證後的總價
         hasPackageSection ? captureRefPackage.current : null,
+        prepareOnly,
       );
+    } catch (err) {
+      console.error("[runVerifiedAddToCart]", err);
+      throw err;
+    }
+  };
+
+  // ✅ 確認後實際執行加入購物車
+  const confirmAddToCart = async () => {
+    setShowAddToCartConfirm(false);
+    if (isAddingToCart || isRendering) return;
+    setIsAddingToCart(true);
+    try {
+      await runVerifiedAddToCart(false);
     } finally {
       setIsAddingToCart(false);
     }
   };
+
+  const handleAiRenderClick = async () => {
+    const validation = validateBeforeAddToCart();
+    if (!validation.valid) {
+      setValidationDialog({
+        open: true,
+        type: "error",
+        title: "請補充資料",
+        message: validation.message,
+      });
+      return;
+    }
+    if (isAddingToCart || isRendering) return;
+    setIsAddingToCart(true);
+    try {
+      const prepared = await runVerifiedAddToCart(true);
+      if (!prepared?.preview_url) {
+        toast({
+          title: "無法產生合成圖",
+          description: "請稍後再試，或改用「加入購物車」",
+          variant: "destructive",
+        });
+        return;
+      }
+      const returnPath = `${window.location.pathname}${window.location.search}`;
+      await runRenderFromPrepared(prepared, returnPath);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "AI 擬真渲染失敗";
+      toast({ title: "AI 擬真渲染失敗", description: msg, variant: "destructive" });
+    } finally {
+      setIsAddingToCart(false);
+    }
+  };
+
+  // 登入後自動續跑 AI 渲染（pending 已含合成圖與購物車 payload）
+  useEffect(() => {
+    if (!user || aiResumeStartedRef.current) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("resumeAiRender") !== "1") return;
+    aiResumeStartedRef.current = true;
+    params.delete("resumeAiRender");
+    const qs = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    void (async () => {
+      try {
+        await resumePendingAiRender();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "續跑渲染失敗";
+        toast({ title: "AI 擬真渲染失敗", description: msg, variant: "destructive" });
+      }
+    })();
+  }, [user, resumePendingAiRender, toast]);
 
   // ✅ 等待資料載入完成
   const hasColorData = config.colorRootIds && config.colorRootIds.length > 0 ? selectedColors.size > 0 : true;
@@ -2058,25 +2140,30 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
           )}
         </div>
 
-        {/* Fixed bottom 加入購物車按鈕 */}
-        <div className="fixed bottom-0 left-0 right-0 bg-white p-4 border-t shadow-lg z-50 lg:hidden">
-          <Button
-            onClick={handleAddToCartClick}
-            disabled={isAddingToCart || isPriceStale}
-            className="
-        w-full py-4 
-        text-base sm:text-lg 
-        font-semibold rounded-2xl shadow-lg
-        leading-tight 
-        whitespace-normal
-      "
-          >
-            {isAddingToCart
-              ? "加入中..."
-              : isPriceStale
-                ? "計算價格中..."
-                : `加入購物車 · NT$ ${grandTotalForDisplay.toLocaleString()}`}
-          </Button>
+        {/* Fixed bottom：直接加入購物車｜AI 擬真渲染後加入購物車（並排） */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white p-3 border-t shadow-lg z-50 lg:hidden">
+          <div className="flex gap-2 items-stretch">
+            <Button
+              onClick={handleAddToCartClick}
+              disabled={isAddingToCart || isRendering || isPriceStale}
+              variant="outline"
+              className="flex-1 min-w-0 py-3 px-2 text-sm font-semibold rounded-2xl leading-tight whitespace-normal h-auto"
+            >
+              {isAddingToCart
+                ? "加入中..."
+                : isPriceStale
+                  ? "計算中..."
+                  : `直接加入購物車 · NT$ ${grandTotalForDisplay.toLocaleString()}`}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void handleAiRenderClick()}
+              disabled={isAddingToCart || isRendering || isPriceStale}
+              className="flex-1 min-w-0 py-3 px-2 text-sm font-semibold rounded-2xl leading-tight whitespace-normal h-auto shadow-lg"
+            >
+              {isRendering ? "AI 渲染中…" : "AI擬真渲染後加入購物車"}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -2200,18 +2287,29 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
               </div>
             )}
 
-            {/* 加入購物車按鈕 */}
-            <Button
-              onClick={handleAddToCartClick}
-              disabled={isAddingToCart || isPriceStale}
-              className="w-full py-6 text-xl font-semibold rounded-2xl mt-4 shadow-lg"
-            >
-              {isAddingToCart
-                ? "加入中..."
-                : isPriceStale
-                  ? "計算價格中..."
-                  : `加入購物車 · NT$ ${grandTotalForDisplay.toLocaleString()}`}
-            </Button>
+            {/* 直接加入購物車｜AI擬真渲染後加入購物車（並排） */}
+            <div className="mt-4 flex gap-3 items-stretch">
+              <Button
+                onClick={handleAddToCartClick}
+                disabled={isAddingToCart || isRendering || isPriceStale}
+                variant="outline"
+                className="flex-1 min-w-0 py-5 px-3 text-base font-semibold rounded-2xl leading-snug whitespace-normal h-auto"
+              >
+                {isAddingToCart
+                  ? "加入中..."
+                  : isPriceStale
+                    ? "計算價格中..."
+                    : `直接加入購物車 · NT$ ${grandTotalForDisplay.toLocaleString()}`}
+              </Button>
+              <Button
+                type="button"
+                onClick={() => void handleAiRenderClick()}
+                disabled={isAddingToCart || isRendering || isPriceStale}
+                className="flex-1 min-w-0 py-5 px-3 text-base font-semibold rounded-2xl leading-snug whitespace-normal h-auto shadow-lg"
+              >
+                {isRendering ? "AI 渲染中…" : "AI擬真渲染後加入購物車"}
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -2290,6 +2388,13 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
         </div>
       ) : null}
 
+      <LoadingOverlay
+        isVisible={isRendering || (isAddingToCart && !showAddToCartConfirm)}
+        message={isRendering ? loadingMessage : "正在準備設計與合成圖…"}
+        subtitle={isRendering ? loadingHint : undefined}
+        countdownSeconds={isRendering ? 30 : undefined}
+      />
+
       {/* ✅ 加入購物車確認視窗 */}
       <AlertDialog open={showAddToCartConfirm} onOpenChange={setShowAddToCartConfirm}>
         <AlertDialogContent>
@@ -2301,9 +2406,76 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmAddToCart} disabled={isAddingToCart}>
+            <AlertDialogAction onClick={confirmAddToCart} disabled={isAddingToCart || isRendering}>
               {isAddingToCart ? "加入中..." : "確定送出"}
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AI：需登入 */}
+      <AlertDialog open={showLoginRequired} onOpenChange={setShowLoginRequired}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>需登入會員才能使用 AI 擬真渲染</AlertDialogTitle>
+            <AlertDialogDescription>
+              您的設計與合成圖已暫存（約 2 小時）。登入或註冊後會自動繼續渲染並加入購物車。建議使用
+              Google 登入（免收驗證信）；若用 Email 註冊，請點驗證信內連結即可回到此流程。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>稍後再說</AlertDialogCancel>
+            <AlertDialogAction onClick={continueAfterLoginChoice}>前往登入</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* AI：是否使用擬真圖取代預覽 */}
+      <AlertDialog
+        open={confirmState.open}
+        onOpenChange={(open) => {
+          // 必須選擇「使用擬真圖／沿用合成圖」，不允許點背景關閉而略過入車
+          if (open) return;
+        }}
+      >
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle>要使用 AI 擬真圖作為預覽嗎？</AlertDialogTitle>
+            <AlertDialogDescription>
+              選擇後將加入購物車。原始合成圖連結會保留；若使用擬真圖，購物車與預建報價預覽會改為擬真圖。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-2">
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground text-center">合成圖</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={confirmState.compositeUrl}
+                alt="合成預覽"
+                className="w-full aspect-square object-cover rounded-lg border"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs text-muted-foreground text-center">AI 擬真</p>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={confirmState.aiUrl}
+                alt="AI 擬真預覽"
+                className="w-full aspect-square object-cover rounded-lg border"
+              />
+            </div>
+          </div>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2 sm:justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => confirmUseAiPreview(false)}
+            >
+              沿用合成圖
+            </Button>
+            <Button type="button" onClick={() => confirmUseAiPreview(true)}>
+              使用擬真圖
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

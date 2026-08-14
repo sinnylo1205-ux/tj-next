@@ -7,6 +7,11 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/lib/supabase";
+import {
+  buildAuthCallbackUrl,
+  loadPendingAiRender,
+  resolveAuthNextPath,
+} from "@/lib/pending-ai-render";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,12 +47,13 @@ function RegisterPageContent() {
   const handleSubmit = async (data: z.infer<typeof registerSchema>) => {
     setIsLoading(true);
     try {
-      const redirectUrl = typeof window !== "undefined" ? `${window.location.origin}/` : "/";
+      // Email 驗證信落地 → /auth/callback → 帶回編輯器並續跑 AI（pending 在 localStorage）
+      const next = resolveAuthNextPath(searchParams.get("redirect"));
       const { error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
-          emailRedirectTo: redirectUrl,
+          emailRedirectTo: buildAuthCallbackUrl(next),
           data: { name: data.name, phone: data.phone || "", role: data.role },
         },
       });
@@ -73,8 +79,16 @@ function RegisterPageContent() {
   const handleEmailDialogClose = () => {
     setShowEmailDialog(false);
     const redirectTo = searchParams.get("redirect");
-    if (redirectTo === "/cart" || redirectTo === "/checkout") router.push("/cart");
-    else router.push("/login");
+    if (redirectTo === "/cart" || redirectTo === "/checkout") {
+      router.push("/cart");
+      return;
+    }
+    const next = resolveAuthNextPath(redirectTo);
+    if (next && next !== "/") {
+      router.push(`/login?redirect=${encodeURIComponent(next)}`);
+      return;
+    }
+    router.push("/login");
   };
 
   return (
@@ -132,7 +146,16 @@ function RegisterPageContent() {
             </Button>
             <p className="text-center text-sm text-muted-foreground">
               已有帳號？{" "}
-              <Link href={searchParams.get("redirect") ? `/login?redirect=${searchParams.get("redirect")}` : "/login"} className="text-primary hover:underline font-medium">登入</Link>
+              <Link
+                href={
+                  searchParams.get("redirect")
+                    ? `/login?redirect=${encodeURIComponent(searchParams.get("redirect")!)}`
+                    : "/login"
+                }
+                className="text-primary hover:underline font-medium"
+              >
+                登入
+              </Link>
             </p>
           </form>
         </CardContent>
@@ -145,7 +168,14 @@ function RegisterPageContent() {
             <DialogDescription className="pt-4 space-y-3">
               <p>我們已發送驗證信到 <strong>{registeredEmail}</strong></p>
               <p>請到您的收件匣尋找來自 T&J 客製化甜點的驗證信，點擊信中連結完成驗證。</p>
-              <p className="text-muted-foreground text-xs">若未找到，請檢查垃圾郵件資料夾。</p>
+              {loadPendingAiRender() ? (
+                <p className="text-sm text-foreground">
+                  您的客製設計與合成圖已暫存。點擊驗證信後會自動回到編輯器並繼續 AI 擬真渲染。
+                </p>
+              ) : null}
+              <p className="text-muted-foreground text-xs">
+                若未找到，請檢查垃圾郵件資料夾。若改用「Google 登入」則不需收驗證信。
+              </p>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4">

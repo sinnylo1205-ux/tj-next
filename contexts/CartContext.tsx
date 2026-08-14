@@ -5,6 +5,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
 import { trackAddToCart } from "@/lib/meta-pixel";
 import { ga4AddToCart } from "@/lib/ga4";
+import { getCartItemUnitPrice } from "@/lib/cart-item-unit-price";
 
 const DISABLE_SUPABASE = false;
 
@@ -111,6 +112,7 @@ async function persistCart(
       .update({
         product_id: item.product_id ?? "",
         quantity: item.quantity,
+        unit_price: item.price ?? null,
         total_price: item.total_price ?? 0,
         user_name: (item.user_name as string) || displayName,
         preview_url: item.preview_url ?? item.image_url ?? null,
@@ -134,6 +136,7 @@ async function persistCart(
         user_id: user.id,
         product_id: i.product_id ?? "",
         quantity: i.quantity,
+        unit_price: i.price ?? null,
         total_price: i.total_price ?? 0,
         user_name: (i.user_name as string) || displayName,
         preview_url: i.preview_url ?? i.image_url ?? null,
@@ -203,18 +206,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const displayName = getDisplayName();
       const dbItems: CartItem[] = (cartRows ?? []).map((row: Record<string, unknown>) => {
         const prod = (productRows ?? []).find((p: { id: string }) => p.id === row.product_id);
+        const quantity = Number(row.quantity) || 1;
+        const totalPrice = (row.total_price as number) ?? 0;
+        const customizations = (row.customizations_json as unknown[]) ?? undefined;
+        const unitFromDb = row.unit_price != null ? Number(row.unit_price) : NaN;
+        // 優先 DB unit_price（設計後單價）；舊列則用 customizations 扣包裝回推，最後才用商品預設價
+        const designUnitPrice = Number.isFinite(unitFromDb)
+          ? unitFromDb
+          : getCartItemUnitPrice({
+              price: null,
+              total_price: totalPrice,
+              quantity,
+              customizations,
+            }) || (prod as { price?: number })?.price || 0;
         return {
           id: row.id as string,
           product_id: row.product_id as string,
           name: (prod as { name?: string })?.name ?? (row.product_id as string),
           category: (prod as { category?: string })?.category ?? "",
-          price: (prod as { price?: number })?.price,
-          total_price: (row.total_price as number) ?? 0,
-          quantity: Number(row.quantity) ?? 1,
+          price: designUnitPrice,
+          total_price: totalPrice,
+          quantity,
           user_name: (row.user_name as string) || displayName,
           preview_url: (row.preview_url as string) ?? undefined,
           image_url: (row.preview_url as string) ?? undefined,
-          customizations: (row.customizations_json as unknown[]) ?? undefined,
+          customizations,
           temp_id: (row.temp_id as string) ?? undefined,
           expected_pickup_date: (row.expected_pickup_date as string) ?? undefined,
           linked_item_id: (row.linked_item_id as string) ?? undefined,

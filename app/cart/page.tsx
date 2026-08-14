@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getCartItemUnitPrice } from "@/lib/cart-item-unit-price";
 
 const CUSTOMIZER_ROUTE_MAP: Record<string, string> = {
   cupcake_cream: "/customize/cupcake_cream",
@@ -418,7 +419,7 @@ export default function CartPage() {
                 {items.map((item) => {
                   const isPackageDesign = item.name?.includes("包裝設計");
                   const isClassic = isClassicProduct(item);
-                  const unitPrice = item.price ?? (item.total_price ?? 0) / (item.quantity || 1);
+                  const unitPrice = getCartItemUnitPrice(item);
                   return (
                     <div
                       key={item.id}

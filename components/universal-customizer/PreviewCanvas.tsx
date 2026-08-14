@@ -16,6 +16,7 @@ import {
   PHOTO_FRAME_CLIP_STYLES,
   photoFrameClipContainerClass,
   photoFrameOuterClipStyle,
+  photoFrameShadowStyle,
   photoFrameShapeStyle,
   type PhotoCarrierType,
 } from "@/lib/photo-frame-styles";
@@ -331,12 +332,10 @@ export function PreviewCanvas({
               const frameType = (frame.photo_carrier_type ?? "none") as PhotoCarrierType;
 
               return (
+                // 外層只負責定位＋陰影（不可 clip／overflow）
                 <div
                   key={`photo-frame-${frameIndex}`}
-                  className={cn(
-                    "absolute flex items-center justify-center",
-                    photoFrameClipContainerClass(frameType),
-                  )}
+                  className="absolute"
                   style={{
                     left: "50%",
                     top: "50%",
@@ -345,39 +344,43 @@ export function PreviewCanvas({
                     transform: `translate(${(frame.ui_x || 0) * photoScaleFactor}px, ${(frame.ui_y || 0) * photoScaleFactor + verticalOffset}px)`,
                     transformOrigin: "center",
                     rotate: `${frame.rotation || 0}deg`,
-                    ...photoFrameOuterClipStyle(frameType, frameStyles),
-                    ...photoFrameShapeStyle(frameType),
+                    ...photoFrameShadowStyle(frameType),
                   }}
                 >
-                  {uploadedPhotoUrl ? (
-                    <div className="relative h-full w-full">
-                      <SafeImage
-                        src={uploadedPhotoUrl}
-                        alt={`上傳的照片 ${frameIndex + 1}`}
-                        fill
-                        crossOrigin="anonymous"
-                        {...captureImgProps}
-                        className="object-contain object-center"
-                        style={{
-                          backgroundColor: frameType === "none" ? "transparent" : "white",
-                          border: frameType === "none" ? "none" : "1px solid white",
-                          transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
-                          transformOrigin: "center center", // ✅ 確保從中心縮放
-                        }}
-                        sizes="200px"
-                      />
-                    </div>
-                  ) : (
-                    <div
-                      className="w-full h-full flex items-center justify-center text-xs text-muted-foreground"
-                      style={{
-                        border: "2px dashed #ffc0cb",
-                        backgroundColor: frameType === "none" ? "transparent" : "rgba(255,255,255,0.9)",
-                      }}
-                    >
-                      LOGO
-                    </div>
-                  )}
+                  <div
+                    className={cn(
+                      "relative flex h-full w-full items-center justify-center",
+                      photoFrameClipContainerClass(frameType),
+                    )}
+                    style={{
+                      ...photoFrameOuterClipStyle(frameType, frameStyles),
+                      ...photoFrameShapeStyle(frameType),
+                      backgroundColor: frameType === "none" ? "transparent" : "white",
+                      border: frameType === "none" ? "none" : "1px solid white",
+                    }}
+                  >
+                    {uploadedPhotoUrl ? (
+                      <div className="relative h-full w-full">
+                        <SafeImage
+                          src={uploadedPhotoUrl}
+                          alt={`上傳的照片 ${frameIndex + 1}`}
+                          fill
+                          crossOrigin="anonymous"
+                          {...captureImgProps}
+                          className="object-contain object-center"
+                          style={{
+                            transform: `scale(${photoZoomScale}) translate(${photoOffsetX}px, ${photoOffsetY}px)`,
+                            transformOrigin: "center center",
+                          }}
+                          sizes="200px"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
+                        LOGO
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -423,6 +426,8 @@ export function PreviewCanvas({
             transform: `translate(${frameX}px, ${frameY}px)`,
             transformOrigin: "center",
             rotate: `${meta?.rotation || 0}deg`,
+            // 陰影加在此層（裁切層之外），菱形／圓形才看得見
+            ...photoFrameShadowStyle(frameType),
           }}
         >
           {/* ✅ 旗桿：現在在容器內部左側，不會被裁切 */}
@@ -441,7 +446,7 @@ export function PreviewCanvas({
             />
           )}
 
-          {/* 照片區域 - overflow-hidden；circle／ellipse／square 用圓角裁切取代 img 上 clip-path */}
+          {/* 照片裁切層：clip／overflow 不可與陰影同層 */}
           <div
             className={cn("relative", photoFrameClipContainerClass(frameType))}
             style={{

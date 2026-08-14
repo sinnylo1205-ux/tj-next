@@ -11,6 +11,7 @@ import {
   PHOTO_FRAME_CLIP_STYLES,
   photoFrameClipContainerClass,
   photoFrameOuterClipStyle,
+  photoFrameShadowStyle,
   photoFrameShapeStyle,
 } from "@/lib/photo-frame-styles";
 
@@ -159,40 +160,42 @@ export function PackagePreviewCanvas({
             const frameType = activePhotoMetadata.photo_carrier_type ?? "none";
             const frameStyles = PHOTO_FRAME_CLIP_STYLES;
 
-            return uploadedPhotoUrl ? (
-              <div
-                className={cn("relative h-full w-full", photoFrameClipContainerClass(frameType))}
-                style={{
-                  ...photoFrameOuterClipStyle(frameType, frameStyles),
-                  ...photoFrameShapeStyle(frameType),
-                }}
-              >
-                <SafeImage
-                  src={uploadedPhotoUrl}
-                  alt="上傳的照片"
-                  fill
-                  className="object-contain object-center"
-                  style={{
-                    backgroundColor: frameType === "none" ? "transparent" : "white",
-                    border: frameType === "none" ? "none" : "2px solid white",
-                  }}
-                  sizes="200px"
-                />
-              </div>
-            ) : (
-              <div
-                className={cn(
-                  "flex h-full w-full items-center justify-center text-xs text-secondary-foreground/70",
-                  photoFrameClipContainerClass(frameType),
+            return (
+              <div className="relative h-full w-full" style={photoFrameShadowStyle(frameType)}>
+                {uploadedPhotoUrl ? (
+                  <div
+                    className={cn("relative h-full w-full", photoFrameClipContainerClass(frameType))}
+                    style={{
+                      ...photoFrameOuterClipStyle(frameType, frameStyles),
+                      ...photoFrameShapeStyle(frameType),
+                      backgroundColor: frameType === "none" ? "transparent" : "white",
+                      border: frameType === "none" ? "none" : "2px solid white",
+                    }}
+                  >
+                    <SafeImage
+                      src={uploadedPhotoUrl}
+                      alt="上傳的照片"
+                      fill
+                      className="object-contain object-center"
+                      sizes="200px"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className={cn(
+                      "flex h-full w-full items-center justify-center text-xs text-secondary-foreground/70",
+                      photoFrameClipContainerClass(frameType),
+                    )}
+                    style={{
+                      ...photoFrameOuterClipStyle(frameType, frameStyles),
+                      ...photoFrameShapeStyle(frameType),
+                      border: "2px dashed #ffc0cb",
+                      backgroundColor: frameType === "none" ? "transparent" : "rgba(255,255,255,0.9)",
+                    }}
+                  >
+                    照片放置處
+                  </div>
                 )}
-                style={{
-                  ...photoFrameOuterClipStyle(frameType, frameStyles),
-                  ...photoFrameShapeStyle(frameType),
-                  border: "2px dashed #ffc0cb",
-                  backgroundColor: frameType === "none" ? "transparent" : "rgba(255,255,255,0.9)",
-                }}
-              >
-                照片放置處
               </div>
             );
           })()}

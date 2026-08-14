@@ -38,12 +38,12 @@ export function resolveCartItemPreviewUrl(item: CreateQuotationItemInput): strin
     else if (Array.isArray(o.customizations)) list = o.customizations;
   }
 
-  for (const entry of list) {
-    if (!entry || typeof entry !== "object") continue;
-    const c = entry as Record<string, unknown>;
-    const group = typeof c.group === "string" ? c.group : "";
-    if (group !== "screenshot" && group !== "package_screenshot") continue;
+  const pickUrlFromCustomization = (c: Record<string, unknown>): string | null => {
     if (isHttpUrl(c.url)) return c.url.trim();
+    const value = c.value;
+    if (value && typeof value === "object" && isHttpUrl((value as { url?: unknown }).url)) {
+      return String((value as { url: string }).url).trim();
+    }
     if (Array.isArray(c.items)) {
       for (const it of c.items) {
         if (it && typeof it === "object") {
@@ -53,6 +53,18 @@ export function resolveCartItemPreviewUrl(item: CreateQuotationItemInput): strin
           return it.trim();
         }
       }
+    }
+    return null;
+  };
+
+  // 優先合成／包裝截圖；再退回 ai_render（preview_url 已優先於本函式）
+  for (const groupName of ["screenshot", "package_screenshot", "ai_render"] as const) {
+    for (const entry of list) {
+      if (!entry || typeof entry !== "object") continue;
+      const c = entry as Record<string, unknown>;
+      if (c.group !== groupName) continue;
+      const url = pickUrlFromCustomization(c);
+      if (url) return url;
     }
   }
   return null;

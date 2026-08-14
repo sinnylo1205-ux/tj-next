@@ -23,6 +23,7 @@ const GROUP_NAME_MAP: Record<string, string> = {
   text: "文字內容",
   screenshot: "預覽圖",
   package_screenshot: "包裝預覽圖",
+  ai_render: "AI 擬真渲染",
   package_style: "包裝款式",
   box_config: "盒裝配置",
   /** 禮盒外殼顏色（7287/7288/7289，與圖層 color root 分開） */
@@ -39,6 +40,19 @@ interface ConditionalFeeDetail {
   option_name_zh: string;
   fee: number;
 }
+
+/** 截圖上傳並組裝後的購物車品項（尚未寫入 cart） */
+export type PreparedCustomizerCartItem = {
+  product_id: string;
+  name: string;
+  category: string;
+  quantity: number;
+  price: number;
+  total_price: number;
+  preview_url?: string;
+  temp_id: string;
+  customizations: unknown[];
+};
 
 // ✔ 正規化 group：color_14 → color
 const normalizeGroup = (key: string) => {
@@ -180,7 +194,9 @@ export function useAddToCart() {
     backendGrandTotal?: number, // ✅ 後端計算的總價（購物車應信任此值）
     /** 僅包裝小圖區塊：第二次 toBlob 上傳為獨立 customizations 群組 */
     packageCaptureRef?: HTMLDivElement | null,
-  ) => {
+    /** 只組裝 payload（含截圖上傳），不寫入購物車、不導頁 */
+    prepareOnly?: boolean,
+  ): Promise<PreparedCustomizerCartItem | void> => {
     // 如果提供了 onConfirm 回調，先執行確認邏輯
     if (onConfirm) {
       await onConfirm();
@@ -729,6 +745,7 @@ export function useAddToCart() {
             // 針對 URL，給予更具體的 summary 文本
             if (c.group === "screenshot") return "已生成預覽圖";
             if (c.group === "package_screenshot") return "已生成包裝預覽圖";
+            if (c.group === "ai_render") return "已生成 AI 擬真圖";
             if (c.group === "photo") return "已上傳照片";
             if (c.group === "text") return "已上傳文字檔案";
 
@@ -749,6 +766,7 @@ export function useAddToCart() {
               c.group === "text" ||
               c.group === "screenshot" ||
               c.group === "package_screenshot" ||
+              c.group === "ai_render" ||
               c.group === "user_design" ||
               c.group === "package_decoration_upload" ||
               c.group === "luck_text_design") &&
@@ -768,7 +786,7 @@ export function useAddToCart() {
       // 生成臨時 ID 用於關聯甜點與包裝
       const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-      addToCartCustom({
+      const prepared: PreparedCustomizerCartItem = {
         product_id: productId,
         name: productName,
         category,
@@ -776,9 +794,15 @@ export function useAddToCart() {
         price: unitPrice,
         total_price: totalPrice,
         preview_url: screenshotUrl,
-        temp_id: tempId, // 用於關聯包裝設計
+        temp_id: tempId,
         customizations: readableSummary,
-      });
+      };
+
+      if (prepareOnly) {
+        return prepared;
+      }
+
+      addToCartCustom(prepared);
 
       // 僅確保最短 Loading 回饋（約 0.6 秒），不再強制 2 秒
 
