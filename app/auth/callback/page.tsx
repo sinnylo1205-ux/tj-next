@@ -51,6 +51,7 @@ function AuthCallbackContent() {
         } else if (nextFromQuery && pending) {
           next = withResumeAiRender(nextFromQuery);
         }
+        next = sanitizeAppPath(next) || "/";
 
         setMessage(pending ? "正在回到您的設計並繼續 AI 渲染…" : "登入成功，正在導向…");
         finish(next);
@@ -61,7 +62,7 @@ function AuthCallbackContent() {
         const fallback = pending?.return_path
           ? `/login?redirect=${encodeURIComponent(withResumeAiRender(pending.return_path))}`
           : "/login";
-        finish(fallback);
+        finish(sanitizeAppPath(fallback) ? fallback : "/login");
       }
     };
 

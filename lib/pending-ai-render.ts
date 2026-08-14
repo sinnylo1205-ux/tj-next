@@ -24,19 +24,40 @@ export type PendingAiRender = {
   ai_result_url?: string;
 };
 
-/** 只允許站內相對路徑，避免 open redirect */
+const PATH_PLACEHOLDER_ORIGIN = "https://placeholder.local";
+
+/**
+ * 只允許站內相對路徑，避免 open redirect。
+ * Next.js App Router 會用 `new URL(href, location.href)` 解析；`/\//evil.com`
+ * 會變成 `https://evil.com/` 並觸發 MPA `location.assign`。
+ */
 export function sanitizeAppPath(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const trimmed = raw.trim();
   if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return null;
+  // 反斜線在 URL parser／瀏覽器會當斜線，可繞過 `startsWith("//")`
+  if (trimmed.includes("\\")) return null;
+  if (/[\u0000-\u001F\u007F]/.test(trimmed)) return null;
   if (trimmed.includes("://")) return null;
-  return trimmed;
+
+  let url: URL;
+  try {
+    url = new URL(trimmed, PATH_PLACEHOLDER_ORIGIN);
+  } catch {
+    return null;
+  }
+  if (url.origin !== PATH_PLACEHOLDER_ORIGIN) return null;
+  if (url.username || url.password) return null;
+  const out = `${url.pathname}${url.search}${url.hash}`;
+  if (!out.startsWith("/") || out.startsWith("//")) return null;
+  return out;
 }
 
 export function withResumeAiRender(path: string): string {
-  const url = new URL(path, "https://placeholder.local");
+  const safe = sanitizeAppPath(path) || "/";
+  const url = new URL(safe, PATH_PLACEHOLDER_ORIGIN);
   url.searchParams.set("resumeAiRender", "1");
-  return `${url.pathname}${url.search}${url.hash}`;
+  return sanitizeAppPath(`${url.pathname}${url.search}${url.hash}`) || "/?resumeAiRender=1";
 }
 
 export function savePendingAiRender(payload: PendingAiRender): void {
