@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { PresentationViewer } from "@/components/collaboration/PresentationViewer";
 import { HomeWorkGallerySection } from "@/components/collaboration/HomeWorkGallerySection";
+import { CollaborationCasePreview } from "@/components/collaboration/CollaborationCasePreview";
 import { enterpriseProposalSlides, enterpriseProposalToc } from "@/lib/enterprise-proposal-slides";
 import { getFullUrl, SITE_CONFIG } from "@/lib/site";
 
@@ -63,6 +64,8 @@ export default function EnterpriseCollaborationPage() {
           T&J 有豐富的企業合作經驗，從單品設計到甜點佈置，將甜點與活動完美整合，豐富的物流經驗，讓您下單後，甜點就會順利到客戶手上。
         </p>
       </header>
+
+      <CollaborationCasePreview className="mb-10 md:mb-14" />
 
       {/* 首頁下方作品照片 → 企業頁上方 */}
       <HomeWorkGallerySection className="mb-10 md:mb-14" />
