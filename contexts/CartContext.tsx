@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabase";
 import { trackAddToCart } from "@/lib/meta-pixel";
 import { ga4AddToCart } from "@/lib/ga4";
 import { getCartItemUnitPrice } from "@/lib/cart-item-unit-price";
+import { planCartPersist } from "@/lib/cart-persist-plan";
 
 const DISABLE_SUPABASE = false;
 
@@ -73,7 +74,7 @@ function isUuid(id: string): boolean {
   return UUID_REGEX.test(id);
 }
 
-/** 差異同步到 Supabase cart：軟刪除已移除、更新既有、插入新項目，並回傳新插入的 DB 列（供呼叫端更新 item.id） */
+/** 差異同步到 Supabase cart：更新既有、插入新項目（不依快照缺列軟刪除），並回傳新插入的 DB 列（供呼叫端更新 item.id） */
 async function persistCart(
   user: { id: string },
   newItems: CartItem[],
@@ -95,17 +96,12 @@ async function persistCart(
   }
 
   const existingDbRows = dbRows ?? [];
-  const existingDbIdSet = new Set(existingDbRows.map((r) => r.id));
-  const newItemIds = new Set(newItems.map((i) => i.id));
+  const persistPlan = planCartPersist(existingDbRows, newItems);
+  const toUpdateIds = new Set(persistPlan.updateIds);
+  const toInsertIds = new Set(persistPlan.insertIds);
 
-  // 軟刪除：DB 有但 newItems 沒有
-  const removedDbIds = existingDbRows.filter((row) => !newItemIds.has(row.id)).map((row) => row.id);
-  if (removedDbIds.length > 0) {
-    await supabase.from("cart").update({ is_submitted: true }).in("id", removedDbIds);
-  }
-
-  // 更新既有
-  const toUpdate = newItems.filter((i) => existingDbIdSet.has(i.id));
+  // 更新既有（軟刪除只走 removeFromCart / removeItemsByIds / clearCart）
+  const toUpdate = newItems.filter((i) => toUpdateIds.has(i.id));
   for (const item of toUpdate) {
     await supabase
       .from("cart")
@@ -126,7 +122,7 @@ async function persistCart(
   }
 
   // 插入新項目（id 不在 DB 的視為新項目）
-  const toInsert = newItems.filter((i) => !existingDbIdSet.has(i.id));
+  const toInsert = newItems.filter((i) => toInsertIds.has(i.id));
   if (toInsert.length === 0) return { insertedRows: [], insertedItemIds: [] };
 
   const { data: insertedRows, error: insertError } = await supabase
