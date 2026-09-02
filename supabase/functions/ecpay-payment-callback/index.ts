@@ -49,6 +49,20 @@ async function generateCheckMacValueAsync(
   return await sha256(encoded);
 }
 
+/** PostgREST `.single()` with 0 rows. Keep in sync with `lib/ecpay-callback-ack.ts`. */
+function isPostgrestMissingRow(error: { code?: string; message?: string } | null | undefined): boolean {
+  if (!error) return true;
+  if (error.code === "PGRST116") return true;
+  return /0 rows/i.test(error.message ?? "");
+}
+
+function ecpayRetryResponse(): Response {
+  return new Response("0|Error", {
+    status: 200,
+    headers: { "Content-Type": "text/plain" },
+  });
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -141,7 +155,12 @@ serve(async (req) => {
       .eq("id", orderId)
       .single();
 
-    if (findError || !order) {
+    if (!order) {
+      // Transient DB/network errors must not ACK — ECPay would stop retrying and the charge is lost.
+      if (!isPostgrestMissingRow(findError)) {
+        console.error("查詢訂單失敗，請綠界重試:", orderId, findError);
+        return ecpayRetryResponse();
+      }
       console.error("找不到訂單:", orderId, findError);
       return new Response("1|OK", {
         status: 200,
@@ -230,9 +249,9 @@ serve(async (req) => {
 
     if (updateError) {
       console.error("更新訂單狀態失敗:", updateError);
-    } else {
-      console.log("訂單狀態更新成功:", order.id);
+      return ecpayRetryResponse();
     }
+    console.log("訂單狀態更新成功:", order.id);
 
     // 取得用戶資訊
     const { data: userInfo } = await supabase
