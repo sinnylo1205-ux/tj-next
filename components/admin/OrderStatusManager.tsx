@@ -29,6 +29,7 @@ import {
   resolveOrderLineUserId,
 } from "@/lib/order-display";
 import { CUSTOMER_SOURCE_OPTIONS } from "@/lib/customer-source";
+import { formatStoredTaxId, normalizeTaxIdInput, taxIdForDb } from "@/lib/tax-id";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog,
@@ -67,7 +68,7 @@ interface Order {
   auto_cancel_exempt?: boolean;
   admin_note?: string | null;
   Email?: string | null;
-  TAX_id?: number | null;
+  TAX_id?: string | number | null;
   TAX_title?: string | null;
   phone?: string | null;
   line_user_id?: string | null;
@@ -334,7 +335,7 @@ const OrderStatusManager = () => {
       expected_pickup_date: order.expected_pickup_date ?? "",
       notes: order.notes ?? "",
       TAX_title: order.TAX_title ?? "",
-      TAX_id: order.TAX_id ?? "",
+      TAX_id: formatStoredTaxId(order.TAX_id),
       payment_method: order.payment_method ?? "",
       payment_step: order.payment_step ?? "pending",
       order_status: order.order_status ?? "awaiting_payment",
@@ -530,8 +531,7 @@ const OrderStatusManager = () => {
     setSavingEdit(true);
     try {
       const patch: Record<string, any> = { ...editDraft };
-      if (patch.TAX_id === "") patch.TAX_id = null;
-      if (typeof patch.TAX_id === "string") patch.TAX_id = patch.TAX_id ? Number(patch.TAX_id) : null;
+      patch.TAX_id = taxIdForDb(patch.TAX_id);
       if (patch.Email === "") patch.Email = null;
       if (patch.phone === "") patch.phone = null;
       if (patch.line_user_id === "") patch.line_user_id = null;
@@ -686,11 +686,7 @@ const OrderStatusManager = () => {
   const getMissingReceiptTaxFields = (order: Order): string[] => {
     const missing: string[] = [];
     const title = String(order.TAX_title ?? "").trim();
-    const taxIdRaw = order.TAX_id;
-    const taxId =
-      taxIdRaw !== null && taxIdRaw !== undefined && String(taxIdRaw).trim() !== ""
-        ? String(taxIdRaw).trim()
-        : "";
+    const taxId = formatStoredTaxId(order.TAX_id);
     if (!title) missing.push("發票抬頭");
     if (!taxId) missing.push("統一編號");
     return missing;
@@ -733,11 +729,7 @@ const OrderStatusManager = () => {
         month: "2-digit",
         day: "2-digit",
       })}`;
-      const taxIdRaw = order.TAX_id;
-      const taxIdStr =
-        taxIdRaw !== null && taxIdRaw !== undefined && String(taxIdRaw).trim() !== ""
-          ? String(taxIdRaw).trim()
-          : "";
+      const taxIdStr = formatStoredTaxId(order.TAX_id);
       const html = buildReceiptHtml({
         receiptDate,
         tax_title: String(order.TAX_title ?? "").trim(),
@@ -1618,7 +1610,15 @@ const OrderStatusManager = () => {
           </div>
           <div className="space-y-1">
             <span className="text-sm text-muted-foreground">統一編號</span>
-            <Input value={editDraft.TAX_id ?? ""} onChange={(e) => setEditDraft((p) => ({ ...p, TAX_id: e.target.value.replace(/\D/g, "").slice(0, 8) }))} />
+            <Input
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
+              value={editDraft.TAX_id ?? ""}
+              onChange={(e) => setEditDraft((p) => ({ ...p, TAX_id: normalizeTaxIdInput(e.target.value) }))}
+              placeholder="例：01234567"
+              maxLength={8}
+            />
           </div>
 
           <div className="space-y-1">

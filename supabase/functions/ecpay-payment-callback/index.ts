@@ -421,7 +421,11 @@ serve(async (req) => {
       const taxPayload = {
         "updated_at(status.processing)": new Date().toISOString().slice(0, 10),
         tax_title: order.TAX_title || null,
-        tax_id: order.TAX_id ? String(order.TAX_id) : null,
+        tax_id: order.TAX_id
+          ? typeof order.TAX_id === "number"
+            ? String(order.TAX_id).replace(/\D/g, "").padStart(8, "0")
+            : String(order.TAX_id).replace(/\D/g, "").slice(0, 8)
+          : null,
         items: itemsPayload,
         total_amount: order.total_amount,
         total_amount_chinese: toChineseUppercase(order.total_amount || 0),

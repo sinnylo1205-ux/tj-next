@@ -620,7 +620,7 @@ export default function FAQPage() {
                   <button
                     key={`sug-${idx}`}
                     type="button"
-                    className="hoverable-item w-full text-left px-4 py-3 hover:bg-brand-50 transition-colors border-b border-border/50 last:border-b-0"
+                    className="w-full text-left px-4 py-3 hover:bg-brand-50 transition-colors border-b border-border/50 last:border-b-0"
                     onMouseDown={() => handleSuggestionClick(faq, idx)}
                   >
                     <p className="text-sm font-medium text-ink line-clamp-1">{faq.question}</p>
@@ -648,7 +648,7 @@ export default function FAQPage() {
                 type="button"
                 onClick={() => handleTabClick(tab.id)}
                 className={cn(
-                  "hoverable-item group flex flex-col items-center rounded-xl border p-3 transition-all",
+                  "group flex flex-col items-center rounded-xl border p-3 transition-all",
                   isActive
                     ? "border-brand-500 bg-brand-50 shadow-md ring-2 ring-brand-400/40"
                     : "border-border bg-background hover:border-brand-400 hover:shadow-md hover:-translate-y-0.5",

@@ -101,14 +101,14 @@ export default function AdminTextPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background admin-font admin-theme admin-use-default-cursor">
+      <div className="min-h-screen flex items-center justify-center bg-background admin-font admin-theme">
         <p className="text-muted-foreground">載入中...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background admin-font admin-theme admin-use-default-cursor">
+    <div className="min-h-screen bg-background admin-font admin-theme">
       <div className="max-w-4xl mx-auto px-4 py-8 md:py-12">
         <div className="mb-8">
           <Link

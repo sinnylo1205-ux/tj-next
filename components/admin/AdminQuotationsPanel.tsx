@@ -54,6 +54,7 @@ import { SpecialQuotationEditBlock } from "@/components/admin/SpecialQuotationEd
 import { QuotationAiDraftDialog } from "@/components/admin/QuotationAiDraftDialog";
 import { LineUserIdInput } from "@/components/admin/LineUserIdInput";
 import { getCustomerSourceLabel } from "@/lib/customer-source";
+import { formatStoredTaxId, normalizeTaxIdInput } from "@/lib/tax-id";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 // ========== Types ==========
@@ -154,9 +155,7 @@ function readQuotationBilling(allReqRaw: unknown): { tax_title: string; tax_id: 
   const legacyCp = (ar.customer_profile as Record<string, unknown> | undefined) || {};
   return {
     tax_title: String(billing.tax_title ?? legacyCp.tax_title ?? "").trim(),
-    tax_id: String(billing.tax_id ?? legacyCp.tax_id ?? "")
-      .replace(/\D/g, "")
-      .slice(0, 8),
+    tax_id: formatStoredTaxId(billing.tax_id ?? legacyCp.tax_id ?? ""),
   };
 }
 
@@ -2208,11 +2207,14 @@ const AdminQuotationsPanel = () => {
                                   <div className="space-y-1">
                                     <Label className="text-sm">統一編號</Label>
                                     <Input
+                                      type="text"
+                                      inputMode="numeric"
+                                      autoComplete="off"
                                       value={qe.tax_id ?? ""}
                                       onChange={(e) =>
-                                        updateField("tax_id", e.target.value.replace(/\D/g, "").slice(0, 8))
+                                        updateField("tax_id", normalizeTaxIdInput(e.target.value))
                                       }
-                                      placeholder="12345678"
+                                      placeholder="01234567"
                                       maxLength={8}
                                     />
                                   </div>
@@ -2365,7 +2367,7 @@ const AdminQuotationsPanel = () => {
                                   </div>
                                   <div className="space-y-1">
                                     <Label className="text-sm">統一編號</Label>
-                                    <Input value={qe.tax_id ?? ""} onChange={e => updateField("tax_id", e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="12345678" maxLength={8} />
+                                    <Input type="text" inputMode="numeric" autoComplete="off" value={qe.tax_id ?? ""} onChange={e => updateField("tax_id", normalizeTaxIdInput(e.target.value))} placeholder="01234567" maxLength={8} />
                                   </div>
                                 </div>
 
@@ -2538,7 +2540,7 @@ const AdminQuotationsPanel = () => {
                                   </div>
                                   <div className="space-y-1">
                                     <Label className="text-sm">統一編號</Label>
-                                    <Input value={qe.tax_id ?? ""} onChange={e => updateField("tax_id", e.target.value.replace(/\D/g, "").slice(0, 8))} placeholder="12345678" maxLength={8} />
+                                    <Input type="text" inputMode="numeric" autoComplete="off" value={qe.tax_id ?? ""} onChange={e => updateField("tax_id", normalizeTaxIdInput(e.target.value))} placeholder="01234567" maxLength={8} />
                                   </div>
                                 </div>
 

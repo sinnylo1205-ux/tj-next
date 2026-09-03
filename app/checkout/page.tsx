@@ -32,6 +32,7 @@ import { CUSTOMER_SOURCE_OPTIONS, type CustomerSource } from "@/lib/customer-sou
 import { CHECKOUT_INTENT_KEY, type CheckoutIntent } from "@/lib/checkout-create-quotation";
 import { buildQuotationPdfHtml, type QuotationPdfWebhookPayload } from "@/lib/quotation-pdf-html";
 import { cn } from "@/lib/utils";
+import { normalizeTaxIdInput, taxIdForDb } from "@/lib/tax-id";
 
 const CHECKOUT_SELECTED_KEY = "tj_checkout_selected";
 
@@ -447,7 +448,7 @@ export default function CheckoutPage() {
           expected_pickup_date: items[0]?.expected_pickup_date || null,
           Email: email || null,
           TAX_title: taxTitle || null,
-          TAX_id: taxId ? parseInt(taxId) : null,
+          TAX_id: taxIdForDb(taxId),
           customer_source: customerSource,
         })
         .select()
@@ -697,9 +698,12 @@ export default function CheckoutPage() {
                       <Label htmlFor="taxId">統一編號（選填，8 碼數字）</Label>
                       <Input
                         id="taxId"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="off"
                         value={taxId}
-                        onChange={(e) => setTaxId(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                        placeholder="例：12345678"
+                        onChange={(e) => setTaxId(normalizeTaxIdInput(e.target.value))}
+                        placeholder="例：01234567"
                         maxLength={8}
                       />
                     </div>

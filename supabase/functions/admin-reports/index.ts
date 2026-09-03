@@ -35,7 +35,12 @@ function canonicalPopularProductName(displayName: string): string {
   return t;
 }
 
-const REVENUE_ORDER_STATUSES = ["processing", "shipped", "delivered"] as const;
+const REVENUE_ORDER_STATUSES = [
+  "awaiting_payment",
+  "processing",
+  "shipped",
+  "delivered",
+] as const;
 /** 與後台儀表板一致：營收僅計 payment_step=verified（實收） */
 const REVENUE_PAYMENT_STEP = "verified";
 const ANALYTICS_ORDER_STATUSES = [
@@ -86,19 +91,55 @@ type YearlyReportPayload = {
 };
 
 const IN_CHUNK = 450;
+const PAGE_SIZE = 1000;
+
+async function fetchOrdersCreatedInRange<T>(
+  client: SupabaseClient,
+  rangeStart: Date,
+  rangeEnd: Date,
+  select: string,
+  statuses?: readonly string[],
+): Promise<T[]> {
+  const acc: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const to = from + PAGE_SIZE - 1;
+    const filtered =
+      statuses && statuses.length > 0
+        ? client
+            .from("orders")
+            .select(select)
+            .in("order_status", [...statuses])
+            .gte("created_at", rangeStart.toISOString())
+            .lte("created_at", rangeEnd.toISOString())
+        : client
+            .from("orders")
+            .select(select)
+            .gte("created_at", rangeStart.toISOString())
+            .lte("created_at", rangeEnd.toISOString());
+    const { data, error } = await filtered
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    const batch = (data ?? []) as T[];
+    acc.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
+  return acc;
+}
 
 async function fetchOrderIdsInRange(
   client: SupabaseClient,
   rangeStart: Date,
   rangeEnd: Date,
 ): Promise<string[]> {
-  const { data, error } = await client
-    .from("orders")
-    .select("id")
-    .gte("created_at", rangeStart.toISOString())
-    .lte("created_at", rangeEnd.toISOString());
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((r: { id: string }) => r.id);
+  const rows = await fetchOrdersCreatedInRange<{ id: string }>(
+    client,
+    rangeStart,
+    rangeEnd,
+    "id",
+  );
+  return rows.map((r) => r.id);
 }
 
 async function sumRevenueInRange(
@@ -106,16 +147,16 @@ async function sumRevenueInRange(
   rangeStart: Date,
   rangeEnd: Date,
 ): Promise<{ paid: number; verified_count: number }> {
-  const { data, error } = await client
-    .from("orders")
-    .select("total_amount, payment_step")
-    .in("order_status", [...REVENUE_ORDER_STATUSES])
-    .gte("created_at", rangeStart.toISOString())
-    .lte("created_at", rangeEnd.toISOString());
-  if (error) throw new Error(error.message);
+  const rows = await fetchOrdersCreatedInRange<{ total_amount?: number; payment_step?: string }>(
+    client,
+    rangeStart,
+    rangeEnd,
+    "total_amount, payment_step",
+    REVENUE_ORDER_STATUSES,
+  );
   let paid = 0;
   let verified_count = 0;
-  (data ?? []).forEach((r: { total_amount?: number; payment_step?: string }) => {
+  rows.forEach((r) => {
     const amt = Number(r.total_amount ?? 0);
     if (r.payment_step === REVENUE_PAYMENT_STEP) {
       paid += amt;
@@ -130,14 +171,13 @@ async function fetchAnalyticsOrdersInRange(
   rangeStart: Date,
   rangeEnd: Date,
 ): Promise<{ customer_type: string | null }[]> {
-  const { data, error } = await client
-    .from("orders")
-    .select("customer_type")
-    .in("order_status", [...ANALYTICS_ORDER_STATUSES])
-    .gte("created_at", rangeStart.toISOString())
-    .lte("created_at", rangeEnd.toISOString());
-  if (error) throw new Error(error.message);
-  return (data ?? []) as { customer_type: string | null }[];
+  return fetchOrdersCreatedInRange<{ customer_type: string | null }>(
+    client,
+    rangeStart,
+    rangeEnd,
+    "customer_type",
+    ANALYTICS_ORDER_STATUSES,
+  );
 }
 
 function breakdownFromRows(rows: { customer_type: string | null }[]): CustomerTypeCountRow[] {

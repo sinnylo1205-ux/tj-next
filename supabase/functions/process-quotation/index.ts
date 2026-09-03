@@ -17,6 +17,13 @@ const N8N_CALENDAR_WEBHOOK_URL = "https://tjcookies.app.n8n.cloud/webhook/order-
 
 const QUOTATION_KIND_SPECIAL = "special";
 
+function taxIdFromBilling(billingTaxId: unknown): string | null {
+  if (billingTaxId == null || billingTaxId === "") return null;
+  const digits = String(billingTaxId).replace(/\D/g, "").slice(0, 8);
+  if (!digits) return null;
+  return typeof billingTaxId === "number" ? digits.padStart(8, "0") : digits;
+}
+
 const _DISABLED_PROCESS_QUOTATION = false;
 
 Deno.serve(async (req) => {
@@ -688,13 +695,7 @@ async function handleConvertSpecialQuotationToOrders(
     typeof billing.tax_title === "string" && billing.tax_title.trim()
       ? billing.tax_title.trim()
       : null;
-  const taxIdRaw =
-    typeof billing.tax_id === "string"
-      ? billing.tax_id.replace(/\D/g, "").slice(0, 8)
-      : billing.tax_id != null
-        ? String(billing.tax_id).replace(/\D/g, "").slice(0, 8)
-        : "";
-  const taxId = taxIdRaw.length > 0 ? Number(taxIdRaw) : null;
+  const taxId = taxIdFromBilling(billing.tax_id);
 
   const createdOrderIds: string[] = [];
 
@@ -959,13 +960,7 @@ async function handleConvertToOrder(supabase: any, body: any) {
     typeof billing.tax_title === "string" && billing.tax_title.trim()
       ? billing.tax_title.trim()
       : null;
-  const taxIdRaw =
-    typeof billing.tax_id === "string"
-      ? billing.tax_id.replace(/\D/g, "").slice(0, 8)
-      : billing.tax_id != null
-        ? String(billing.tax_id).replace(/\D/g, "").slice(0, 8)
-        : "";
-  const taxId = taxIdRaw.length > 0 ? Number(taxIdRaw) : null;
+  const taxId = taxIdFromBilling(billing.tax_id);
 
   // 3. Create order（優先使用 body 傳入的 user_id、line_user_id，否則用報價單上的）
   const userId = bodyUserId || quotation.user_id || "91a0caff-31ae-460c-87e7-4b3a5d167cc1"; // fallback to admin user

@@ -1,19 +1,19 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { startOfMonth, endOfMonth, startOfYear, endOfYear } from "date-fns";
 
-/** 與儀表板「訂單營收」一致：此三種 order_status 且須已確認到帳（見 sumRevenueInRange） */
-export const REVENUE_ORDER_STATUSES = ["processing", "shipped", "delivered"] as const;
-
-/** 營收只計「實收」：與後台付款步驟「已確認」一致（未匯款先標成處理中的單不會進營收） */
-export const REVENUE_PAYMENT_STEP = "verified" as const;
-
-/** 與客戶類型圓餅／備註筆數一致 */
-export const ANALYTICS_ORDER_STATUSES = [
+/** 儀表板長條圖／月年報告營收：待付款＋處理中＋出貨中＋已送達（不含取消、退貨） */
+export const REVENUE_ORDER_STATUSES = [
   "awaiting_payment",
   "processing",
   "shipped",
   "delivered",
 ] as const;
+
+/** 已匯款／實收：付款步驟已確認到帳（其餘進未匯款） */
+export const REVENUE_PAYMENT_STEP = "verified" as const;
+
+/** 與客戶類型圓餅／備註筆數一致 */
+export const ANALYTICS_ORDER_STATUSES = REVENUE_ORDER_STATUSES;
 
 const CUSTOMER_TYPE_LABELS: Record<string, string> = {
   general: "一般用戶",
@@ -52,7 +52,7 @@ export interface MonthlyReportPayload {
   /** 含未收款：同訂單狀態集合，不限付款狀態（＝長條圖「總營收」） */
   revenue_incl_unpaid_ntd: number;
   order_count: number;
-  /** 處理中／出貨中／已送達 且 payment_step=verified 的筆數（客單價分母） */
+  /** 待付款／處理中／出貨中／已送達 且 payment_step=verified 的筆數（客單價分母） */
   verified_order_count: number;
   /** 實收營收 ÷ verified_order_count */
   aov_verified_ntd: number;
@@ -77,20 +77,59 @@ export interface YearlyReportPayload {
 }
 
 const IN_CHUNK = 450;
+/** PostgREST 預設最多回 1000 列；全年查詢不翻頁會讓後段月份的單消失 */
+const PAGE_SIZE = 1000;
+
+/**
+ * 依建立日取期間內訂單，自動翻頁。不改營收規則，只避免被 1000 筆截斷。
+ */
+export async function fetchOrdersCreatedInRange<T>(
+  client: SupabaseClient,
+  rangeStart: Date,
+  rangeEnd: Date,
+  select: string,
+  statuses?: readonly string[],
+): Promise<T[]> {
+  const acc: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const to = from + PAGE_SIZE - 1;
+    const filtered =
+      statuses && statuses.length > 0
+        ? client
+            .from("orders")
+            .select(select)
+            .in("order_status", [...statuses])
+            .gte("created_at", rangeStart.toISOString())
+            .lte("created_at", rangeEnd.toISOString())
+        : client
+            .from("orders")
+            .select(select)
+            .gte("created_at", rangeStart.toISOString())
+            .lte("created_at", rangeEnd.toISOString());
+    const { data, error } = await filtered
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to);
+    if (error) throw new Error(error.message);
+    const batch = (data ?? []) as T[];
+    acc.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
+  return acc;
+}
 
 async function fetchOrderIdsInRange(
   client: SupabaseClient,
   rangeStart: Date,
   rangeEnd: Date,
 ): Promise<string[]> {
-  const { data, error } = await client
-    .from("orders")
-    .select("id")
-    .gte("created_at", rangeStart.toISOString())
-    .lte("created_at", rangeEnd.toISOString());
-
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => r.id as string);
+  const rows = await fetchOrdersCreatedInRange<{ id: string }>(
+    client,
+    rangeStart,
+    rangeEnd,
+    "id",
+  );
+  return rows.map((r) => r.id);
 }
 
 /**
@@ -102,22 +141,21 @@ async function sumRevenueBreakdownInRange(
   rangeStart: Date,
   rangeEnd: Date,
 ): Promise<{ paid: number; gross: number; verified_count: number }> {
-  const { data, error } = await client
-    .from("orders")
-    .select("total_amount, payment_step")
-    .in("order_status", [...REVENUE_ORDER_STATUSES])
-    .gte("created_at", rangeStart.toISOString())
-    .lte("created_at", rangeEnd.toISOString());
-
-  if (error) throw new Error(error.message);
+  const rows = await fetchOrdersCreatedInRange<{ total_amount?: number; payment_step?: string }>(
+    client,
+    rangeStart,
+    rangeEnd,
+    "total_amount, payment_step",
+    REVENUE_ORDER_STATUSES,
+  );
 
   let paid = 0;
   let gross = 0;
   let verified_count = 0;
-  (data ?? []).forEach((r) => {
-    const amt = Number((r as { total_amount?: number }).total_amount ?? 0);
+  rows.forEach((r) => {
+    const amt = Number(r.total_amount ?? 0);
     gross += amt;
-    if ((r as { payment_step?: string }).payment_step === REVENUE_PAYMENT_STEP) {
+    if (r.payment_step === REVENUE_PAYMENT_STEP) {
       paid += amt;
       verified_count += 1;
     }
@@ -130,15 +168,13 @@ async function fetchAnalyticsOrdersInRange(
   rangeStart: Date,
   rangeEnd: Date,
 ): Promise<{ customer_type: string | null }[]> {
-  const { data, error } = await client
-    .from("orders")
-    .select("customer_type")
-    .in("order_status", [...ANALYTICS_ORDER_STATUSES])
-    .gte("created_at", rangeStart.toISOString())
-    .lte("created_at", rangeEnd.toISOString());
-
-  if (error) throw new Error(error.message);
-  return (data ?? []) as { customer_type: string | null }[];
+  return fetchOrdersCreatedInRange<{ customer_type: string | null }>(
+    client,
+    rangeStart,
+    rangeEnd,
+    "customer_type",
+    ANALYTICS_ORDER_STATUSES,
+  );
 }
 
 function breakdownFromRows(rows: { customer_type: string | null }[]): CustomerTypeCountRow[] {

@@ -14,6 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { CalendarIcon, Plus, Trash2, X, ChevronsUpDown, Check } from "lucide-react";
 import { format } from "date-fns";
+import { normalizeTaxIdInput, taxIdForDb } from "@/lib/tax-id";
 import { cn } from "@/lib/utils";
 import { LineUserIdInput } from "./LineUserIdInput";
 import {
@@ -283,7 +284,7 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
           phone: phone || null, // 訂購人電話
           line_user_id: lineUserId || null, // 手動訂單專用 LINE User ID
           TAX_title: taxTitle || null,
-          TAX_id: taxId ? parseInt(taxId) : null,
+          TAX_id: taxIdForDb(taxId),
         })
         .select("id")
         .single();
@@ -685,12 +686,12 @@ const ManualOrderForm = ({ onClose, onSuccess }: ManualOrderFormProps) => {
           <div className="space-y-2">
             <Label>統一編號（選填，8碼）</Label>
             <Input
+              type="text"
+              inputMode="numeric"
+              autoComplete="off"
               value={taxId}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, "").slice(0, 8);
-                setTaxId(val);
-              }}
-              placeholder="例：12345678"
+              onChange={(e) => setTaxId(normalizeTaxIdInput(e.target.value))}
+              placeholder="例：01234567"
               maxLength={8}
             />
           </div>

@@ -183,7 +183,7 @@ export function HomeBlogShowcaseDialog({ suppressAutoOpen = false }: HomeBlogSho
         >
           <DialogHeader className="relative shrink-0 space-y-0 border-b-2 border-[hsl(var(--color-brand-300))] bg-[hsl(var(--color-brand-100))] px-14 py-3 text-center sm:px-16 sm:py-3.5 sm:text-center">
             <DialogClose
-              className="absolute right-2 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-red-600 text-white shadow-md transition-colors hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 sm:right-3 sm:h-12 sm:w-12"
+              className="absolute right-2 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-red-400 text-white shadow-md transition-colors hover:bg-red-500 focus:outline-none focus:ring-2 focus:ring-red-300 focus:ring-offset-2 sm:right-3 sm:h-12 sm:w-12"
               aria-label="關閉"
             >
               <X className="h-6 w-6 sm:h-7 sm:w-7" strokeWidth={2.5} />

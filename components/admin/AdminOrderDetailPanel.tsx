@@ -23,6 +23,7 @@ import {
   SPECIAL_ORDER_BADGE_CLASS,
   type OrderBuyerDisplay,
 } from "@/lib/order-display";
+import { formatStoredTaxId } from "@/lib/tax-id";
 
 export type AdminOrderDetailOrder = {
   id: string;
@@ -38,7 +39,7 @@ export type AdminOrderDetailOrder = {
   shipping_fee: number;
   total_amount: number;
   TAX_title?: string | null;
-  TAX_id?: number | null;
+  TAX_id?: string | number | null;
   customer_source?: string | null;
   is_manual_order?: boolean;
   is_from_quotation?: boolean;
@@ -209,7 +210,7 @@ export function AdminOrderDetailPanel({
           </div>
           <div>
             <span className="font-medium">統一編號：</span>
-            {order.TAX_id ?? "—"}
+            {formatStoredTaxId(order.TAX_id) || "—"}
           </div>
         </div>
       </div>

@@ -37,6 +37,7 @@ import { CREDIT_CARD_ENABLED_FOR_ALL } from "@/lib/site";
 import { asOrderCustomizationsList } from "@/lib/order-item-customizations";
 import { savePurchaseSnapshot } from "@/lib/purchase-snapshot";
 import { Skeleton } from "@/components/ui/skeleton";
+import { formatStoredTaxId } from "@/lib/tax-id";
 
 interface Order {
   id: string;
@@ -52,7 +53,7 @@ interface Order {
   payment_step: "pending" | "submitted" | "verified";
   order_status: "awaiting_payment" | "processing" | "shipped" | "delivered" | "canceled";
   transfer_last5: string | null;
-  TAX_id: number | null;
+  TAX_id: string | number | null;
   TAX_title: string | null;
 }
 
@@ -383,10 +384,10 @@ function MemberPageContent() {
               <span>{order.TAX_title}</span>
             </div>
           )}
-          {order.TAX_id && (
+          {formatStoredTaxId(order.TAX_id) && (
             <div className="flex justify-between text-sm md:text-base">
               <span className="text-muted-foreground">統一編號</span>
-              <span>{order.TAX_id}</span>
+              <span>{formatStoredTaxId(order.TAX_id)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm md:text-base font-semibold">

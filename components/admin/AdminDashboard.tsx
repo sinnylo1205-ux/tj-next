@@ -31,6 +31,8 @@ import {
   buildYearlyReportPayload,
   canonicalPopularProductName,
   customerTypeDisplayLabel,
+  fetchOrdersCreatedInRange,
+  REVENUE_ORDER_STATUSES,
   REVENUE_PAYMENT_STEP,
   type MonthlyReportPayload,
   type YearlyReportPayload,
@@ -222,14 +224,21 @@ const AdminDashboard = () => {
       rangeEnd = endOfMonth(d);
     }
 
-    const { data: orders, error } = await supabase
-      .from("orders")
-      .select("customer_type, total_amount, payment_step, is_manual_order")
-      .in("order_status", [...CUSTOMER_TYPE_PIE_STATUSES])
-      .gte("created_at", rangeStart.toISOString())
-      .lte("created_at", rangeEnd.toISOString());
-
-    if (error) {
+    let orders: {
+      customer_type: string | null;
+      total_amount?: number;
+      payment_step?: string | null;
+      is_manual_order?: boolean | null;
+    }[] = [];
+    try {
+      orders = await fetchOrdersCreatedInRange(
+        supabase,
+        rangeStart,
+        rangeEnd,
+        "customer_type, total_amount, payment_step, is_manual_order",
+        CUSTOMER_TYPE_PIE_STATUSES,
+      );
+    } catch (error) {
       console.error("Error loading customer type stats:", error);
       setCustomerTypePieData([]);
       setOrderChannelPieData([]);
@@ -309,19 +318,21 @@ const AdminDashboard = () => {
     setOrderChannelPieData(manualCount + websiteCount > 0 ? channelSlices : []);
   };
 
-  // 月營收長條：同 cohort（處理中／出貨中／已送達）拆成總額、已確認到帳、尚未確認金額
+  // 月營收長條：待付款／處理中／出貨中／已送達，拆成總額、已確認到帳、尚未確認金額
   const loadRevenueData = async () => {
     const yearStart = startOfYear(new Date(selectedYear, 0, 1));
     const yearEnd = endOfYear(new Date(selectedYear, 0, 1));
 
-    const { data: orders, error } = await supabase
-      .from("orders")
-      .select("total_amount, created_at, payment_step")
-      .in("order_status", ["processing", "shipped", "delivered"])
-      .gte("created_at", yearStart.toISOString())
-      .lte("created_at", yearEnd.toISOString());
-
-    if (error) {
+    let orders: { total_amount?: number; created_at: string; payment_step?: string | null }[] = [];
+    try {
+      orders = await fetchOrdersCreatedInRange(
+        supabase,
+        yearStart,
+        yearEnd,
+        "total_amount, created_at, payment_step",
+        REVENUE_ORDER_STATUSES,
+      );
+    } catch (error) {
       console.error("Error loading revenue:", error);
       return;
     }
@@ -383,27 +394,39 @@ const AdminDashboard = () => {
       productNameMap.set(p.id, p.name || p.id);
     });
 
-    const { data: ordersData } = await supabase
-      .from("orders")
-      .select("id, created_at")
-      .gte("created_at", rangeStart.toISOString())
-      .lte("created_at", rangeEnd.toISOString());
-
-    if (!ordersData || ordersData.length === 0) {
+    let orderIds: string[] = [];
+    try {
+      const ordersData = await fetchOrdersCreatedInRange<{ id: string }>(
+        supabase,
+        rangeStart,
+        rangeEnd,
+        "id, created_at",
+      );
+      orderIds = ordersData.map((o) => o.id);
+    } catch (error) {
+      console.error("Error loading popular products:", error);
       setPopularProducts([]);
       return;
     }
 
-    const orderIds = ordersData.map((o) => o.id);
-
-    const { data: items, error } = await supabase
-      .from("order_items")
-      .select("product_id, product_name, order_id")
-      .in("order_id", orderIds);
-
-    if (error) {
-      console.error("Error loading popular products:", error);
+    if (orderIds.length === 0) {
+      setPopularProducts([]);
       return;
+    }
+
+    const items: { product_id: string; product_name: string | null }[] = [];
+    const chunkSize = 450;
+    for (let i = 0; i < orderIds.length; i += chunkSize) {
+      const chunk = orderIds.slice(i, i + chunkSize);
+      const { data, error } = await supabase
+        .from("order_items")
+        .select("product_id, product_name, order_id")
+        .in("order_id", chunk);
+      if (error) {
+        console.error("Error loading popular products:", error);
+        return;
+      }
+      items.push(...((data ?? []) as { product_id: string; product_name: string | null }[]));
     }
 
     // 統計每個產品出現次數
@@ -428,13 +451,10 @@ const AdminDashboard = () => {
     const yearStart = startOfYear(new Date(selectedYear, 0, 1));
     const yearEnd = endOfYear(new Date(selectedYear, 0, 1));
 
-    const { data: orders, error } = await supabase
-      .from("orders")
-      .select("created_at")
-      .gte("created_at", yearStart.toISOString())
-      .lte("created_at", yearEnd.toISOString());
-
-    if (error) {
+    let orders: { created_at: string }[] = [];
+    try {
+      orders = await fetchOrdersCreatedInRange(supabase, yearStart, yearEnd, "created_at");
+    } catch (error) {
       console.error("Error loading order count:", error);
       return;
     }
@@ -484,21 +504,21 @@ const AdminDashboard = () => {
       const rangeStart = startOfMonth(new Date(y, m - 1, 1));
       const rangeEnd = endOfMonth(new Date(y, m - 1, 1));
 
-      const { data: rows, error } = await supabase
-        .from("orders")
-        .select("id, who_receive, expected_pickup_date, total_amount, payment_step, created_at")
-        .in("order_status", ["processing", "shipped", "delivered"])
-        .gte("created_at", rangeStart.toISOString())
-        .lte("created_at", rangeEnd.toISOString())
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        console.error("營收明細載入失敗:", error);
-        setRevenueDetailError(error.message || "載入失敗");
-        return;
-      }
-
-      const list = rows ?? [];
+      const list = await fetchOrdersCreatedInRange<{
+        id: string;
+        who_receive?: string | null;
+        expected_pickup_date?: string | null;
+        total_amount?: number;
+        payment_step?: string | null;
+        created_at: string;
+      }>(
+        supabase,
+        rangeStart,
+        rangeEnd,
+        "id, who_receive, expected_pickup_date, total_amount, payment_step, created_at",
+        REVENUE_ORDER_STATUSES,
+      );
+      list.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
 
       const paid: RevenueOrderDetailRow[] = [];
       const unpaid: RevenueOrderDetailRow[] = [];
@@ -598,7 +618,7 @@ const AdminDashboard = () => {
               </div>
             </div>
             <p className="text-sm text-muted-foreground font-normal leading-relaxed">
-              不論訂單狀態為何，只有匯款進度是確認收到匯款，才會進入已匯款金額。不論何時收到匯款，都是併入訂單創立該月。
+              待付款／處理中／出貨中／已送達都會進入長條圖（取消、退貨不計）。只有匯款進度是確認收到匯款，才會進入已匯款金額。不論何時收到匯款，都是併入訂單創立該月。
             </p>
             <p className="text-xs text-[hsl(var(--primary))] font-medium">
               點擊圖表月份可檢視該月訂單明細（收件人／取件日／金額；未付款／已付款分列）
@@ -1093,7 +1113,7 @@ const AdminDashboard = () => {
                   >
                     <div className="text-sm md:text-base font-medium text-foreground/80">1. 月收入（NT$）</div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {monthlyReport.year}年{monthlyReport.month}月 · 實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸月
+                      {monthlyReport.year}年{monthlyReport.month}月 · 實收：待付款／處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸月
                     </p>
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {monthlyReport.revenue_ntd.toLocaleString()}
@@ -1111,7 +1131,7 @@ const AdminDashboard = () => {
                         NT$ {monthlyReport.aov_verified_ntd.toLocaleString()}
                       </span>
                       <span className="text-xs ml-1">
-                        （實收 ÷ {monthlyReport.verified_order_count} 筆；處理中／出貨中／已送達且已確認到帳）
+                        （實收 ÷ {monthlyReport.verified_order_count} 筆；待付款／處理中／出貨中／已送達且已確認到帳）
                       </span>
                     </p>
                   </div>
@@ -1203,7 +1223,7 @@ const AdminDashboard = () => {
                   >
                     <div className="text-sm md:text-base font-medium text-foreground/80">1. 全年收入（NT$）</div>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      {yearlyReport.year}年 · 實收：處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸屬該年
+                      {yearlyReport.year}年 · 實收：待付款／處理中／出貨中／已送達 且 付款「已確認到帳」；依訂單建立日歸屬該年
                     </p>
                     <p className="mt-2 text-2xl md:text-3xl font-bold tabular-nums text-[hsl(var(--primary))]">
                       {yearlyReport.revenue_ntd.toLocaleString()}
@@ -1221,7 +1241,7 @@ const AdminDashboard = () => {
                         NT$ {yearlyReport.aov_verified_ntd.toLocaleString()}
                       </span>
                       <span className="text-xs ml-1">
-                        （實收 ÷ {yearlyReport.verified_order_count} 筆；處理中／出貨中／已送達且已確認到帳）
+                        （實收 ÷ {yearlyReport.verified_order_count} 筆；待付款／處理中／出貨中／已送達且已確認到帳）
                       </span>
                     </p>
                   </div>
@@ -1280,7 +1300,7 @@ const AdminDashboard = () => {
           <DialogHeader className="space-y-1 border-b border-[hsl(var(--primary)/0.2)] bg-[hsl(var(--primary)/0.08)] px-5 py-4 text-left">
             <DialogTitle className="text-lg font-semibold text-[hsl(var(--primary))]">營收明細 · {revenueDetailTitle}</DialogTitle>
             <DialogDescription className="text-sm text-muted-foreground">
-              與長條圖相同範圍：處理中／出貨中／已送達，依訂單建立月；已付款＝匯款進度已確認到帳。清單第一欄為「收件人」（who_receive），非會員帳號姓名。
+              與長條圖相同範圍：待付款／處理中／出貨中／已送達，依訂單建立月；已付款＝匯款進度已確認到帳。清單第一欄為「收件人」（who_receive），非會員帳號姓名。
             </DialogDescription>
           </DialogHeader>
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">

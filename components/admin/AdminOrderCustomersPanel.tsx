@@ -18,7 +18,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
-import { Check, ChevronsUpDown, Loader2, MessageCircle, RefreshCw, Search } from "lucide-react";
+import { Check, ChevronsUpDown, Download, Loader2, MessageCircle, RefreshCw, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   updateOrdersContactForCustomer,
@@ -87,6 +87,41 @@ function orderCustomerTypeLabel(v: string | null | undefined): string | null {
   if (!v) return null;
   if (v === "pr_agency") return "公關代理";
   return CUSTOMER_TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v;
+}
+
+function csvCell(value: string | null | undefined): string {
+  const trimmed = (value ?? "").trim();
+  const out = trimmed === "" ? "/" : trimmed;
+  if (/[",\n\r]/.test(out)) return `"${out.replace(/"/g, '""')}"`;
+  return out;
+}
+
+function matchesCustomerType(row: OrderCustomerRow, type: "pr_agent" | "company_self"): boolean {
+  const t = row.customer_type === "pr_agency" ? "pr_agent" : row.customer_type;
+  return t === type;
+}
+
+function downloadCustomersCsv(list: OrderCustomerRow[], filenameLabel: string) {
+  const header = ["姓名", "公司名稱", "電話", "郵件", "是否有LINE"];
+  const lines = [
+    header.join(","),
+    ...list.map((r) =>
+      [
+        csvCell(r.customer_name),
+        csvCell(r.company_name),
+        csvCell(r.primary_phone),
+        csvCell(r.primary_email),
+        r.has_line ? "是" : "否",
+      ].join(","),
+    ),
+  ];
+  const blob = new Blob([`\uFEFF${lines.join("\n")}`], { type: "text/csv;charset=utf-8;" });
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `顧客_${filenameLabel}_${stamp}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 function ContactTags({
@@ -371,6 +406,35 @@ export default function AdminOrderCustomersPanel({
     });
   }, [rows, search, contactFilter, typeFilter]);
 
+  const exportByType = useCallback(
+    (type: "pr_agent" | "company_self" | "pr_and_company" | "filtered") => {
+      const label =
+        type === "pr_agent"
+          ? "公關代理"
+          : type === "company_self"
+            ? "公司自己"
+            : type === "pr_and_company"
+              ? "公關代理＋公司自己"
+              : "目前篩選";
+      const list =
+        type === "filtered"
+          ? filtered
+          : type === "pr_and_company"
+            ? rows.filter((r) => matchesCustomerType(r, "pr_agent") || matchesCustomerType(r, "company_self"))
+            : rows.filter((r) => matchesCustomerType(r, type));
+      if (list.length === 0) {
+        toast({
+          title: "沒有可匯出的客戶",
+          description: `目前沒有「${label}」的客人資料`,
+        });
+        return;
+      }
+      downloadCustomersCsv(list, label);
+      toast({ title: "已開始下載", description: `${label} ${list.length} 位` });
+    },
+    [filtered, rows, toast],
+  );
+
   const filterButtons: { id: ContactFilter; label: string }[] = [
     { id: "all", label: "全部" },
     { id: "has_line", label: "有 LINE" },
@@ -408,10 +472,51 @@ export default function AdminOrderCustomersPanel({
             className="pl-10"
           />
         </div>
-        <Button type="button" variant="outline" size="sm" onClick={() => void fetchRows()} disabled={loading}>
-          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          <span className="ml-1">重新整理</span>
-        </Button>
+        <div className="flex items-center gap-2">
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" size="sm">
+                <Download className="h-4 w-4" />
+                <span className="ml-1">匯出</span>
+                <ChevronsUpDown className="h-3.5 w-3.5 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-52 p-1" align="end">
+              <button
+                type="button"
+                className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                onClick={() => exportByType("pr_and_company")}
+              >
+                公關代理＋公司自己
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                onClick={() => exportByType("pr_agent")}
+              >
+                公關代理
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm hover:bg-muted"
+                onClick={() => exportByType("company_self")}
+              >
+                公司自己
+              </button>
+              <button
+                type="button"
+                className="flex w-full items-center rounded-sm px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted"
+                onClick={() => exportByType("filtered")}
+              >
+                目前篩選結果
+              </button>
+            </PopoverContent>
+          </Popover>
+          <Button type="button" variant="outline" size="sm" onClick={() => void fetchRows()} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            <span className="ml-1">重新整理</span>
+          </Button>
+        </div>
       </div>
 
       <div className="space-y-2">

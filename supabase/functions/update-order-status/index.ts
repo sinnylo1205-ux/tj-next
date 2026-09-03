@@ -415,7 +415,11 @@ Deno.serve(async (req) => {
         const taxPayload = {
           "updated_at(status.processing)": new Date().toISOString().slice(0, 10),
           tax_title: orderData.TAX_title || null,
-          tax_id: orderData.TAX_id ? String(orderData.TAX_id) : null,
+          tax_id: orderData.TAX_id
+            ? typeof orderData.TAX_id === "number"
+              ? String(orderData.TAX_id).replace(/\D/g, "").padStart(8, "0")
+              : String(orderData.TAX_id).replace(/\D/g, "").slice(0, 8)
+            : null,
           items: itemsPayload,
           total_amount: orderData.total_amount,
           total_amount_chinese: toChineseUppercase(orderData.total_amount || 0),
