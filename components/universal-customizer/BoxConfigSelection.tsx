@@ -16,42 +16,13 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { BoxCapacityOption, BoxColorOption, BoxConfig } from "@/hooks/useUniversalPackageCustomizer";
+import {
+  getCapacityFromName,
+  getCapacityFromOption,
+  isSyntheticVirtualColor,
+  pickAutoColor,
+} from "@/lib/box-config-auto-color";
 import { SafeImage } from "@/components/SafeImage";
-
-function getCapacityFromName(name: string): number {
-  if (name.includes("單入") || name.includes("一入")) return 1;
-  if (name.includes("二入") || name.includes("2入")) return 2;
-  if (name.includes("四入") || name.includes("4入")) return 4;
-  if (name.includes("六入") || name.includes("6入")) return 6;
-  return 1;
-}
-
-function getCapacityFromOption(option: BoxCapacityOption): number {
-  if (option.capacity) return option.capacity;
-  return getCapacityFromName(option.option_name_zh);
-}
-
-function makeVirtualColor(capacity: BoxCapacityOption): BoxColorOption {
-  return {
-    option_id: capacity.option_id * 10000,
-    option_name_zh: capacity.option_name_zh,
-    price_modifier: capacity.price_modifier || 0,
-    box_capacity: getCapacityFromOption(capacity),
-    item_image_url: capacity.item_image_url || "",
-    sort_order: 0,
-  };
-}
-
-/** 無顏色或多餘載入前：自動帶入唯一顏色／虛擬顏色；有多色則回 null 讓使用者選 */
-function pickAutoColor(
-  capacity: BoxCapacityOption,
-  colorOptionsMap: Map<number, BoxColorOption[]>,
-): BoxColorOption | null {
-  const colors = colorOptionsMap.get(capacity.option_id) || [];
-  if (colors.length === 1) return colors[0];
-  if (colors.length === 0) return makeVirtualColor(capacity);
-  return null;
-}
 
 function configsEqual(a: BoxConfig | null, b: BoxConfig | null): boolean {
   if (a === b) return true;
@@ -123,9 +94,18 @@ export function BoxConfigSelection({
     tempCapacity2 && (colorOptions2.length === 0 || isVirtualColorOnly(colorOptions2, tempCapacity2)),
   );
 
-  // 容量選項載入後補上自動顏色，並通知預覽
+  // 容量選項載入後補上自動顏色，並通知預覽。
+  // 若先前因 map 尚未就緒而寫入虛擬色，真實多色載入後必須清掉，避免自動完成寫入假 option_id。
   useEffect(() => {
-    if (!tempCapacity1 || tempColor1) return;
+    if (!tempCapacity1) return;
+    const colors = colorOptionsMap.has(tempCapacity1.option_id)
+      ? colorOptionsMap.get(tempCapacity1.option_id) || []
+      : null;
+    if (tempColor1 && colors && colors.length > 1 && isSyntheticVirtualColor(tempColor1, tempCapacity1)) {
+      setTempColor1(null);
+      return;
+    }
+    if (tempColor1) return;
     const auto = pickAutoColor(tempCapacity1, colorOptionsMap);
     if (!auto) return;
     setTempColor1(auto);
@@ -133,7 +113,15 @@ export function BoxConfigSelection({
   }, [tempCapacity1, tempColor1, colorOptionsMap, onColorSelect]);
 
   useEffect(() => {
-    if (!tempCapacity2 || tempColor2) return;
+    if (!tempCapacity2) return;
+    const colors = colorOptionsMap.has(tempCapacity2.option_id)
+      ? colorOptionsMap.get(tempCapacity2.option_id) || []
+      : null;
+    if (tempColor2 && colors && colors.length > 1 && isSyntheticVirtualColor(tempColor2, tempCapacity2)) {
+      setTempColor2(null);
+      return;
+    }
+    if (tempColor2) return;
     const auto = pickAutoColor(tempCapacity2, colorOptionsMap);
     if (!auto) return;
     setTempColor2(auto);
@@ -182,8 +170,18 @@ export function BoxConfigSelection({
   const remaining = dessertQuantity - packedTotal;
   const isComplete = spec1Filled && (!showConfig2 || spec2Filled) && packedTotal === dessertQuantity;
 
+  const colorsReadyForApply =
+    Boolean(tempCapacity1 && colorOptionsMap.has(tempCapacity1.option_id)) &&
+    (!showConfig2 || !tempCapacity2 || colorOptionsMap.has(tempCapacity2.option_id));
+
   // 規格填完且總容量吻合時自動寫入，不必再點「不需要」
   useEffect(() => {
+    if (!colorsReadyForApply) {
+      if (boxConfig1) onConfig1Change(null);
+      if (boxConfig2) onConfig2Change(null);
+      return;
+    }
+
     if (!spec1Filled) {
       if (boxConfig1) onConfig1Change(null);
       if (boxConfig2) onConfig2Change(null);
@@ -221,6 +219,7 @@ export function BoxConfigSelection({
     if (!configsEqual(boxConfig1, next1)) onConfig1Change(next1);
     if (!configsEqual(boxConfig2, next2)) onConfig2Change(next2);
   }, [
+    colorsReadyForApply,
     spec1Filled,
     spec2Filled,
     showConfig2,
