@@ -503,7 +503,11 @@ export function PreviewCanvas({
 
   // ✅ 包裝預覽圖片：優先使用已確認的配置，其次使用早期容量選擇的預覽圖
   const packagePreviewImage = isBoxedStyle
-    ? boxConfig1?.color.item_image_url || boxPreviewImageUrl || null
+    ? boxConfig1?.color.item_image_url ||
+      boxConfig1?.capacity.item_image_url ||
+      boxPreviewImageUrl ||
+      earlyCapacitySelection?.item_image_url ||
+      null
     : selectedPackageStyle?.item_image_url;
 
   // 獲取包裝裝飾品圖片

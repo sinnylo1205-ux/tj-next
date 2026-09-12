@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import { supabase } from "@/lib/supabase";
+import { syncAuthSessionCookie } from "@/lib/auth-session-cookie";
 
 const DISABLE_SUPABASE = false; // ✅ 本機測試模式：關閉所有 Supabase 連線
 
@@ -23,10 +24,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     // ✅ 正常連線模式
-    supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+      void syncAuthSessionCookie(data.session ?? null);
+    });
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      void syncAuthSessionCookie(session);
     });
 
     return () => listener.subscription.unsubscribe();

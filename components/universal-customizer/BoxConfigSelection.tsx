@@ -18,6 +18,52 @@ import {
 import type { BoxCapacityOption, BoxColorOption, BoxConfig } from "@/hooks/useUniversalPackageCustomizer";
 import { SafeImage } from "@/components/SafeImage";
 
+function getCapacityFromName(name: string): number {
+  if (name.includes("單入") || name.includes("一入")) return 1;
+  if (name.includes("二入") || name.includes("2入")) return 2;
+  if (name.includes("四入") || name.includes("4入")) return 4;
+  if (name.includes("六入") || name.includes("6入")) return 6;
+  return 1;
+}
+
+function getCapacityFromOption(option: BoxCapacityOption): number {
+  if (option.capacity) return option.capacity;
+  return getCapacityFromName(option.option_name_zh);
+}
+
+function makeVirtualColor(capacity: BoxCapacityOption): BoxColorOption {
+  return {
+    option_id: capacity.option_id * 10000,
+    option_name_zh: capacity.option_name_zh,
+    price_modifier: capacity.price_modifier || 0,
+    box_capacity: getCapacityFromOption(capacity),
+    item_image_url: capacity.item_image_url || "",
+    sort_order: 0,
+  };
+}
+
+/** 無顏色或多餘載入前：自動帶入唯一顏色／虛擬顏色；有多色則回 null 讓使用者選 */
+function pickAutoColor(
+  capacity: BoxCapacityOption,
+  colorOptionsMap: Map<number, BoxColorOption[]>,
+): BoxColorOption | null {
+  const colors = colorOptionsMap.get(capacity.option_id) || [];
+  if (colors.length === 1) return colors[0];
+  if (colors.length === 0) return makeVirtualColor(capacity);
+  return null;
+}
+
+function configsEqual(a: BoxConfig | null, b: BoxConfig | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.capacity.option_id === b.capacity.option_id &&
+    a.color.option_id === b.color.option_id &&
+    a.quantity === b.quantity &&
+    a.totalCapacity === b.totalCapacity
+  );
+}
+
 interface BoxConfigSelectionProps {
   dessertQuantity: number;
   boxConfig1: BoxConfig | null;
@@ -65,79 +111,134 @@ export function BoxConfigSelection({
   // 配置二的顏色選項
   const colorOptions2 = tempCapacity2 ? colorOptionsMap.get(tempCapacity2.option_id) || [] : [];
 
-  // ✅ 判斷是否跳過顏色步驟（macaron/donut 沒有顏色選項）
-  const skipColorStep1 = tempCapacity1 && colorOptions1.length === 0;
-  const skipColorStep2 = tempCapacity2 && colorOptions2.length === 0;
+  // 無真實顏色（馬卡龍／甜甜圈等）時跳過顏色步驟
+  const isVirtualColorOnly = (colors: BoxColorOption[], capacity: BoxCapacityOption | null) =>
+    colors.length === 1 &&
+    (colors[0].option_name_zh === "預設" ||
+      (capacity != null && colors[0].option_id === capacity.option_id * 10000));
+  const skipColorStep1 = Boolean(
+    tempCapacity1 && (colorOptions1.length === 0 || isVirtualColorOnly(colorOptions1, tempCapacity1)),
+  );
+  const skipColorStep2 = Boolean(
+    tempCapacity2 && (colorOptions2.length === 0 || isVirtualColorOnly(colorOptions2, tempCapacity2)),
+  );
 
-  // ✅ 當選擇容量時，如果只有一個顏色選項（虛擬顏色），自動選擇它
+  // 容量選項載入後補上自動顏色，並通知預覽
   useEffect(() => {
-    if (tempCapacity1 && !tempColor1 && colorOptions1.length === 1) {
-      // 自動選擇唯一的顏色選項（虛擬或真實）
-      setTempColor1(colorOptions1[0]);
-    } else if (skipColorStep1 && tempCapacity1 && !tempColor1) {
-      // fallback：如果沒有顏色選項，創建虛擬顏色選項
-      const capacityFromMetadata = getCapacityFromOption(tempCapacity1);
-      const virtualColor: BoxColorOption = {
-        option_id: tempCapacity1.option_id,
-        option_name_zh: tempCapacity1.option_name_zh,
-        price_modifier: tempCapacity1.price_modifier,
-        box_capacity: capacityFromMetadata,
-        item_image_url: tempCapacity1.item_image_url || "",
-        sort_order: 0,
-      };
-      setTempColor1(virtualColor);
-    }
-  }, [skipColorStep1, tempCapacity1, tempColor1, colorOptions1]);
+    if (!tempCapacity1 || tempColor1) return;
+    const auto = pickAutoColor(tempCapacity1, colorOptionsMap);
+    if (!auto) return;
+    setTempColor1(auto);
+    onColorSelect?.(auto, 1);
+  }, [tempCapacity1, tempColor1, colorOptionsMap, onColorSelect]);
 
   useEffect(() => {
-    if (tempCapacity2 && !tempColor2 && colorOptions2.length === 1) {
-      setTempColor2(colorOptions2[0]);
-    } else if (skipColorStep2 && tempCapacity2 && !tempColor2) {
-      const capacityFromMetadata = getCapacityFromOption(tempCapacity2);
-      const virtualColor: BoxColorOption = {
-        option_id: tempCapacity2.option_id,
-        option_name_zh: tempCapacity2.option_name_zh,
-        price_modifier: tempCapacity2.price_modifier,
-        box_capacity: capacityFromMetadata,
-        item_image_url: tempCapacity2.item_image_url || "",
-        sort_order: 0,
-      };
-      setTempColor2(virtualColor);
-    }
-  }, [skipColorStep2, tempCapacity2, tempColor2, colorOptions2]);
+    if (!tempCapacity2 || tempColor2) return;
+    const auto = pickAutoColor(tempCapacity2, colorOptionsMap);
+    if (!auto) return;
+    setTempColor2(auto);
+    onColorSelect?.(auto, 2);
+  }, [tempCapacity2, tempColor2, colorOptionsMap, onColorSelect]);
 
-  // ✅ 從 capacity option 讀取容量（優先從 option.capacity，其次從名稱解析）
-  function getCapacityFromOption(option: BoxCapacityOption): number {
-    // 優先使用 option 中的 capacity 欄位（來自 metadata_product）
-    if ((option as any).capacity) {
-      return (option as any).capacity;
-    }
-    // fallback: 從名稱解析
-    return getCapacityFromName(option.option_name_zh);
-  }
+  const applyColor = (color: BoxColorOption, configIndex: 1 | 2) => {
+    if (configIndex === 1) setTempColor1(color);
+    else setTempColor2(color);
+    onColorSelect?.(color, configIndex);
+  };
 
-  // 從名稱中解析容量數字
-  function getCapacityFromName(name: string): number {
-    if (name.includes("單入") || name.includes("一入")) return 1;
-    if (name.includes("二入") || name.includes("2入")) return 2;
-    if (name.includes("四入") || name.includes("4入")) return 4;
-    if (name.includes("六入") || name.includes("6入")) return 6;
-    return 1;
-  }
-
-  // 處理容量選擇
   const handleCapacity1Select = (option: BoxCapacityOption) => {
     setTempCapacity1(option);
-    setTempColor1(null); // 重置顏色選擇
-    // ✅ 立即通知父組件容量選擇，用於早期渲染
     onCapacitySelect?.(option, 1);
+    const auto = pickAutoColor(option, colorOptionsMap);
+    setTempColor1(auto);
+    if (auto) onColorSelect?.(auto, 1);
   };
 
   const handleCapacity2Select = (option: BoxCapacityOption) => {
     setTempCapacity2(option);
-    setTempColor2(null);
     onCapacitySelect?.(option, 2);
+    const auto = pickAutoColor(option, colorOptionsMap);
+    setTempColor2(auto);
+    if (auto) onColorSelect?.(auto, 2);
   };
+
+  const handleCancelConfig2 = () => {
+    setShowConfig2(false);
+    setTempCapacity2(null);
+    setTempColor2(null);
+    setTempQuantity2("");
+  };
+
+  const qty1 = parseInt(tempQuantity1, 10) || 0;
+  const qty2 = showConfig2 ? parseInt(tempQuantity2, 10) || 0 : 0;
+  const capacity1 = tempColor1?.box_capacity || (tempCapacity1 ? getCapacityFromOption(tempCapacity1) : 0);
+  const capacity2 =
+    showConfig2 && tempColor2
+      ? tempColor2.box_capacity || (tempCapacity2 ? getCapacityFromOption(tempCapacity2) : 0)
+      : 0;
+  const spec1Filled = Boolean(tempCapacity1 && tempColor1 && qty1 > 0);
+  const spec2Filled = Boolean(showConfig2 && tempCapacity2 && tempColor2 && qty2 > 0);
+  const packedTotal = capacity1 * qty1 + (showConfig2 ? capacity2 * qty2 : 0);
+  const remaining = dessertQuantity - packedTotal;
+  const isComplete = spec1Filled && (!showConfig2 || spec2Filled) && packedTotal === dessertQuantity;
+
+  // 規格填完且總容量吻合時自動寫入，不必再點「不需要」
+  useEffect(() => {
+    if (!spec1Filled) {
+      if (boxConfig1) onConfig1Change(null);
+      if (boxConfig2) onConfig2Change(null);
+      return;
+    }
+
+    if (showConfig2 && !spec2Filled) {
+      if (boxConfig1) onConfig1Change(null);
+      if (boxConfig2) onConfig2Change(null);
+      return;
+    }
+
+    if (packedTotal !== dessertQuantity) {
+      if (boxConfig1) onConfig1Change(null);
+      if (boxConfig2) onConfig2Change(null);
+      return;
+    }
+
+    const next1: BoxConfig = {
+      capacity: tempCapacity1!,
+      color: tempColor1!,
+      quantity: qty1,
+      totalCapacity: capacity1 * qty1,
+    };
+    const next2: BoxConfig | null =
+      showConfig2 && tempCapacity2 && tempColor2 && qty2 > 0
+        ? {
+            capacity: tempCapacity2,
+            color: tempColor2,
+            quantity: qty2,
+            totalCapacity: capacity2 * qty2,
+          }
+        : null;
+
+    if (!configsEqual(boxConfig1, next1)) onConfig1Change(next1);
+    if (!configsEqual(boxConfig2, next2)) onConfig2Change(next2);
+  }, [
+    spec1Filled,
+    spec2Filled,
+    showConfig2,
+    packedTotal,
+    dessertQuantity,
+    tempCapacity1,
+    tempColor1,
+    qty1,
+    capacity1,
+    tempCapacity2,
+    tempColor2,
+    qty2,
+    capacity2,
+    boxConfig1,
+    boxConfig2,
+    onConfig1Change,
+    onConfig2Change,
+  ]);
 
   // 驗證並確認配置
   const handleValidate = () => {
@@ -186,7 +287,14 @@ export function BoxConfigSelection({
     <div className="space-y-6">
       {/* 配置一 */}
       <div className="space-y-4 p-4 border-2 border-primary/20 rounded-xl bg-card">
-        <h4 className="font-semibold text-lg">規格一</h4>
+        <h4 className="font-semibold text-lg flex items-center justify-between gap-2">
+          <span>規格一</span>
+          {isComplete && !showConfig2 && (
+            <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-0.5">
+              已完成配置
+            </span>
+          )}
+        </h4>
 
         {/* 步驟 1: 選擇盒子容量（Grid 顯示照片） */}
         <div className="space-y-2">
@@ -223,17 +331,14 @@ export function BoxConfigSelection({
         </div>
 
         {/* 步驟 2: 選擇顏色（只有當有顏色選項時才顯示） */}
-        {tempCapacity1 && colorOptions1.length > 0 && (
+        {tempCapacity1 && colorOptions1.length > 0 && !skipColorStep1 && (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">2. 選擇盒子顏色</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {colorOptions1.map((color) => (
                 <button
                   key={color.option_id}
-                  onClick={() => {
-                    setTempColor1(color);
-                    onColorSelect?.(color, 1); // ✅ 立即通知父組件顏色選擇
-                  }}
+                  onClick={() => applyColor(color, 1)}
                   className={`flex flex-col items-center p-3 rounded-xl border-2 transition-all ${
                     tempColor1?.option_id === color.option_id
                       ? "border-primary bg-primary/10 scale-105"
@@ -282,25 +387,48 @@ export function BoxConfigSelection({
         )}
       </div>
 
-      {/* 是否繼續選擇配置二 */}
-      {tempCapacity1 && tempColor1 && tempQuantity1 && !showConfig2 && (
+      {/* 規格一填完後：容量吻合則自動完成；不足／超出才問第二種規格 */}
+      {spec1Filled && !showConfig2 && (
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">需要第二種規格的盒子嗎？</p>
-          <div className="flex gap-2">
-            <Button onClick={() => setShowConfig2(true)} variant="outline">
-              需要
-            </Button>
-            <Button onClick={handleValidate} variant="default">
-              不需要
-            </Button>
-          </div>
+          {isComplete ? (
+            <p className="text-sm text-emerald-700">
+              已自動完成配置：{tempCapacity1?.option_name_zh} × {qty1} 盒，剛好分裝 {dessertQuantity}{" "}
+              顆。可直接加入購物車。
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-muted-foreground">
+                {remaining > 0
+                  ? `目前可裝 ${packedTotal} 顆，還差 ${remaining} 顆。請調整盒數，或新增第二種規格。`
+                  : `目前可裝 ${packedTotal} 顆，比訂購數量多 ${Math.abs(remaining)} 顆。請減少盒數。`}
+              </p>
+              {remaining > 0 && (
+                <>
+                  <p className="text-sm text-muted-foreground">需要第二種規格的盒子嗎？</p>
+                  <div className="flex gap-2">
+                    <Button onClick={() => setShowConfig2(true)} variant="outline">
+                      需要
+                    </Button>
+                    <Button onClick={handleValidate} variant="default">
+                      不需要，只用這一種
+                    </Button>
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
 
       {/* 配置二 */}
       {showConfig2 && (
         <div className="space-y-4 p-4 border-2 border-primary/20 rounded-xl bg-card">
-          <h4 className="font-semibold text-lg">規格二</h4>
+        <h4 className="font-semibold text-lg flex items-center justify-between gap-2">
+          <span>規格二</span>
+          <Button type="button" variant="ghost" size="sm" onClick={handleCancelConfig2}>
+            返回（不需要第二種規格）
+          </Button>
+        </h4>
 
           {/* 步驟 1: 選擇盒子容量（Grid 顯示照片） */}
           <div className="space-y-2">
@@ -337,17 +465,14 @@ export function BoxConfigSelection({
           </div>
 
           {/* 步驟 2: 選擇顏色（只有當有顏色選項時才顯示） */}
-          {tempCapacity2 && colorOptions2.length > 0 && (
+          {tempCapacity2 && colorOptions2.length > 0 && !skipColorStep2 && (
             <div className="space-y-2">
               <p className="text-sm text-muted-foreground">2. 選擇盒子顏色</p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {colorOptions2.map((color) => (
                   <button
                     key={color.option_id}
-                    onClick={() => {
-                      setTempColor2(color);
-                      onColorSelect?.(color, 2); // ✅ 立即通知父組件顏色選擇
-                    }}
+                    onClick={() => applyColor(color, 2)}
                     className={`flex flex-col items-center p-3 rounded-xl border-2 transition-all ${
                       tempColor2?.option_id === color.option_id
                         ? "border-primary bg-primary/10 scale-105"
@@ -397,11 +522,23 @@ export function BoxConfigSelection({
         </div>
       )}
 
-      {/* 驗證按鈕 */}
-      {tempCapacity1 && tempColor1 && tempQuantity1 && showConfig2 && tempCapacity2 && tempColor2 && tempQuantity2 && (
-        <Button onClick={handleValidate} variant="default" className="w-full">
-          驗證並確認配置
-        </Button>
+      {/* 驗證按鈕：規格二填完但尚未吻合時才需要手動驗證 */}
+      {spec2Filled && !isComplete && (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            {remaining > 0
+              ? `目前可裝 ${packedTotal} 顆，還差 ${remaining} 顆。`
+              : `目前可裝 ${packedTotal} 顆，比訂購數量多 ${Math.abs(remaining)} 顆。`}
+          </p>
+          <Button onClick={handleValidate} variant="default" className="w-full">
+            驗證並確認配置
+          </Button>
+        </div>
+      )}
+      {showConfig2 && isComplete && (
+        <p className="text-sm text-emerald-700">
+          已自動完成配置，兩種規格合計剛好分裝 {dessertQuantity} 顆。可直接加入購物車。
+        </p>
       )}
 
       {/* 錯誤彈窗 */}

@@ -7,7 +7,8 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { supabase } from "@/lib/supabase";
-import { buildAuthCallbackUrl, loadPendingAiRender, resolveAuthNextPath } from "@/lib/pending-ai-render";
+import { buildAuthCallbackUrl, loadPendingAiRender, resolveAuthNextPath, sanitizeAppPath } from "@/lib/pending-ai-render";
+import { isAdminAppPath, syncAuthSessionCookie } from "@/lib/auth-session-cookie";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,6 +52,32 @@ function LoginPageContent() {
     }
   }, [searchParams, toast]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const resumeAdminIfAlreadySignedIn = async () => {
+      const requested = sanitizeAppPath(searchParams.get("redirect"));
+      if (!isAdminAppPath(requested)) return;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session || cancelled) return;
+      await syncAuthSessionCookie(session);
+      if (cancelled) return;
+      const { data: adminRole } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", session.user.id)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (cancelled) return;
+      router.replace(adminRole ? requested! : "/");
+    };
+    void resumeAdminIfAlreadySignedIn();
+    return () => {
+      cancelled = true;
+    };
+  }, [router, searchParams]);
+
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
@@ -78,14 +105,22 @@ function LoginPageContent() {
         toast({ title: "登入後讀取資料發生錯誤", variant: "destructive" });
         return;
       }
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      await syncAuthSessionCookie(session ?? null);
       const { data: adminRole } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", userData.user.id)
         .eq("role", "admin")
         .maybeSingle();
-      // 非 admin：優先回到 AI pending 編輯器／redirect query
-      const redirectTo = adminRole ? "/admin" : resolveAuthNextPath(searchParams.get("redirect"));
+      const requested = sanitizeAppPath(searchParams.get("redirect"));
+      const redirectTo = adminRole
+        ? isAdminAppPath(requested)
+          ? requested!
+          : "/admin"
+        : resolveAuthNextPath(searchParams.get("redirect"));
       setPendingRedirect(redirectTo);
       setShowSuccessDialog(true);
     } catch {

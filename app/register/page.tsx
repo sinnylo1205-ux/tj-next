@@ -26,7 +26,7 @@ const registerSchema = z.object({
   email: z.string().email({ message: "請輸入有效的 Email" }),
   password: z.string().min(8, { message: "密碼至少需要 8 個字元" }).regex(/^(?=.*[A-Za-z])(?=.*\d)/, { message: "密碼需包含字母與數字" }),
   phone: z.string().optional(),
-  role: z.enum(["consumer", "admin", "business"]),
+  role: z.enum(["consumer", "business"]),
   termsAgreed: z.boolean().refine((val) => val === true, { message: "請同意服務條款" }),
 });
 
@@ -124,7 +124,7 @@ function RegisterPageContent() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="role">身份</Label>
-              <Select onValueChange={(v) => form.setValue("role", v as "consumer" | "admin" | "business")} defaultValue="consumer">
+              <Select onValueChange={(v) => form.setValue("role", v as "consumer" | "business")} defaultValue="consumer">
                 <SelectTrigger id="role"><SelectValue placeholder="請選擇" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="consumer">個人顧客</SelectItem>

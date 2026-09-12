@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabase";
+import { syncAuthSessionCookie } from "@/lib/auth-session-cookie";
 import {
   loadPendingAiRender,
   sanitizeAppPath,
@@ -51,6 +52,11 @@ function AuthCallbackContent() {
         } else if (nextFromQuery && pending) {
           next = withResumeAiRender(nextFromQuery);
         }
+
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        await syncAuthSessionCookie(session ?? null);
 
         setMessage(pending ? "正在回到您的設計並繼續 AI 渲染…" : "登入成功，正在導向…");
         finish(next);

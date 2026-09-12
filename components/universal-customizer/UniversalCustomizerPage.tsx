@@ -6,7 +6,7 @@ import { getProductConfig, ProductConfig } from "@/config/product-registry";
 import { supabase } from "@/lib/supabase";
 import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
 import { useUniversalCustomizer } from "@/hooks/useUniversalCustomizer";
-import { useUniversalPackageCustomizer, type BoxColorOption } from "@/hooks/useUniversalPackageCustomizer";
+import { useUniversalPackageCustomizer, type BoxCapacityOption, type BoxColorOption } from "@/hooks/useUniversalPackageCustomizer";
 import { useHierarchicalOptions } from "@/hooks/useHierarchicalOptions";
 import { usePhotoUpload } from "@/hooks/usePhotoUpload";
 import { useTextInputRenderer } from "@/hooks/useTextInputRenderer";
@@ -487,22 +487,36 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
   // 判斷是否為盒裝（option_id = 7030）
   const isBoxedStyle = packageState.selectedPackageStyle?.option_id === 7030;
 
-  // ✅ 臨時盒子預覽狀態（顏色選擇但未確認時用於即時渲染）
+  // 臨時盒子預覽（選容量／顏色後立刻顯示，不必等確認）
   const [tempBoxColorPreview1, setTempBoxColorPreview1] = useState<BoxColorOption | null>(null);
   const [tempBoxColorPreview2, setTempBoxColorPreview2] = useState<BoxColorOption | null>(null);
 
-  // ✅ 當配置確認後清除臨時預覽狀態
   useEffect(() => {
-    if (packageState.boxConfig1) setTempBoxColorPreview1(null);
-  }, [packageState.boxConfig1]);
+    if (!isBoxedStyle) {
+      setTempBoxColorPreview1(null);
+      setTempBoxColorPreview2(null);
+    }
+  }, [isBoxedStyle]);
 
-  useEffect(() => {
-    if (packageState.boxConfig2) setTempBoxColorPreview2(null);
-  }, [packageState.boxConfig2]);
+  const previewColorFromCapacity = (capacity: BoxCapacityOption): BoxColorOption => {
+    const colors = packageState.boxColorOptionsMap.get(capacity.option_id) || [];
+    if (colors[0]) return colors[0];
+    return {
+      option_id: capacity.option_id,
+      option_name_zh: capacity.option_name_zh,
+      price_modifier: 0,
+      box_capacity: capacity.capacity || 1,
+      item_image_url: capacity.item_image_url || "",
+      sort_order: 0,
+    };
+  };
 
-  // ✅ 盒裝預覽圖片（優先已確認配置，其次臨時預覽）
+  // 盒裝預覽：已確認配置 → 容量圖 → 臨時選取
   const boxPreviewImageUrl =
-    packageState.boxConfig1?.color.item_image_url || tempBoxColorPreview1?.item_image_url || null;
+    packageState.boxConfig1?.color.item_image_url ||
+    packageState.boxConfig1?.capacity.item_image_url ||
+    tempBoxColorPreview1?.item_image_url ||
+    null;
 
   // 計算包裝裝飾品數量（盒裝用盒數量，預設包裝用甜點數量）
   const packageDecorationQuantity = isBoxedStyle
@@ -1912,12 +1926,14 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
             onConfig2Change={packageState.setBoxConfig2}
             capacityOptions={packageState.boxCapacityOptions}
             colorOptionsMap={packageState.boxColorOptionsMap}
+            onCapacitySelect={(capacity, configIndex) => {
+              const preview = previewColorFromCapacity(capacity);
+              if (configIndex === 1) setTempBoxColorPreview1(preview);
+              else setTempBoxColorPreview2(preview);
+            }}
             onColorSelect={(color, configIndex) => {
-              if (configIndex === 1) {
-                setTempBoxColorPreview1(color);
-              } else {
-                setTempBoxColorPreview2(color);
-              }
+              if (configIndex === 1) setTempBoxColorPreview1(color);
+              else setTempBoxColorPreview2(color);
             }}
           />
         </div>,

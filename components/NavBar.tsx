@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { Menu, X, User, ShoppingCart, LogOut } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
+import { syncAuthSessionCookie } from "@/lib/auth-session-cookie";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -64,6 +65,7 @@ const NavBar = () => {
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut({ scope: "local" });
+      await syncAuthSessionCookie(null);
       if (typeof window !== "undefined") {
         Object.keys(localStorage).forEach((key) => {
           if (key.startsWith("sb-") || key.includes("supabase")) {
