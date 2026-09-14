@@ -17,26 +17,15 @@ import {
 } from "@/components/ui/alert-dialog";
 import type { BoxCapacityOption, BoxColorOption, BoxConfig } from "@/hooks/useUniversalPackageCustomizer";
 import { SafeImage } from "@/components/SafeImage";
-
-function getCapacityFromName(name: string): number {
-  if (name.includes("單入") || name.includes("一入")) return 1;
-  if (name.includes("二入") || name.includes("2入")) return 2;
-  if (name.includes("四入") || name.includes("4入")) return 4;
-  if (name.includes("六入") || name.includes("6入")) return 6;
-  return 1;
-}
-
-function getCapacityFromOption(option: BoxCapacityOption): number {
-  if (option.capacity) return option.capacity;
-  return getCapacityFromName(option.option_name_zh);
-}
+import { getCapacityFromOption, resolvePackedCapacity } from "@/lib/box-capacity";
 
 function makeVirtualColor(capacity: BoxCapacityOption): BoxColorOption {
+  const boxCapacity = getCapacityFromOption(capacity);
   return {
     option_id: capacity.option_id * 10000,
     option_name_zh: capacity.option_name_zh,
     price_modifier: capacity.price_modifier || 0,
-    box_capacity: getCapacityFromOption(capacity),
+    box_capacity: boxCapacity,
     item_image_url: capacity.item_image_url || "",
     sort_order: 0,
   };
@@ -171,11 +160,8 @@ export function BoxConfigSelection({
 
   const qty1 = parseInt(tempQuantity1, 10) || 0;
   const qty2 = showConfig2 ? parseInt(tempQuantity2, 10) || 0 : 0;
-  const capacity1 = tempColor1?.box_capacity || (tempCapacity1 ? getCapacityFromOption(tempCapacity1) : 0);
-  const capacity2 =
-    showConfig2 && tempColor2
-      ? tempColor2.box_capacity || (tempCapacity2 ? getCapacityFromOption(tempCapacity2) : 0)
-      : 0;
+  const capacity1 = resolvePackedCapacity(tempCapacity1, tempColor1);
+  const capacity2 = showConfig2 ? resolvePackedCapacity(tempCapacity2, tempColor2) : 0;
   const spec1Filled = Boolean(tempCapacity1 && tempColor1 && qty1 > 0);
   const spec2Filled = Boolean(showConfig2 && tempCapacity2 && tempColor2 && qty2 > 0);
   const packedTotal = capacity1 * qty1 + (showConfig2 ? capacity2 * qty2 : 0);
@@ -245,8 +231,8 @@ export function BoxConfigSelection({
     const qty1 = parseInt(tempQuantity1) || 0;
     const qty2 = showConfig2 ? parseInt(tempQuantity2) || 0 : 0;
 
-    const capacity1 = tempColor1?.box_capacity || getCapacityFromName(tempCapacity1?.option_name_zh || "");
-    const capacity2 = tempColor2?.box_capacity || getCapacityFromName(tempCapacity2?.option_name_zh || "");
+    const capacity1 = resolvePackedCapacity(tempCapacity1, tempColor1);
+    const capacity2 = showConfig2 ? resolvePackedCapacity(tempCapacity2, tempColor2) : 0;
 
     const totalCapacity = capacity1 * qty1 + capacity2 * qty2;
 
@@ -261,20 +247,22 @@ export function BoxConfigSelection({
   // 確認配置
   const handleConfirm = () => {
     if (tempCapacity1 && tempColor1 && tempQuantity1) {
+      const qty = parseInt(tempQuantity1);
       onConfig1Change({
         capacity: tempCapacity1,
         color: tempColor1,
-        quantity: parseInt(tempQuantity1),
-        totalCapacity: tempColor1.box_capacity * parseInt(tempQuantity1),
+        quantity: qty,
+        totalCapacity: resolvePackedCapacity(tempCapacity1, tempColor1) * qty,
       });
     }
 
     if (showConfig2 && tempCapacity2 && tempColor2 && tempQuantity2) {
+      const qty = parseInt(tempQuantity2);
       onConfig2Change({
         capacity: tempCapacity2,
         color: tempColor2,
-        quantity: parseInt(tempQuantity2),
-        totalCapacity: tempColor2.box_capacity * parseInt(tempQuantity2),
+        quantity: qty,
+        totalCapacity: resolvePackedCapacity(tempCapacity2, tempColor2) * qty,
       });
     } else {
       onConfig2Change(null);

@@ -5,6 +5,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { calculatePrice, type PriceBreakdown, type PriceValidation, debounce } from "@/lib/priceApi";
+import { getCapacityFromOption } from "@/lib/box-capacity";
 
 export interface PackageStyleOption {
   option_id: number;
@@ -283,7 +284,10 @@ export function useUniversalPackageCustomizer(
                 option_id: opt.option_id,
                 option_name_zh: opt.option_name_zh,
                 price_modifier: opt.price_modifier || 0,
-                box_capacity: metadata?.capacity || capacity.capacity || 1, // ✅ 優先從 metadata，其次從 capacity option
+                box_capacity:
+                  typeof metadata?.capacity === "number" && metadata.capacity > 0
+                    ? metadata.capacity
+                    : getCapacityFromOption(capacity),
                 item_image_url: imageUrlMap.get(opt.option_id) || "",
                 sort_order: opt.sort_order_master ?? 9999,
               };
@@ -295,7 +299,7 @@ export function useUniversalPackageCustomizer(
               option_id: capacity.option_id * 10000, // 創建唯一 ID
               option_name_zh: "預設",
               price_modifier: 0,
-              box_capacity: capacity.capacity || 1,
+              box_capacity: getCapacityFromOption(capacity),
               item_image_url: capacity.item_image_url,
               sort_order: 0,
             };
