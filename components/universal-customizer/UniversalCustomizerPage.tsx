@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { prepareImageForUpload } from "@/lib/prepare-upload-image-client";
 import { useUniversalCustomizer } from "@/hooks/useUniversalCustomizer";
 import { useUniversalPackageCustomizer, type BoxCapacityOption, type BoxColorOption } from "@/hooks/useUniversalPackageCustomizer";
+import { getCapacityFromOption } from "@/lib/box-capacity";
 import { useHierarchicalOptions } from "@/hooks/useHierarchicalOptions";
 import { usePhotoUpload } from "@/hooks/usePhotoUpload";
 import { useTextInputRenderer } from "@/hooks/useTextInputRenderer";
@@ -505,7 +506,7 @@ function UniversalCustomizerContent({ productType, config, productData, navigate
       option_id: capacity.option_id,
       option_name_zh: capacity.option_name_zh,
       price_modifier: 0,
-      box_capacity: capacity.capacity || 1,
+      box_capacity: getCapacityFromOption(capacity),
       item_image_url: capacity.item_image_url || "",
       sort_order: 0,
     };
