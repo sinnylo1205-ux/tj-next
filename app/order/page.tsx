@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight, Images, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { QUERY_KEYS } from "@/lib/react-query-keys";
-import { trackLineClick } from "@/lib/track-line-click";
 import { optimizeImage } from "@/lib/supabase-image-url";
 
 interface ProductItem {
@@ -50,6 +49,16 @@ const ORDER_QUERY_KEYS = {
   orderProducts: QUERY_KEYS.orderProducts,
 };
 
+/** /order 目前可進入訂購須知頁的品項；其餘點擊改開完售彈窗 */
+const ORDERABLE_PRODUCT_IDS = new Set([
+  "macaron",
+  "cupcake_cream",
+  "cupcake_choco",
+  "cookie",
+  "popcorn",
+  "donut",
+]);
+
 /** 依視窗寬度解析範例圖；桌機／手機互為 fallback，避免切到空 src */
 function resolveExampleSrc(slide: OrderExampleSlide | undefined, isNarrow: boolean): string {
   if (!slide) return "";
@@ -63,7 +72,7 @@ export default function OrderPage() {
   const router = useRouter();
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
-  const [showCakeDialog, setShowCakeDialog] = useState(false);
+  const [showSoldOutDialog, setShowSoldOutDialog] = useState(false);
   const [showExamplesDialog, setShowExamplesDialog] = useState(false);
   const [exampleSlideIndex, setExampleSlideIndex] = useState(0);
   const [exampleImageLoaded, setExampleImageLoaded] = useState(false);
@@ -273,10 +282,10 @@ export default function OrderPage() {
   });
 
   const handleItemClick = (productId: string) => {
-    if (productId === "cake") {
-      setShowCakeDialog(true);
-    } else {
+    if (ORDERABLE_PRODUCT_IDS.has(productId)) {
       router.push(`/product/${productId}`);
+    } else {
+      setShowSoldOutDialog(true);
     }
   };
 
@@ -587,40 +596,22 @@ export default function OrderPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 客製化蛋糕服務彈窗 */}
-      <Dialog open={showCakeDialog} onOpenChange={setShowCakeDialog}>
+      {/* 非允許品項完售彈窗 */}
+      <Dialog open={showSoldOutDialog} onOpenChange={setShowSoldOutDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>客製化蛋糕服務</DialogTitle>
-            <DialogDescription asChild>
-              <div className="pt-4 space-y-3 text-sm text-muted-foreground">
-                <p>此品項目前沒有線上編輯器。</p>
-                <p>請直接填寫報價單，或聯絡 LINE 官方客服，由專人為您服務。</p>
-                <p>報價範圍：六寸，寫字簡單 3000～4000 元起，擬真模仿 6000 起，食品原料也可調整。</p>
-                <p>八寸，寫字簡單 5000～6000 元起，擬真模仿 8000 起，食品原料也可調整。</p>
-                <p>如果預算可接受，歡迎點擊 LINE 選單的報價單，並附上您希望我們製作的蛋糕參考圖。</p>
-              </div>
+            <DialogTitle>完售</DialogTitle>
+            <DialogDescription className="pt-4 text-sm text-muted-foreground">
+              完售，目前僅可購買馬卡龍 杯子蛋糕 手工餅乾 爆米花 甜甜圈等品項
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex flex-col sm:flex-row gap-2 pt-4">
-            <Button asChild variant="outline" className="w-full sm:w-auto">
-              <a
-                href="https://docs.google.com/forms/d/e/1FAIpQLScrt3q-K9zGyYLxzJGoK0HpYuqy1qDrtHuL52_5QjeExaB3tw/viewform"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                填寫報價單
-              </a>
-            </Button>
-            <Button asChild className="w-full sm:w-auto">
-              <a
-                href="https://lin.ee/Tp9U5bf"
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={() => trackLineClick("order_cake_dialog")}
-              >
-                LINE 官方客服
-              </a>
+          <DialogFooter className="pt-4">
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={() => setShowSoldOutDialog(false)}
+            >
+              關閉
             </Button>
           </DialogFooter>
         </DialogContent>

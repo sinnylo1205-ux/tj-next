@@ -17,6 +17,15 @@ import { LoadingScreen } from "@/components/LoadingScreen";
 import { useIsMobile } from "@/hooks/use-mobile";
 import ProgressiveImage from "@/components/ProgressiveImage";
 import { SafeImage } from "@/components/SafeImage";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 import type { ClassicInitialData, ClassicProduct } from "./types";
 import type { BackgroundSection, ForegroundItem, Section4TextItem } from "./types";
 
@@ -73,6 +82,7 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
   const router = useRouter();
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState<string>("mermaid");
+  const [showDiscontinuedDialog, setShowDiscontinuedDialog] = useState(true);
 
   const handleTabClick = (tabKey: string) => {
     setActiveTab(tabKey);
@@ -496,6 +506,26 @@ export function ClassicStylesClient({ initialData }: ClassicStylesClientProps) {
           <p className="text-muted-foreground">尚未設定頁面區塊。</p>
         </div>
       )}
+
+      <Dialog open={showDiscontinuedDialog} onOpenChange={setShowDiscontinuedDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>停止販售</DialogTitle>
+            <DialogDescription className="pt-4 text-sm text-muted-foreground">
+              本區商品已停止販售，可供瀏覽不提供販售。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="pt-4">
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={() => setShowDiscontinuedDialog(false)}
+            >
+              關閉
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 }

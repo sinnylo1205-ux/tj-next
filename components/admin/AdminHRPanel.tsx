@@ -80,14 +80,14 @@ const EMPLOYEE_WAGE: Record<string, EmployeeWageConfig> = {
   },
   xinyi: {
     mode: "fixed_monthly_leave_deduct",
-    fixedMonthlyYuan: 22000,
+    fixedMonthlyYuan: 26000,
     workDaysDivisor: 20,
     hoursPerDay: 4,
     laborHealthInsuranceYuan: 993,
     laborHealthInsuranceComment:
       "勞保：$22,000 × 費率 12.5% × 員工自付 20% = $550 元\n健保：$28,590 × 費率 5.17% × 員工自付 30% = $443",
     leaveDeductComment:
-      "固定月薪22000。日薪=22000/20個工作天；時薪=日薪/4小時；全日請假以4小時計。應發=固定月薪−請假扣薪+勞健保993。",
+      "固定月薪26000。日薪=26000/20個工作天；時薪=日薪/4小時；全日請假以4小時計。應發=固定月薪−請假扣薪+勞健保993。",
   },
 };
 
@@ -104,9 +104,21 @@ function isFullHour(s: number): boolean {
   return s % 1 === 0;
 }
 
-const DEFAULT_WORK_DAYS = [3, 4, 5]; // Wed, Thu, Fri
-const DEFAULT_START = 9;
-const DEFAULT_END = 18; // 9:00–18:00 → slots 9, 9.5, 10, … 17.5
+type DefaultWorkPattern = { workDays: number[]; start: number; end: number };
+
+/** Betty／心怡（2026-09 前）：週三至週五 09:00–18:00 */
+const DEFAULT_PATTERN_WED_FRI_9_18: DefaultWorkPattern = { workDays: [3, 4, 5], start: 9, end: 18 };
+/** 心怡自 2026-09 起：週一至週五 14:00–18:00（4 小時） */
+const XINYI_FROM_2026_09: DefaultWorkPattern = { workDays: [1, 2, 3, 4, 5], start: 14, end: 18 };
+
+function getDefaultWorkPattern(employeeId: string, date: Date): DefaultWorkPattern {
+  if (employeeId === "xinyi") {
+    const y = date.getFullYear();
+    const m = date.getMonth();
+    if (y > 2026 || (y === 2026 && m >= 8)) return XINYI_FROM_2026_09;
+  }
+  return DEFAULT_PATTERN_WED_FRI_9_18;
+}
 
 function isWeekday(date: Date): boolean {
   const d = getDay(date);
@@ -121,12 +133,13 @@ function generateDefaultBlocks(month: Date): ScheduleBlock[] {
   const blocks: ScheduleBlock[] = [];
 
   days.forEach((day) => {
-    if (!DEFAULT_WORK_DAYS.includes(getDay(day))) return;
     const dateStr = format(day, "yyyy-MM-dd");
     if (twHolidays.has(dateStr)) return;
     EMPLOYEES.forEach((emp) => {
+      const pattern = getDefaultWorkPattern(emp.id, day);
+      if (!pattern.workDays.includes(getDay(day))) return;
       SLOTS.forEach((slot) => {
-        if (slot >= DEFAULT_START && slot < DEFAULT_END) {
+        if (slot >= pattern.start && slot < pattern.end) {
           blocks.push({ id: `${emp.id}-${dateStr}-${slot}`, employeeId: emp.id, date: dateStr, slot });
         }
       });
@@ -404,11 +417,12 @@ const AdminHRPanel = () => {
     await supabase.from("hr_leaves").delete().eq("employee_id", employeeId).eq("leave_date", date);
 
     // Restore default blocks if it's a default work day
-    const d = new Date(date);
-    if (DEFAULT_WORK_DAYS.includes(getDay(d)) && !taiwanHolidays.has(date)) {
+    const d = new Date(`${date}T12:00:00`);
+    const pattern = getDefaultWorkPattern(employeeId, d);
+    if (pattern.workDays.includes(getDay(d)) && !taiwanHolidays.has(date)) {
       const restored: ScheduleBlock[] = [];
       SLOTS.forEach((slot) => {
-        if (slot >= DEFAULT_START && slot < DEFAULT_END) {
+        if (slot >= pattern.start && slot < pattern.end) {
           const key = `${employeeId}-${date}-${slot}`;
           if (!blockMap.has(key)) {
             restored.push({ id: key, employeeId, date, slot });
@@ -526,7 +540,7 @@ const AdminHRPanel = () => {
       const cellComments: { addr: string; author: string; text: string }[] = [];
 
       if (wage.mode === "fixed_monthly_leave_deduct") {
-        const fixedMonthly = wage.fixedMonthlyYuan ?? 22000;
+        const fixedMonthly = wage.fixedMonthlyYuan ?? 26000;
         const dayDiv = wage.workDaysDivisor ?? 20;
         const hoursPerDay = wage.hoursPerDay ?? 4;
         const insurance = wage.laborHealthInsuranceYuan ?? 0;
