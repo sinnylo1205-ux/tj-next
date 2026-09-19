@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { CheckCircle, XCircle } from "lucide-react";
+import { CheckCircle, Clock, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,22 +15,28 @@ import {
 export function HomePaymentResultDialog({
   open,
   onOpenChange,
-  paymentSuccess,
+  paymentStatus,
   paymentMessage,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  paymentSuccess: boolean;
+  paymentStatus: "checking" | "success" | "failed";
   paymentMessage: string;
 }) {
   const router = useRouter();
+  const paymentSuccess = paymentStatus === "success";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            {paymentSuccess ? (
+            {paymentStatus === "checking" ? (
+              <>
+                <Clock className="h-6 w-6 text-amber-500" />
+                信用卡付款確認中
+              </>
+            ) : paymentSuccess ? (
               <>
                 <CheckCircle className="h-6 w-6 text-green-500" />
                 信用卡付款成功
@@ -56,7 +62,7 @@ export function HomePaymentResultDialog({
           <Button
             onClick={() => {
               onOpenChange(false);
-              router.push("/member?tab=processing");
+              router.push(paymentSuccess ? "/member?tab=processing" : "/member?tab=pending");
             }}
           >
             前往會員中心
