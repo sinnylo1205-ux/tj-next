@@ -6,6 +6,11 @@
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { z } from "https://esm.sh/zod@3.22.4";
+import {
+  autoCancelCreatedBeforeIso,
+  isEligibleForUserAutoCancel,
+  isEligibleForUserPaymentSubmitted,
+} from "../_shared/order-status-eligibility.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -164,6 +169,37 @@ Deno.serve(async (req) => {
       });
     }
 
+    // 用戶動作必須符合 cron / 會員中心同一套資格，避免已付款或履約中訂單被竄改
+    if (action_type === "auto_cancel_expired") {
+      if (!isEligibleForUserAutoCancel(orderData, new_status)) {
+        console.error("[update-order-status] Auto-cancel rejected for ineligible order:", {
+          order_id,
+          order_status: orderData.order_status,
+          payment_step: orderData.payment_step,
+          is_manual_order: orderData.is_manual_order,
+          auto_cancel_exempt: orderData.auto_cancel_exempt,
+        });
+        return new Response(JSON.stringify({ error: "Order is not eligible for auto-cancel" }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
+    if (action_type === "user_payment_submitted") {
+      if (!isEligibleForUserPaymentSubmitted(orderData, new_status)) {
+        console.error("[update-order-status] Payment submission rejected for ineligible order:", {
+          order_id,
+          order_status: orderData.order_status,
+          payment_step: orderData.payment_step,
+        });
+        return new Response(JSON.stringify({ error: "Order is not eligible for payment submission" }), {
+          status: 409,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
+
     // Query order items
     const { data: orderItems, error: itemsError } = await supabaseAdmin
       .from("order_items")
@@ -255,13 +291,32 @@ Deno.serve(async (req) => {
         break;
     }
 
-    // Update order status
-    const { error: updateError } = await supabaseAdmin.from("orders").update(updateData).eq("id", order_id);
+    // 條件更新：與上方資格檢查一致，避免併發下寫入不符資格的狀態
+    let updateQuery = supabaseAdmin.from("orders").update(updateData).eq("id", order_id);
+    if (action_type === "auto_cancel_expired") {
+      updateQuery = updateQuery
+        .eq("order_status", "awaiting_payment")
+        .eq("payment_step", "pending")
+        .eq("is_manual_order", false)
+        .eq("auto_cancel_exempt", false)
+        .lt("created_at", autoCancelCreatedBeforeIso());
+    } else if (action_type === "user_payment_submitted") {
+      updateQuery = updateQuery.eq("order_status", "awaiting_payment").eq("payment_step", "pending");
+    }
+
+    const { data: updatedRows, error: updateError } = await updateQuery.select("id");
 
     if (updateError) {
       console.error("[update-order-status] Update failed:", updateError);
       return new Response(JSON.stringify({ error: "Failed to update order status" }), {
         status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!updatedRows || updatedRows.length === 0) {
+      console.error("[update-order-status] Update matched no eligible rows:", { order_id, action_type });
+      return new Response(JSON.stringify({ error: "Order state changed; update was not applied" }), {
+        status: 409,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
